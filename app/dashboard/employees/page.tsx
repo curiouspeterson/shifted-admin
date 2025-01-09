@@ -3,7 +3,8 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
-import Modal from '@/app/components/Modal'
+import { createClient } from '@supabase/supabase-js'
+import { Modal, ModalContent, ModalHeader, ModalBody, Button, useDisclosure } from "@nextui-org/react"
 import EmployeeForm from '@/app/components/EmployeeForm'
 import LoadingSpinner from '@/app/components/LoadingSpinner'
 
@@ -14,11 +15,6 @@ interface Employee {
   position: string
   email: string | null
   phone?: number | null
-  default_shift_id?: string | null
-  default_shift?: {
-    id: string
-    name: string
-  } | null
   created_at: string | null
   updated_at: string | null
   user_id: string | null
@@ -30,9 +26,9 @@ export default function EmployeeList() {
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [showModal, setShowModal] = useState(false)
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
   const [positionFilter, setPositionFilter] = useState<string>('all')
+  const {isOpen, onOpen, onOpenChange} = useDisclosure()
 
   useEffect(() => {
     checkSessionAndFetchEmployees()
@@ -49,23 +45,19 @@ export default function EmployeeList() {
         return
       }
 
-      const { data, error } = await supabase
+      const tempSupabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      )
+
+      const { data, error } = await tempSupabase
         .from('employees')
-        .select(`
-          *,
-          default_shift:shifts!inner(
-            id,
-            name
-          )
-        `)
+        .select('*')
         .order('last_name', { ascending: true })
 
       if (error) throw error
 
-      const employeesData = data?.map(emp => ({
-        ...emp,
-        default_shift: Array.isArray(emp.default_shift) ? emp.default_shift[0] : emp.default_shift
-      })) || []
+      const employeesData = data || []
 
       setEmployees(employeesData)
       setLoading(false)
@@ -78,13 +70,18 @@ export default function EmployeeList() {
 
   const handleEdit = (employee: Employee) => {
     setEditingEmployee(employee)
-    setShowModal(true)
+    onOpen()
   }
 
   const handleSave = () => {
-    setShowModal(false)
+    onOpenChange()
     setEditingEmployee(null)
     checkSessionAndFetchEmployees()
+  }
+
+  const handleModalClose = () => {
+    onOpenChange()
+    setEditingEmployee(null)
   }
 
   if (loading) {
@@ -129,15 +126,15 @@ export default function EmployeeList() {
             <option value="supervisor">Supervisors</option>
             <option value="manager">Managers</option>
           </select>
-          <button
-            onClick={() => {
+          <Button 
+            color="primary"
+            onPress={() => {
               setEditingEmployee(null)
-              setShowModal(true)
+              onOpen()
             }}
-            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
           >
             Add Employee
-          </button>
+          </Button>
         </div>
       </div>
 
@@ -153,9 +150,6 @@ export default function EmployeeList() {
                     </th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Position
-                    </th>
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Default Shift
                     </th>
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Email
@@ -182,9 +176,6 @@ export default function EmployeeList() {
                         }`}>
                           {employee.position}
                         </span>
-                      </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {employee.default_shift?.name || '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {employee.email}
@@ -216,23 +207,35 @@ export default function EmployeeList() {
         </div>
       </div>
 
-      <Modal
-        open={showModal}
-        onClose={() => {
-          setShowModal(false)
-          setEditingEmployee(null)
-        }}
-        title={editingEmployee ? 'Edit Employee' : 'Add Employee'}
+      <Modal 
+        isOpen={isOpen} 
+        onOpenChange={handleModalClose}
+        placement="center"
+        size="2xl"
+        isDismissable={false}
+        hideCloseButton={false}
+        shouldBlockScroll={true}
       >
-        <EmployeeForm
-          employeeId={editingEmployee?.id}
-          initialData={editingEmployee || undefined}
-          onSave={handleSave}
-          onCancel={() => {
-            setShowModal(false)
-            setEditingEmployee(null)
-          }}
-        />
+        <ModalContent>
+          {(onClose) => (
+            <>
+              <ModalHeader className="flex flex-col gap-1 font-bold">
+                {editingEmployee ? 'Edit Employee' : 'Add Employee'}
+              </ModalHeader>
+              <ModalBody className="px-6 py-4">
+                <EmployeeForm
+                  employeeId={editingEmployee?.id}
+                  initialData={editingEmployee || undefined}
+                  onSave={handleSave}
+                  onCancel={() => {
+                    onClose()
+                    setEditingEmployee(null)
+                  }}
+                />
+              </ModalBody>
+            </>
+          )}
+        </ModalContent>
       </Modal>
     </div>
   )

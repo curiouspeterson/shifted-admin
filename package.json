@@ -10,8 +10,13 @@
   },
   "dependencies": {
     "@headlessui/react": "^2.2.0",
+    "@nextui-org/button": "^2.2.9",
+    "@nextui-org/react": "^2.6.11",
+    "@nextui-org/system": "^2.4.6",
+    "@nextui-org/theme": "^2.4.5",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.12",
+    "framer-motion": "^11.16.4",
     "next": "^15.1.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

@@ -1,92 +1,115 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { supabase } from '@/lib/supabaseClient'
+import { useState } from 'react'
+import { supabase } from '@/lib/supabase/client'
+import LoadingSpinner from './LoadingSpinner'
+
+interface Employee {
+  id?: string
+  first_name: string
+  last_name: string
+  email: string | null
+  phone?: number | null
+  position: string
+  is_active: boolean | null
+  user_id?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+}
 
 interface EmployeeFormProps {
   employeeId?: string
-  initialData?: {
-    first_name: string
-    last_name: string
-    position: string
-    email: string | null
-    phone?: number | null
-    default_shift_id?: string | null
-  }
+  initialData?: Employee
   onSave: () => void
   onCancel: () => void
 }
 
 export default function EmployeeForm({ employeeId, initialData, onSave, onCancel }: EmployeeFormProps) {
-  const [firstName, setFirstName] = useState(initialData?.first_name || '')
-  const [lastName, setLastName] = useState(initialData?.last_name || '')
-  const [position, setPosition] = useState(initialData?.position || 'dispatcher')
-  const [defaultShiftId, setDefaultShiftId] = useState(initialData?.default_shift_id || '')
-  const [email, setEmail] = useState(initialData?.email || '')
-  const [phone, setPhone] = useState(initialData?.phone?.toString() || '')
-  const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [shifts, setShifts] = useState<{ id: string, name: string }[]>([])
+  const [error, setError] = useState<string | null>(null)
+  const [formData, setFormData] = useState<Partial<Employee>>(initialData || {
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: null,
+    position: 'dispatcher',
+    is_active: true
+  })
 
-  useEffect(() => {
-    fetchShifts()
-  }, [])
-
-  const fetchShifts = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('shifts')
-        .select('id, name')
-        .order('name')
-
-      if (error) throw error
-      setShifts(data || [])
-    } catch (error) {
-      console.error('Error fetching shifts:', error)
-    }
+  const handleChange = (field: keyof Employee, value: any) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value
+    }))
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) throw new Error('No authenticated user')
-
-      const employeeData = {
-        user_id: employeeId,
-        first_name: firstName,
-        last_name: lastName,
-        position,
-        default_shift_id: defaultShiftId || null,
-        email,
-        phone: phone ? parseInt(phone, 10) : null,
-        is_active: true,
-        updated_at: new Date().toISOString()
-      }
-
       if (employeeId) {
+        // Update existing employee
         const { error: updateError } = await supabase
           .from('employees')
-          .update(employeeData)
+          .update(formData)
           .eq('id', employeeId)
-      } else {
-        const { error: dbError } = await supabase
-          .from('employees')
-          .insert([employeeData])
 
-        if (dbError) throw dbError
+        if (updateError) throw updateError
+      } else {
+        // Create new auth user first
+        const tempPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12)
+        
+        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+          email: formData.email!,
+          password: tempPassword,
+          email_confirm: true
+        })
+
+        if (authError) throw authError
+
+        // Create employee record with auth user id
+        const { error: employeeError } = await supabase
+          .from('employees')
+          .insert({
+            ...formData,
+            user_id: authData.user.id
+          } as Employee)
+
+        if (employeeError) {
+          // If employee creation fails, delete the auth user
+          await supabase.auth.admin.deleteUser(authData.user.id)
+          throw employeeError
+        }
+
+        // Send email with temporary password (implement this later)
+        // For now, log it to console in development
+        if (process.env.NODE_ENV === 'development') {
+          console.log('Temporary password for', formData.email, ':', tempPassword)
+        }
       }
 
       onSave()
-    } catch (error) {
-      console.error('Error saving employee:', error)
-      setError(error instanceof Error ? error.message : 'Failed to save employee')
+    } catch (err) {
+      console.error('Error:', err)
+      setError(err instanceof Error ? err.message : 'Failed to save employee')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchUsers = async () => {
+    try {
+      const response = await fetch('/api/users')
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      const { data } = await response.json()
+      return data
+    } catch (error) {
+      console.error('Error fetching users:', error)
+      throw error
     }
   }
 
@@ -100,28 +123,30 @@ export default function EmployeeForm({ employeeId, initialData, onSave, onCancel
 
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="first_name" className="block text-sm font-medium text-gray-700">
             First Name
           </label>
           <input
             type="text"
-            id="firstName"
-            value={firstName}
-            onChange={(e) => setFirstName(e.target.value)}
+            id="first_name"
+            name="first_name"
+            value={formData.first_name || ''}
+            onChange={(e) => handleChange('first_name', e.target.value)}
             required
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
           />
         </div>
 
         <div>
-          <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
+          <label htmlFor="last_name" className="block text-sm font-medium text-gray-700">
             Last Name
           </label>
           <input
             type="text"
-            id="lastName"
-            value={lastName}
-            onChange={(e) => setLastName(e.target.value)}
+            id="last_name"
+            name="last_name"
+            value={formData.last_name || ''}
+            onChange={(e) => handleChange('last_name', e.target.value)}
             required
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
           />
@@ -134,8 +159,9 @@ export default function EmployeeForm({ employeeId, initialData, onSave, onCancel
         </label>
         <select
           id="position"
-          value={position}
-          onChange={(e) => setPosition(e.target.value)}
+          name="position"
+          value={formData.position || 'dispatcher'}
+          onChange={(e) => handleChange('position', e.target.value)}
           required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
         >
@@ -146,33 +172,15 @@ export default function EmployeeForm({ employeeId, initialData, onSave, onCancel
       </div>
 
       <div>
-        <label htmlFor="defaultShift" className="block text-sm font-medium text-gray-700">
-          Default Shift
-        </label>
-        <select
-          id="defaultShift"
-          value={defaultShiftId}
-          onChange={(e) => setDefaultShiftId(e.target.value)}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
-        >
-          <option value="">No default shift</option>
-          {shifts.map((shift) => (
-            <option key={shift.id} value={shift.id}>
-              {shift.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
         <label htmlFor="email" className="block text-sm font-medium text-gray-700">
           Email
         </label>
         <input
           type="email"
           id="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          name="email"
+          value={formData.email || ''}
+          onChange={(e) => handleChange('email', e.target.value)}
           required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
         />
@@ -185,8 +193,9 @@ export default function EmployeeForm({ employeeId, initialData, onSave, onCancel
         <input
           type="tel"
           id="phone"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          name="phone"
+          value={formData.phone?.toString() || ''}
+          onChange={(e) => handleChange('phone', e.target.value ? parseInt(e.target.value, 10) : null)}
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
         />
       </div>

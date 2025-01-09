@@ -18,6 +18,7 @@
 - [x] Add employee list view with filtering
 - [x] Create employee detail/edit view
 - [x] Add position management (dispatcher/supervisor/management)
+- [x] Remove default shift relationship for simplified schema
 
 ## Phase 2: Schedule Management (In Progress)
 **Duration: 2 weeks**
@@ -234,6 +235,24 @@
   - Business rules
   - Data integrity
   - Cross-table validation
+- [x] Schema optimization:
+  - Simplified relationships
+  - Minimal foreign key dependencies
+  - Cache-aware design
+
+### Query Optimization ✓
+- [x] Simplified query patterns:
+  - Direct table queries where possible
+  - Minimal join complexity
+  - Efficient relationship handling
+- [x] Cache management:
+  - Fresh client instances for problematic queries
+  - Schema cache considerations
+  - Relationship query optimization
+- [x] Error handling improvements:
+  - Detailed error logging
+  - User-friendly error messages
+  - Recovery strategies
 
 ### Security
 - [x] Role-based access control with:
