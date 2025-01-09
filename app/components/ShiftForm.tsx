@@ -121,7 +121,7 @@ export default function ShiftForm({ scheduleId, shiftId, onSave, onCancel }: Shi
           value={employeeId}
           onChange={(e) => setEmployeeId(e.target.value)}
           required
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
         >
           <option value="">Select an employee</option>
           {employees.map((employee) => (
@@ -142,7 +142,7 @@ export default function ShiftForm({ scheduleId, shiftId, onSave, onCancel }: Shi
           value={role}
           onChange={(e) => setRole(e.target.value)}
           required
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
         />
       </div>
 
@@ -157,7 +157,7 @@ export default function ShiftForm({ scheduleId, shiftId, onSave, onCancel }: Shi
             value={startTime}
             onChange={(e) => setStartTime(e.target.value)}
             required
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
           />
         </div>
 
@@ -171,7 +171,7 @@ export default function ShiftForm({ scheduleId, shiftId, onSave, onCancel }: Shi
             value={endTime}
             onChange={(e) => setEndTime(e.target.value)}
             required
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
           />
         </div>
       </div>

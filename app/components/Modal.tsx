@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useRef } from 'react'
+import { Fragment } from 'react'
 import { Dialog, Transition } from '@headlessui/react'
 
 interface ModalProps {
@@ -11,14 +11,11 @@ interface ModalProps {
 }
 
 export default function Modal({ open, onClose, title, children }: ModalProps) {
-  const cancelButtonRef = useRef(null)
-
   return (
     <Transition.Root show={open} as={Fragment}>
       <Dialog
         as="div"
         className="relative z-10"
-        initialFocus={cancelButtonRef}
         onClose={onClose}
       >
         <Transition.Child

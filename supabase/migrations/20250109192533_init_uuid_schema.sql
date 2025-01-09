@@ -1,6 +1,27 @@
+-- Drop existing tables if they exist
+DROP TABLE IF EXISTS audit_logs;
+DROP TABLE IF EXISTS shift_swaps;
+DROP TABLE IF EXISTS overtime_history;
+DROP TABLE IF EXISTS schedule_assignments;
+DROP TABLE IF EXISTS schedules;
+DROP TABLE IF EXISTS shifts;
+DROP TABLE IF EXISTS employees;
+
+-- Create employees table
+CREATE TABLE employees (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    position TEXT NOT NULL,  -- ('dispatcher', 'shift_supervisor', 'management')
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
 -- Create shifts table with fixed times
 CREATE TABLE shifts (
-    id BIGSERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
@@ -11,41 +32,26 @@ CREATE TABLE shifts (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 );
 
--- Create employees table
-CREATE TABLE employees (
-    id BIGSERIAL PRIMARY KEY,
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-    first_name TEXT NOT NULL,
-    last_name TEXT NOT NULL,
-    position TEXT NOT NULL,  -- ('dispatcher', 'shift_supervisor', 'management')
-    default_shift_id BIGINT,
-    email TEXT NOT NULL,
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    CONSTRAINT fk_employee_default_shift FOREIGN KEY (default_shift_id) REFERENCES shifts(id)
-);
-
 -- Create schedules table
 CREATE TABLE schedules (
-    id BIGSERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     start_date DATE NOT NULL,
     end_date DATE NOT NULL,  -- bi-weekly periods
     status TEXT NOT NULL DEFAULT 'draft', -- ('draft', 'published')
     version INT NOT NULL DEFAULT 1,  -- support multiple drafts
     is_active BOOLEAN NOT NULL DEFAULT TRUE,  -- only one active version
-    created_by BIGINT REFERENCES employees(id),
-    published_by BIGINT REFERENCES employees(id),
+    created_by UUID REFERENCES employees(id),
+    published_by UUID REFERENCES employees(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     published_at TIMESTAMP WITH TIME ZONE
 );
 
 -- Create schedule_assignments table
 CREATE TABLE schedule_assignments (
-    id BIGSERIAL PRIMARY KEY,
-    schedule_id BIGINT REFERENCES schedules(id) ON DELETE CASCADE,
-    employee_id BIGINT REFERENCES employees(id) ON DELETE CASCADE,
-    shift_id BIGINT REFERENCES shifts(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    schedule_id UUID REFERENCES schedules(id) ON DELETE CASCADE,
+    employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
+    shift_id UUID REFERENCES shifts(id) ON DELETE CASCADE,
     date DATE NOT NULL,
     is_supervisor_shift BOOLEAN NOT NULL DEFAULT FALSE,  -- track when supervisor works as dispatcher
     overtime_hours DECIMAL(4,2),
@@ -56,9 +62,9 @@ CREATE TABLE schedule_assignments (
 
 -- Create overtime_history table
 CREATE TABLE overtime_history (
-    id BIGSERIAL PRIMARY KEY,
-    employee_id BIGINT REFERENCES employees(id) ON DELETE CASCADE,
-    schedule_id BIGINT REFERENCES schedules(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
+    schedule_id UUID REFERENCES schedules(id) ON DELETE CASCADE,
     week_start_date DATE NOT NULL,
     total_hours DECIMAL(4,2) NOT NULL,
     overtime_hours DECIMAL(4,2) NOT NULL,
@@ -67,23 +73,23 @@ CREATE TABLE overtime_history (
 
 -- Create shift_swaps table
 CREATE TABLE shift_swaps (
-    id BIGSERIAL PRIMARY KEY,
-    offering_employee_id BIGINT REFERENCES employees(id) ON DELETE CASCADE,
-    receiving_employee_id BIGINT REFERENCES employees(id) ON DELETE CASCADE,
-    schedule_assignment_id BIGINT REFERENCES schedule_assignments(id) ON DELETE CASCADE,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    offering_employee_id UUID REFERENCES employees(id),
+    receiving_employee_id UUID REFERENCES employees(id),
+    schedule_assignment_id UUID REFERENCES schedule_assignments(id),
     status TEXT NOT NULL DEFAULT 'pending', -- ('pending', 'approved', 'denied')
     requested_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     approved_at TIMESTAMP WITH TIME ZONE,
-    manager_id BIGINT REFERENCES employees(id) ON DELETE SET NULL
+    manager_id UUID REFERENCES employees(id)
 );
 
 -- Create audit_logs table
 CREATE TABLE audit_logs (
-    id BIGSERIAL PRIMARY KEY,
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     action_type TEXT NOT NULL, -- ('override', 'swap_approval', 'schedule_change', etc.)
     entity_type TEXT NOT NULL, -- ('schedule_assignment', 'shift_swap', etc.)
-    entity_id BIGINT NOT NULL,
-    manager_id BIGINT REFERENCES employees(id) ON DELETE SET NULL,
+    entity_id UUID NOT NULL,
+    manager_id UUID REFERENCES employees(id),
     reason TEXT NOT NULL,
     override_type TEXT, -- ('forced_assignment', 'availability_override', etc.)
     constraint_type TEXT, -- ('employee_availability', 'maximum_hours', etc.)
@@ -103,4 +109,4 @@ INSERT INTO shifts (name, start_time, end_time, duration_hours, crosses_midnight
 ('Early Morning', '05:00', '09:00', 4, false, 6),
 ('Day Shift', '09:00', '21:00', 12, false, 8),
 ('Evening', '21:00', '01:00', 4, true, 7),
-('Night', '01:00', '05:00', 4, false, 6); 
+('Night', '01:00', '05:00', 4, false, 6);

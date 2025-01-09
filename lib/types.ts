@@ -6,6 +6,8 @@ export interface Employee {
   first_name: string
   last_name: string
   position: EmployeePosition
+  default_shift_id?: number
+  email: string
   is_active: boolean
   created_at: string
   updated_at: string
@@ -76,7 +78,7 @@ export interface ShiftSwap {
   manager_id: number | null
 }
 
-export type ActionType = 'override' | 'swap_approval' | 'schedule_change'
+export type ActionType = 'override' | 'swap_approval' | 'schedule_change' | 'user_deletion'
 export type EntityType = 'schedule_assignment' | 'shift_swap'
 export type OverrideType = 'forced_assignment' | 'availability_override'
 export type ConstraintType = 'employee_availability' | 'maximum_hours'
@@ -117,4 +119,9 @@ export interface ShiftSwapWithDetails extends ShiftSwap {
     shift: Shift
   }
   manager?: Employee
+}
+
+// Helper type for employee with default shift
+export interface EmployeeWithDefaultShift extends Employee {
+  default_shift?: Shift
 } 
