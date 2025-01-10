@@ -3,72 +3,45 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
-interface Employee {
-  id: string
-  name: string
-  role: string
-}
-
 interface ShiftFormProps {
-  scheduleId: string
-  shiftId?: string // Optional - if provided, we're editing an existing shift
+  shiftId?: string
+  initialData?: {
+    name: string
+    start_time: string
+    end_time: string
+    duration_hours: number
+    crosses_midnight: boolean
+    min_staff_count: number
+    requires_supervisor: boolean
+  }
   onSave: () => void
   onCancel: () => void
 }
 
-export default function ShiftForm({ scheduleId, shiftId, onSave, onCancel }: ShiftFormProps) {
-  const [employees, setEmployees] = useState<Employee[]>([])
+export default function ShiftForm({ shiftId, initialData, onSave, onCancel }: ShiftFormProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const [employeeId, setEmployeeId] = useState('')
-  const [role, setRole] = useState('')
-  const [startTime, setStartTime] = useState('')
-  const [endTime, setEndTime] = useState('')
+  const [name, setName] = useState(initialData?.name || '')
+  const [startTime, setStartTime] = useState(initialData?.start_time?.slice(0, 5) || '')
+  const [endTime, setEndTime] = useState(initialData?.end_time?.slice(0, 5) || '')
+  const [minStaffCount, setMinStaffCount] = useState(initialData?.min_staff_count || 1)
+  const [requiresSupervisor, setRequiresSupervisor] = useState(initialData?.requires_supervisor ?? true)
 
-  useEffect(() => {
-    fetchEmployees()
-    if (shiftId) {
-      fetchShiftDetails()
+  const calculateDurationAndCrossesMidnight = (start: string, end: string) => {
+    const startDate = new Date(`2000-01-01T${start}:00`)
+    let endDate = new Date(`2000-01-01T${end}:00`)
+    
+    // If end time is before start time, it means the shift crosses midnight
+    if (endDate < startDate) {
+      endDate = new Date(`2000-01-02T${end}:00`)
     }
-  }, [shiftId])
-
-  const fetchEmployees = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('employees')
-        .select('*')
-        .order('name')
-
-      if (error) throw error
-
-      setEmployees(data || [])
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to fetch employees')
-    }
-  }
-
-  const fetchShiftDetails = async () => {
-    if (!shiftId) return
-
-    try {
-      const { data, error } = await supabase
-        .from('schedule_shifts')
-        .select('*')
-        .eq('id', shiftId)
-        .single()
-
-      if (error) throw error
-
-      if (data) {
-        setEmployeeId(data.employee_id)
-        setRole(data.role)
-        setStartTime(data.start_time.split('T')[1].split('.')[0]) // Extract time from ISO string
-        setEndTime(data.end_time.split('T')[1].split('.')[0])
-      }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to fetch shift details')
-    }
+    
+    const durationMs = endDate.getTime() - startDate.getTime()
+    const durationHours = durationMs / (1000 * 60 * 60)
+    const crossesMidnight = endDate.getDate() > startDate.getDate()
+    
+    return { durationHours, crossesMidnight }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -77,21 +50,25 @@ export default function ShiftForm({ scheduleId, shiftId, onSave, onCancel }: Shi
     setError(null)
 
     try {
+      const { durationHours, crossesMidnight } = calculateDurationAndCrossesMidnight(startTime, endTime)
+
       const shiftData = {
-        schedule_id: scheduleId,
-        employee_id: employeeId,
-        role,
-        start_time: `${new Date().toISOString().split('T')[0]}T${startTime}:00Z`,
-        end_time: `${new Date().toISOString().split('T')[0]}T${endTime}:00Z`,
+        name,
+        start_time: startTime,
+        end_time: endTime,
+        duration_hours: durationHours,
+        crosses_midnight: crossesMidnight,
+        min_staff_count: minStaffCount,
+        requires_supervisor: requiresSupervisor,
       }
 
       const { error } = shiftId
         ? await supabase
-            .from('schedule_shifts')
+            .from('shifts')
             .update(shiftData)
             .eq('id', shiftId)
         : await supabase
-            .from('schedule_shifts')
+            .from('shifts')
             .insert([shiftData])
 
       if (error) throw error
@@ -113,34 +90,14 @@ export default function ShiftForm({ scheduleId, shiftId, onSave, onCancel }: Shi
       )}
 
       <div>
-        <label htmlFor="employee" className="block text-sm font-medium text-gray-700">
-          Employee
-        </label>
-        <select
-          id="employee"
-          value={employeeId}
-          onChange={(e) => setEmployeeId(e.target.value)}
-          required
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
-        >
-          <option value="">Select an employee</option>
-          {employees.map((employee) => (
-            <option key={employee.id} value={employee.id}>
-              {employee.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      <div>
-        <label htmlFor="role" className="block text-sm font-medium text-gray-700">
-          Role
+        <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+          Name
         </label>
         <input
           type="text"
-          id="role"
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
+          id="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
           required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
         />
@@ -174,6 +131,34 @@ export default function ShiftForm({ scheduleId, shiftId, onSave, onCancel }: Shi
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
           />
         </div>
+      </div>
+
+      <div>
+        <label htmlFor="minStaffCount" className="block text-sm font-medium text-gray-700">
+          Minimum Staff Count
+        </label>
+        <input
+          type="number"
+          id="minStaffCount"
+          value={minStaffCount}
+          onChange={(e) => setMinStaffCount(parseInt(e.target.value))}
+          min="1"
+          required
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
+        />
+      </div>
+
+      <div className="flex items-center">
+        <input
+          type="checkbox"
+          id="requiresSupervisor"
+          checked={requiresSupervisor}
+          onChange={(e) => setRequiresSupervisor(e.target.checked)}
+          className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+        />
+        <label htmlFor="requiresSupervisor" className="ml-2 block text-sm text-gray-900">
+          Requires Supervisor
+        </label>
       </div>
 
       <div className="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">

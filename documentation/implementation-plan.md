@@ -38,29 +38,29 @@
 ### Shift Management
 - [x] Create shifts table with fixed times
 - [x] Pre-populate standard shifts
-- [ ] Create shift management interface
-- [ ] Implement shift detail view with:
+- [x] Create shift management interface
+- [x] Implement shift detail view with:
   - Staffing requirements
   - Supervisor requirements
   - Cross-midnight handling
-- [ ] Add minimum staffing controls
+- [x] Add minimum staffing controls
 
 ### Basic Schedule Management
 - [x] Create schedules and schedule_assignments tables
-- [ ] Implement bi-weekly schedule creation
-- [ ] Add schedule list view with:
+- [x] Implement bi-weekly schedule creation
+- [x] Add schedule list view with:
   - Status indicators (draft/published)
   - Date range filtering
   - Version tracking
-- [ ] Create schedule detail view with:
+- [x] Create schedule detail view with:
   - Shift assignments
   - Coverage visualization
   - Supervisor distribution
-- [ ] Implement basic shift assignment with:
+- [x] Implement basic shift assignment with:
   - Drag-and-drop interface
   - Conflict detection
   - Overtime tracking
-- [ ] Add schedule status management (draft/published)
+- [x] Add schedule status management (draft/published)
 
 ## Phase 3: Core Scheduling Features
 **Duration: 2 weeks**

@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase/client'
-import { createClient } from '@supabase/supabase-js'
 import { Modal, ModalContent, ModalHeader, ModalBody, Button, useDisclosure } from "@nextui-org/react"
 import EmployeeForm from '@/app/components/EmployeeForm'
 import LoadingSpinner from '@/app/components/LoadingSpinner'
@@ -45,21 +44,20 @@ export default function EmployeeList() {
         return
       }
 
-      const tempSupabase = createClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      )
+      // Fetch employee data using API route
+      const response = await fetch('/api/employees', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
 
-      const { data, error } = await tempSupabase
-        .from('employees')
-        .select('*')
-        .order('last_name', { ascending: true })
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to fetch employees')
+      }
 
-      if (error) throw error
-
-      const employeesData = data || []
-
-      setEmployees(employeesData)
+      const { employees: employeesData } = await response.json()
+      setEmployees(employeesData || [])
       setLoading(false)
     } catch (err) {
       console.error('Error:', err)
