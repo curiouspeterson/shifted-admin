@@ -17,11 +17,11 @@ export async function POST(request: Request) {
   try {
     const { email, password, firstName, lastName } = await request.json()
 
-    // Create user with admin privileges (bypasses email verification)
-    const { data: user, error: createError } = await supabase.auth.admin.createUser({
+    // Create user with admin API to ensure it's created immediately
+    const { data: { user }, error: createError } = await supabase.auth.admin.createUser({
       email,
       password,
-      email_confirm: true, // Skip email verification
+      email_confirm: true,
       user_metadata: {
         first_name: firstName,
         last_name: lastName,
@@ -33,6 +33,14 @@ export async function POST(request: Request) {
       console.error('Error creating user:', createError)
       return new NextResponse(createError.message, { status: 400 })
     }
+
+    if (!user) {
+      console.error('No user returned from createUser')
+      return new NextResponse('Failed to create user', { status: 500 })
+    }
+
+    // The trigger will automatically create the employee record
+    // No need to create it manually here
 
     return new NextResponse(JSON.stringify(user), {
       status: 201,

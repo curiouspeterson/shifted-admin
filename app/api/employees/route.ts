@@ -1,10 +1,47 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
+// Helper function to verify session
+async function verifySession(request: Request) {
+  const authHeader = request.headers.get('Authorization')
+  if (!authHeader?.startsWith('Bearer ')) {
+    return null
+  }
+
+  const token = authHeader.split(' ')[1]
+  const supabaseClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    }
+  )
+
+  const { data: { user }, error } = await supabaseClient.auth.getUser(token)
+  if (error || !user) {
+    return null
+  }
+
+  return user
+}
+
 export async function GET(request: Request) {
   try {
-    // Create a Supabase client with the service role key for admin access
-    const supabase = createClient(
+    // Verify session first
+    const user = await verifySession(request)
+    if (!user) {
+      console.log('No authenticated user found')
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+
+    // Create admin client with service role key
+    const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
       {
@@ -15,32 +52,13 @@ export async function GET(request: Request) {
       }
     )
 
-    // Verify the session from the Authorization header
-    const authHeader = request.headers.get('Authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return new NextResponse(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401 }
-      )
-    }
-
-    const token = authHeader.split(' ')[1]
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    
-    if (authError || !user) {
-      return new NextResponse(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401 }
-      )
-    }
-
     // Parse URL to get query parameters
     const { searchParams } = new URL(request.url)
     const select = searchParams.get('select') || '*'
     const userId = searchParams.get('user_id')
 
     // Build the query
-    let query = supabase.from('employees').select(select)
+    let query = supabaseAdmin.from('employees').select(select)
     if (userId) {
       query = query.eq('user_id', userId)
     }

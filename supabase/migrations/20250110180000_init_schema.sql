@@ -131,6 +131,37 @@ ALTER TABLE schedules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE schedule_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shifts ENABLE ROW LEVEL SECURITY;
 
+-- Create function to automatically create employee records
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.employees (
+    id,
+    user_id,
+    first_name,
+    last_name,
+    email,
+    position,
+    is_active
+  ) VALUES (
+    gen_random_uuid(),
+    NEW.id,
+    COALESCE(NEW.raw_user_meta_data->>'first_name', 'New'),
+    COALESCE(NEW.raw_user_meta_data->>'last_name', 'User'),
+    NEW.email,
+    'dispatcher',
+    true
+  );
+  RETURN NEW;
+END;
+$$ language plpgsql security definer;
+
+-- Create trigger to call the function on user creation
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE PROCEDURE public.handle_new_user();
+
 -- Drop all existing policies
 DROP POLICY IF EXISTS "Everyone can view shifts" ON shifts;
 DROP POLICY IF EXISTS "Supervisors can manage shifts" ON shifts;
@@ -146,21 +177,27 @@ DROP POLICY IF EXISTS "Employees can update their own record" ON employees;
 DROP POLICY IF EXISTS "Employees can view their own availability and supervisors can view all" ON employee_availability;
 DROP POLICY IF EXISTS "Employees can manage their own availability" ON employee_availability;
 
--- Create policies for employees
+-- Create function to check if user is supervisor
+CREATE OR REPLACE FUNCTION is_supervisor(user_id UUID)
+RETURNS BOOLEAN AS $$
+BEGIN
+  RETURN EXISTS (
+    SELECT 1 
+    FROM employees 
+    WHERE employees.user_id = $1 
+    AND position IN ('shift_supervisor', 'management')
+  );
+END;
+$$ language plpgsql SECURITY DEFINER;
+
+-- Create policies for employees with better error handling
 CREATE POLICY "Employees can view their own record and supervisors can view all"
     ON employees FOR SELECT
     USING (
-        CASE 
-            WHEN auth.jwt()->>'role' = 'anon' THEN false
-            WHEN auth.uid() = user_id THEN true
-            WHEN EXISTS (
-                SELECT 1 
-                FROM employees supervisor 
-                WHERE supervisor.user_id = auth.uid() 
-                AND supervisor.position IN ('shift_supervisor', 'management')
-            ) THEN true
-            ELSE false
-        END
+        auth.role() = 'authenticated' AND (
+            auth.uid() = user_id OR
+            is_supervisor(auth.uid())
+        )
     );
 
 CREATE POLICY "Employees can update their own record"
