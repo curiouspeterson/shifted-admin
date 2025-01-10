@@ -1,7 +1,10 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 
-export async function GET(request: Request) {
+export async function PUT(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
   try {
     // Create a Supabase client with the service role key for admin access
     const supabase = createClient(
@@ -34,35 +37,32 @@ export async function GET(request: Request) {
       )
     }
 
-    // Parse URL to get query parameters
-    const { searchParams } = new URL(request.url)
-    const select = searchParams.get('select') || '*'
-    const userId = searchParams.get('user_id')
+    // Get the employee ID from the URL
+    const employeeId = params.id
 
-    // Build the query
-    let query = supabase.from('employees').select(select)
-    if (userId) {
-      query = query.eq('user_id', userId)
-    }
+    // Get the update data from the request body
+    const updateData = await request.json()
 
-    // Execute the query
-    const { data: employees, error } = await query
+    // Update the employee
+    const { data: employee, error } = await supabase
+      .from('employees')
+      .update(updateData)
+      .eq('id', employeeId)
+      .select()
+      .single()
 
     if (error) {
       console.error('Database error:', error)
       throw error
     }
 
-    // Return single object if user_id is specified, otherwise return array
-    return NextResponse.json({
-      employees: userId ? employees[0] : employees
-    })
+    return NextResponse.json({ employee })
 
   } catch (err) {
-    console.error('Error in /api/employees:', err)
+    console.error('Error in PUT /api/employees/[id]:', err)
     return new NextResponse(
-      JSON.stringify({ error: err instanceof Error ? err.message : 'Failed to fetch employees' }),
+      JSON.stringify({ error: err instanceof Error ? err.message : 'Failed to update employee' }),
       { status: 500 }
     )
   }
-}
+} 

@@ -29,33 +29,20 @@ export default function RequestForm({ onSave, onCancel }: RequestFormProps) {
       if (sessionError) throw sessionError
       if (!session) throw new Error('No active session')
 
-      // Get employee ID for current user
-      const { data: employee, error: employeeError } = await supabase
-        .from('employees')
-        .select('id')
-        .eq('user_id', session.user.id)
-        .single()
+      // Create the request via API route
+      const response = await fetch('/api/requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
+        },
+        body: JSON.stringify(formData)
+      })
 
-      if (employeeError) throw employeeError
-      if (!employee) throw new Error('Employee record not found')
-
-      // Create the request
-      const { error: insertError } = await supabase
-        .from('time_off_requests')
-        .insert([
-          {
-            employee_id: employee.id,
-            start_date: formData.start_date,
-            end_date: formData.end_date,
-            request_type: formData.request_type,
-            reason: formData.reason || null,
-            status: 'pending',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          }
-        ])
-
-      if (insertError) throw insertError
+      if (!response.ok) {
+        const data = await response.json()
+        throw new Error(data.error || 'Failed to submit request')
+      }
 
       onSave()
     } catch (err) {
@@ -66,13 +53,6 @@ export default function RequestForm({ onSave, onCancel }: RequestFormProps) {
     }
   }
 
-  const handleChange = (field: string, value: string) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: value
-    }))
-  }
-
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {error && (
@@ -80,24 +60,6 @@ export default function RequestForm({ onSave, onCancel }: RequestFormProps) {
           <div className="text-sm text-red-700">{error}</div>
         </div>
       )}
-
-      <div>
-        <label htmlFor="request_type" className="block text-sm font-medium text-gray-700">
-          Request Type
-        </label>
-        <select
-          id="request_type"
-          value={formData.request_type}
-          onChange={(e) => handleChange('request_type', e.target.value)}
-          required
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
-        >
-          <option value="vacation">Vacation</option>
-          <option value="sick">Sick Leave</option>
-          <option value="personal">Personal</option>
-          <option value="other">Other</option>
-        </select>
-      </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -107,10 +69,10 @@ export default function RequestForm({ onSave, onCancel }: RequestFormProps) {
           <input
             type="date"
             id="start_date"
+            name="start_date"
             value={formData.start_date}
-            onChange={(e) => handleChange('start_date', e.target.value)}
+            onChange={(e) => setFormData(prev => ({ ...prev, start_date: e.target.value }))}
             required
-            min={new Date().toISOString().split('T')[0]}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
           />
         </div>
@@ -122,13 +84,32 @@ export default function RequestForm({ onSave, onCancel }: RequestFormProps) {
           <input
             type="date"
             id="end_date"
+            name="end_date"
             value={formData.end_date}
-            onChange={(e) => handleChange('end_date', e.target.value)}
+            onChange={(e) => setFormData(prev => ({ ...prev, end_date: e.target.value }))}
             required
-            min={formData.start_date || new Date().toISOString().split('T')[0]}
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
           />
         </div>
+      </div>
+
+      <div>
+        <label htmlFor="request_type" className="block text-sm font-medium text-gray-700">
+          Request Type
+        </label>
+        <select
+          id="request_type"
+          name="request_type"
+          value={formData.request_type}
+          onChange={(e) => setFormData(prev => ({ ...prev, request_type: e.target.value }))}
+          required
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
+        >
+          <option value="vacation">Vacation</option>
+          <option value="sick">Sick Leave</option>
+          <option value="personal">Personal</option>
+          <option value="other">Other</option>
+        </select>
       </div>
 
       <div>
@@ -137,9 +118,10 @@ export default function RequestForm({ onSave, onCancel }: RequestFormProps) {
         </label>
         <textarea
           id="reason"
-          value={formData.reason}
-          onChange={(e) => handleChange('reason', e.target.value)}
+          name="reason"
           rows={3}
+          value={formData.reason}
+          onChange={(e) => setFormData(prev => ({ ...prev, reason: e.target.value }))}
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
         />
       </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import Modal from '@/app/components/Modal'
 import { ModalContent, ModalHeader, ModalBody } from '@nextui-org/react'
@@ -19,6 +20,7 @@ interface Shift {
 }
 
 export default function ShiftsPage() {
+  const router = useRouter()
   const [shifts, setShifts] = useState<Shift[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -31,17 +33,33 @@ export default function ShiftsPage() {
 
   const fetchShifts = async () => {
     try {
-      const { data, error } = await supabase
-        .from('shifts')
-        .select('*')
-        .order('start_time')
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError) throw sessionError
+      
+      if (!session) {
+        router.push('/sign-in')
+        return
+      }
 
-      if (error) throw error
+      // Fetch shifts using API route
+      const response = await fetch('/api/shifts', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
 
-      setShifts(data || [])
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to fetch shifts')
-    } finally {
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to fetch shifts')
+      }
+
+      const { shifts: shiftsData } = await response.json()
+      setShifts(shiftsData || [])
+      setLoading(false)
+    } catch (err) {
+      console.error('Error:', err)
+      setError(err instanceof Error ? err.message : 'Failed to fetch shifts')
       setLoading(false)
     }
   }

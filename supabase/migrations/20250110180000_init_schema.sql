@@ -153,13 +153,13 @@ CREATE POLICY "Employees can view their own record and supervisors can view all"
         CASE 
             WHEN auth.jwt()->>'role' = 'anon' THEN false
             WHEN auth.uid() = user_id THEN true
-            ELSE EXISTS (
+            WHEN EXISTS (
                 SELECT 1 
                 FROM employees supervisor 
                 WHERE supervisor.user_id = auth.uid() 
                 AND supervisor.position IN ('shift_supervisor', 'management')
-                AND supervisor.id != employees.id
-            )
+            ) THEN true
+            ELSE false
         END
     );
 

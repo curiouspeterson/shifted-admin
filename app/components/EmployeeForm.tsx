@@ -49,11 +49,22 @@ export default function EmployeeForm({ employeeId, initialData, onSave, onCancel
     setError(null)
   
     try {
+      // Get the session token
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) throw sessionError
+      if (!session) throw new Error('No session found')
+
+      const headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`
+      }
+
       if (employeeId) {
-        // Update existing employee
-        const { error: updateError } = await supabase
-          .from('employees')
-          .update({
+        // Update existing employee via API route
+        const response = await fetch(`/api/employees/${employeeId}`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({
             first_name: formData.first_name,
             last_name: formData.last_name,
             email: formData.email,
@@ -62,45 +73,32 @@ export default function EmployeeForm({ employeeId, initialData, onSave, onCancel
             is_active: formData.is_active,
             updated_at: new Date().toISOString()
           })
-          .eq('id', employeeId)
-  
-        if (updateError) throw updateError
+        })
+
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || 'Failed to update employee')
+        }
       } else {
-        // Create new employee via API route - let the API handle everything
+        // Create new employee via API route
         const response = await fetch('/api/employees', {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
+          headers,
           body: JSON.stringify(formData)
         })
-  
+
         if (!response.ok) {
           const data = await response.json()
           throw new Error(data.error || 'Failed to create employee')
         }
       }
-  
+
       onSave()
     } catch (err) {
       console.error('Error:', err)
       setError(err instanceof Error ? err.message : 'Failed to save employee')
     } finally {
       setLoading(false)
-    }
-  }
-
-  const fetchUsers = async () => {
-    try {
-      const response = await fetch('/api/users')
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`)
-      }
-      const { data } = await response.json()
-      return data
-    } catch (error) {
-      console.error('Error fetching users:', error)
-      throw error
     }
   }
 
@@ -157,8 +155,8 @@ export default function EmployeeForm({ employeeId, initialData, onSave, onCancel
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
         >
           <option value="dispatcher">Dispatcher</option>
-          <option value="supervisor">Supervisor</option>
-          <option value="manager">Manager</option>
+          <option value="shift_supervisor">Shift Supervisor</option>
+          <option value="management">Management</option>
         </select>
       </div>
 

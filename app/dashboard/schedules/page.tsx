@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabaseClient'
 import Modal from '@/app/components/Modal'
 import ScheduleForm from '@/app/components/ScheduleForm'
 
 interface Schedule {
   id: string
+  name: string
   start_date: string
   end_date: string
   status: string
@@ -19,6 +21,7 @@ interface Schedule {
 }
 
 export default function SchedulesList() {
+  const router = useRouter()
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -32,17 +35,33 @@ export default function SchedulesList() {
 
   const fetchSchedules = async () => {
     try {
-      const { data, error } = await supabase
-        .from('schedules')
-        .select('*')
-        .order('start_date', { ascending: false })
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError) throw sessionError
+      
+      if (!session) {
+        router.push('/sign-in')
+        return
+      }
 
-      if (error) throw error
+      // Fetch schedules using API route
+      const response = await fetch('/api/schedules', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
 
-      setSchedules(data || [])
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'Failed to fetch schedules')
-    } finally {
+      if (!response.ok) {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to fetch schedules')
+      }
+
+      const { schedules: schedulesData } = await response.json()
+      setSchedules(schedulesData || [])
+      setLoading(false)
+    } catch (err) {
+      console.error('Error:', err)
+      setError(err instanceof Error ? err.message : 'Failed to fetch schedules')
       setLoading(false)
     }
   }
