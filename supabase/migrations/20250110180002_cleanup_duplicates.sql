@@ -1,15 +1,18 @@
--- Delete all duplicate records, keeping only the most recent one for each user_id
-WITH ranked_employees AS (
-  SELECT *,
-    ROW_NUMBER() OVER (
-      PARTITION BY user_id
-      ORDER BY created_at DESC
-    ) as rn
-  FROM employees
-)
-DELETE FROM employees
-WHERE id IN (
-  SELECT id 
-  FROM ranked_employees 
-  WHERE rn > 1
-); 
+-- Create a temporary table with the records we want to keep
+CREATE TEMP TABLE employees_to_keep AS
+SELECT DISTINCT ON (email) *
+FROM employees
+ORDER BY email, created_at DESC;
+
+-- Delete all records from the original table
+DELETE FROM employees;
+
+-- Reinsert only the records we want to keep
+INSERT INTO employees
+SELECT * FROM employees_to_keep;
+
+-- Drop the temporary table
+DROP TABLE employees_to_keep;
+
+-- Add a unique constraint to prevent future duplicates
+ALTER TABLE employees ADD CONSTRAINT employees_email_unique UNIQUE (email); 

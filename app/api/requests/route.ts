@@ -60,7 +60,7 @@ export async function GET(req: Request) {
       .from('time_off_requests')
       .select(`
         *,
-        employee:employees (
+        employee:employees!time_off_requests_employee_id_fkey (
           first_name,
           last_name
         )
