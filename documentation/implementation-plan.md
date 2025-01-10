@@ -44,6 +44,16 @@
   - Supervisor requirements
   - Cross-midnight handling
 - [x] Add minimum staffing controls
+- [x] Update shifts with all possible variations:
+  - Day Shift Early (4h, 10h, 12h)
+  - Day Shift (4h, 10h, 12h)
+  - Swing Shift (4h, 10h, 12h)
+  - Graveyard (4h, 10h, 12h)
+- [x] Implement staffing requirements table with:
+  - Time-based minimum staffing levels
+  - Supervisor requirements
+  - Day-of-week variations
+  - Effective date ranges
 
 ### Basic Schedule Management
 - [x] Create schedules and schedule_assignments tables
@@ -67,13 +77,13 @@
 
 ### Advanced Schedule Management
 - [ ] Implement bi-weekly schedule generation with:
-  - Minimum staffing validation
-  - Supervisor coverage checks
+  - Minimum staffing validation based on time periods:
+    - 5am-9am: 6 employees
+    - 9am-9pm: 8 employees
+    - 9pm-1am: 7 employees
+    - 1am-5am: 6 employees
+  - Supervisor coverage checks (1 required at all times)
   - Overtime distribution
-- [ ] Add supervisor coverage validation with:
-  - Per-shift requirements
-  - Cross-midnight handling
-  - Backup supervisor designation
 
 ### Time-off Management
 - [x] Create time_off_requests table
@@ -91,6 +101,10 @@
   - Date range validation
   - Request type constraints
   - Status transitions
+- [x] Fix relationship handling with:
+  - Explicit foreign key specification
+  - Employee relationship optimization
+  - Query performance improvements
 - [ ] Add email notifications
 
 ## Phase 4: Advanced Features
@@ -153,12 +167,18 @@
   - Simplified relationships
   - Minimal foreign key dependencies
   - Cache-aware design
+- [x] Time-based staffing requirements:
+  - Minimum staff by time period
+  - Supervisor coverage rules
+  - Cross-midnight handling
+  - Effective date management
 
 ### Query Optimization ✓
 - [x] Simplified query patterns:
   - Direct table queries where possible
   - Minimal join complexity
   - Efficient relationship handling
+  - Explicit foreign key specification
 - [x] Cache management:
   - Fresh client instances for problematic queries
   - Schema cache considerations
@@ -167,6 +187,7 @@
   - Detailed error logging
   - User-friendly error messages
   - Recovery strategies
+  - Retry logic for failed requests
 
 ### Security
 - [x] Role-based access control with:
@@ -301,17 +322,23 @@
 1. **Technical Risks**
    - [x] Database performance under load
    - [x] Time zone handling for availability
+   - [x] Query relationship optimization
    - [ ] Schedule generation complexity
    - [ ] Integration challenges with existing systems
-   - [ ] Cross-midnight calculation accuracy
+   - [x] Cross-midnight calculation accuracy
+   - [x] Staffing requirements validation
+   - [x] Shift overlap handling
 
 2. **Mitigation Strategies**
    - [x] Regular performance testing and optimization
    - [x] Standardized time handling with UTC
+   - [x] Explicit relationship handling in queries
    - [x] Incremental feature rollout with validation
    - [x] Comprehensive error handling and logging
    - [ ] Regular backups and recovery testing
    - [x] Thorough documentation and training
+   - [x] Time-based validation checks
+   - [x] Shift coverage monitoring
 
 ## Notes
 - Checkmarks (✓) indicate completed items
