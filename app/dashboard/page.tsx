@@ -84,6 +84,14 @@ export default function Dashboard() {
             View Requests →
           </a>
         </div>
+
+        <div className="bg-yellow-50 p-6 rounded-lg">
+          <h2 className="text-lg font-medium text-yellow-900 mb-2">Your Availability</h2>
+          <p className="text-yellow-600">Set your weekly availability preferences</p>
+          <a href="/dashboard/availability" className="mt-4 inline-block text-sm text-yellow-600 hover:text-yellow-500">
+            Set Availability →
+          </a>
+        </div>
       </div>
     </div>
   )
