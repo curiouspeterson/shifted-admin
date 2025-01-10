@@ -43,53 +43,44 @@ export default function EmployeeForm({ employeeId, initialData, onSave, onCancel
     }))
   }
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
-
+  
     try {
       if (employeeId) {
         // Update existing employee
         const { error: updateError } = await supabase
           .from('employees')
-          .update(formData)
+          .update({
+            first_name: formData.first_name,
+            last_name: formData.last_name,
+            email: formData.email,
+            phone: formData.phone,
+            position: formData.position,
+            is_active: formData.is_active,
+            updated_at: new Date().toISOString()
+          })
           .eq('id', employeeId)
-
+  
         if (updateError) throw updateError
       } else {
-        // Create new auth user first
-        const tempPassword = Math.random().toString(36).slice(-12) + Math.random().toString(36).slice(-12)
-        
-        const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-          email: formData.email!,
-          password: tempPassword,
-          email_confirm: true
+        // Create new employee via API route - let the API handle everything
+        const response = await fetch('/api/employees', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(formData)
         })
-
-        if (authError) throw authError
-
-        // Create employee record with auth user id
-        const { error: employeeError } = await supabase
-          .from('employees')
-          .insert({
-            ...formData,
-            user_id: authData.user.id
-          } as Employee)
-
-        if (employeeError) {
-          // If employee creation fails, delete the auth user
-          await supabase.auth.admin.deleteUser(authData.user.id)
-          throw employeeError
-        }
-
-        // Send email with temporary password (implement this later)
-        // For now, log it to console in development
-        if (process.env.NODE_ENV === 'development') {
-          console.log('Temporary password for', formData.email, ':', tempPassword)
+  
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || 'Failed to create employee')
         }
       }
-
+  
       onSave()
     } catch (err) {
       console.error('Error:', err)

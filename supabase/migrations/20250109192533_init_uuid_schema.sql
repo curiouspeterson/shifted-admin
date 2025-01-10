@@ -1,25 +1,13 @@
--- Drop existing tables if they exist
+-- Drop existing tables if they exist in correct dependency order
 DROP TABLE IF EXISTS audit_logs;
 DROP TABLE IF EXISTS shift_swaps;
 DROP TABLE IF EXISTS overtime_history;
 DROP TABLE IF EXISTS schedule_assignments;
 DROP TABLE IF EXISTS schedules;
-DROP TABLE IF EXISTS shifts;
-DROP TABLE IF EXISTS employees;
+DROP TABLE IF EXISTS employees CASCADE;
+DROP TABLE IF EXISTS shifts CASCADE;
 
--- Create employees table
-CREATE TABLE employees (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
-    first_name TEXT NOT NULL,
-    last_name TEXT NOT NULL,
-    position TEXT NOT NULL,  -- ('dispatcher', 'shift_supervisor', 'management')
-    is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Create shifts table with fixed times
+-- Create shifts table first (since it's referenced by employees)
 CREATE TABLE shifts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name TEXT NOT NULL,
@@ -30,6 +18,34 @@ CREATE TABLE shifts (
     min_staff_count INT NOT NULL,
     requires_supervisor BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Create employees table
+CREATE TABLE employees (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    position TEXT NOT NULL,  -- ('dispatcher', 'shift_supervisor', 'management')
+    default_shift_id UUID REFERENCES shifts(id),
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
+);
+
+-- Create employee_availability table
+CREATE TABLE employee_availability (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
+    day_of_week INTEGER NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6), -- 0 = Sunday, 6 = Saturday
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    is_available BOOLEAN DEFAULT true,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
+    CONSTRAINT valid_time_range CHECK (start_time < end_time),
+    UNIQUE(employee_id, day_of_week)
 );
 
 -- Create schedules table
