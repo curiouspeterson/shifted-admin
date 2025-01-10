@@ -76,11 +76,21 @@
   - Backup supervisor designation
 
 ### Time-off Management
-- [ ] Create time_off_requests table
-- [ ] Implement request submission interface
-- [ ] Add request approval workflow
-- [ ] Create calendar view of requests
-- [ ] Implement conflict detection
+- [x] Create time_off_requests table
+- [x] Implement request submission interface
+- [x] Add request approval workflow
+- [x] Create request list view with:
+  - Status indicators
+  - Date range display
+  - Request type filtering
+- [x] Implement role-based access with:
+  - Employee request creation
+  - Manager approval controls
+  - Status management
+- [x] Add data validation with:
+  - Date range validation
+  - Request type constraints
+  - Status transitions
 - [ ] Add email notifications
 
 ## Phase 4: Advanced Features
