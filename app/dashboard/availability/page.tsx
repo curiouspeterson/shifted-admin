@@ -30,6 +30,11 @@ const TIME_SLOTS = Array.from({ length: 24 * 4 }, (_, i) => {
   return `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
 })
 
+// Helper function to strip seconds from time string
+const stripSeconds = (time: string) => {
+  return time.split(':').slice(0, 2).join(':')
+}
+
 export default function AvailabilityPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
@@ -82,7 +87,11 @@ export default function AvailabilityPage() {
       const { availability: savedAvailability } = await response.json()
 
       if (savedAvailability && savedAvailability.length > 0) {
-        setAvailability(savedAvailability)
+        setAvailability(savedAvailability.map((slot: AvailabilitySlot) => ({
+          ...slot,
+          start_time: stripSeconds(slot.start_time),
+          end_time: stripSeconds(slot.end_time)
+        })))
       } else {
         console.log('No saved availability found - using default schedule')
       }
@@ -114,6 +123,13 @@ export default function AvailabilityPage() {
         return
       }
 
+      // Add seconds back to time values before sending to API
+      const availabilityWithSeconds = availability.map(slot => ({
+        ...slot,
+        start_time: `${slot.start_time}:00`,
+        end_time: `${slot.end_time}:00`
+      }))
+
       const response = await fetch('/api/availability', {
         method: 'POST',
         credentials: 'include',
@@ -121,7 +137,7 @@ export default function AvailabilityPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({ availability })
+        body: JSON.stringify({ availability: availabilityWithSeconds })
       })
 
       if (!response.ok) {
