@@ -4,6 +4,7 @@ DROP TABLE IF EXISTS shift_swaps;
 DROP TABLE IF EXISTS overtime_history;
 DROP TABLE IF EXISTS schedule_assignments;
 DROP TABLE IF EXISTS schedules;
+DROP TABLE IF EXISTS employee_availability CASCADE;
 DROP TABLE IF EXISTS employees CASCADE;
 DROP TABLE IF EXISTS shifts CASCADE;
 
@@ -32,20 +33,6 @@ CREATE TABLE employees (
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Create employee_availability table
-CREATE TABLE employee_availability (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    employee_id UUID REFERENCES employees(id) ON DELETE CASCADE,
-    day_of_week INTEGER NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6), -- 0 = Sunday, 6 = Saturday
-    start_time TIME NOT NULL,
-    end_time TIME NOT NULL,
-    is_available BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT now(),
-    CONSTRAINT valid_time_range CHECK (start_time < end_time),
-    UNIQUE(employee_id, day_of_week)
 );
 
 -- Create schedules table

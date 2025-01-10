@@ -58,21 +58,41 @@ export default function AvailabilityPage() {
         return
       }
 
-      const response = await fetch('/api/availability')
+      const response = await fetch('/api/availability', {
+        credentials: 'include',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`
+        }
+      })
+
       if (!response.ok) {
-        throw new Error('Failed to fetch availability')
+        const errorData = await response.json()
+        if (response.status === 401) {
+          router.push('/sign-in')
+          return
+        }
+        if (response.status === 404) {
+          toast.error('No employee record found. Please contact your administrator.')
+          setLoading(false)
+          return
+        }
+        throw new Error(errorData.error || 'Failed to fetch availability')
       }
 
       const { availability: savedAvailability } = await response.json()
 
       if (savedAvailability && savedAvailability.length > 0) {
         setAvailability(savedAvailability)
+      } else {
+        console.log('No saved availability found - using default schedule')
       }
 
       setLoading(false)
     } catch (err) {
       console.error('Error:', err)
-      toast.error('Failed to load availability')
+      if (err instanceof Error && !err.message.includes('Failed to fetch availability')) {
+        toast.error(err.message)
+      }
       setLoading(false)
     }
   }
@@ -87,15 +107,28 @@ export default function AvailabilityPage() {
     try {
       setSaving(true)
 
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session) {
+        router.push('/sign-in')
+        return
+      }
+
       const response = await fetch('/api/availability', {
         method: 'POST',
+        credentials: 'include',
         headers: {
           'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify({ availability })
       })
 
       if (!response.ok) {
+        if (response.status === 401) {
+          router.push('/sign-in')
+          return
+        }
         throw new Error('Failed to save availability')
       }
 
@@ -165,6 +198,25 @@ export default function AvailabilityPage() {
                       </select>
                     </div>
                   </>
+                )}
+                {index === 0 && (
+                  <button
+                    onClick={() => {
+                      const sundaySettings = availability[0];
+                      setAvailability(prev => prev.map((slot, i) => 
+                        i === 0 ? slot : {
+                          ...slot,
+                          is_available: sundaySettings.is_available,
+                          start_time: sundaySettings.start_time,
+                          end_time: sundaySettings.end_time
+                        }
+                      ));
+                      toast.success('Applied Sunday\'s availability to all days');
+                    }}
+                    className="ml-4 inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  >
+                    Apply to All Days
+                  </button>
                 )}
               </div>
             ))}

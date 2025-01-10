@@ -13,44 +13,71 @@ const supabaseAdmin = createClient(
   }
 )
 
+// Helper function to verify session
+async function verifySession(request: Request) {
+  const authHeader = request.headers.get('Authorization')
+  if (!authHeader?.startsWith('Bearer ')) {
+    return null
+  }
+
+  const token = authHeader.split(' ')[1]
+  const supabaseClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        autoRefreshToken: false,
+        persistSession: false
+      }
+    }
+  )
+
+  const { data: { user }, error } = await supabaseClient.auth.getUser(token)
+  if (error || !user) {
+    return null
+  }
+
+  return user
+}
+
 // Get current user's availability
 export async function GET(request: Request) {
   try {
-    // Get user session from cookie
-    const cookieStore = cookies()
-    const supabaseClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    )
-
-    const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession()
-    
-    if (sessionError || !session) {
+    const user = await verifySession(request)
+    if (!user) {
+      console.log('No authenticated user found')
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
 
+    console.log('Looking up employee for user:', user.id)
+    
     // Get employee record for current user
     const { data: employee, error: employeeError } = await supabaseAdmin
       .from('employees')
       .select('id')
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .single()
 
-    if (employeeError || !employee) {
+    if (employeeError) {
+      console.error('Error fetching employee:', employeeError)
       return NextResponse.json(
-        { error: 'Employee not found' },
+        { error: 'Error fetching employee record' },
+        { status: 500 }
+      )
+    }
+
+    if (!employee) {
+      console.log('No employee found for user:', user.id)
+      return NextResponse.json(
+        { error: 'No employee record found for user' },
         { status: 404 }
       )
     }
+
+    console.log('Found employee:', employee.id)
 
     // Get availability for employee
     const { data: availability, error: availabilityError } = await supabaseAdmin
@@ -59,14 +86,22 @@ export async function GET(request: Request) {
       .eq('employee_id', employee.id)
       .order('day_of_week')
 
+    // If table doesn't exist or other error, return empty availability
+    if (availabilityError?.code === '42P01') {
+      console.log('Employee availability table does not exist yet - returning empty availability')
+      return NextResponse.json({ availability: [] })
+    }
+
     if (availabilityError) {
+      console.error('Error fetching availability:', availabilityError)
       return NextResponse.json(
         { error: 'Failed to fetch availability' },
         { status: 500 }
       )
     }
 
-    return NextResponse.json({ availability })
+    // Return empty array if no availability found
+    return NextResponse.json({ availability: availability || [] })
   } catch (error: any) {
     console.error('Error in GET /api/availability:', error)
     return NextResponse.json(
@@ -79,22 +114,8 @@ export async function GET(request: Request) {
 // Set or update availability
 export async function POST(request: Request) {
   try {
-    // Get user session from cookie
-    const cookieStore = cookies()
-    const supabaseClient = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    )
-
-    const { data: { session }, error: sessionError } = await supabaseClient.auth.getSession()
-    
-    if (sessionError || !session) {
+    const user = await verifySession(request)
+    if (!user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
@@ -105,7 +126,7 @@ export async function POST(request: Request) {
     const { data: employee, error: employeeError } = await supabaseAdmin
       .from('employees')
       .select('id')
-      .eq('user_id', session.user.id)
+      .eq('user_id', user.id)
       .single()
 
     if (employeeError || !employee) {
@@ -148,7 +169,9 @@ export async function POST(request: Request) {
       .delete()
       .eq('employee_id', employee.id)
 
-    if (deleteError) {
+    // Handle both "no rows deleted" and "table doesn't exist" as non-errors
+    if (deleteError && deleteError.code !== 'PGRST116' && deleteError.code !== '42P01') {
+      console.error('Error deleting existing availability:', deleteError)
       return NextResponse.json(
         { error: 'Failed to update availability' },
         { status: 500 }
@@ -171,6 +194,7 @@ export async function POST(request: Request) {
       .insert(availabilityData)
 
     if (insertError) {
+      console.error('Error inserting availability:', insertError)
       return NextResponse.json(
         { error: 'Failed to update availability' },
         { status: 500 }
