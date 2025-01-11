@@ -43,6 +43,22 @@ type Assignment = {
   is_supervisor_shift: boolean;
 };
 
+type TimeRequirement = {
+  startTime: string;
+  endTime: string;
+  totalRequired: number;
+  supervisorsRequired: number;
+  dispatchersRequired: number;
+};
+
+type RequirementStatus = {
+  requirement: TimeRequirement;
+  totalAssigned: number;
+  supervisorsAssigned: number;
+  dispatchersAssigned: number;
+  isMet: boolean;
+};
+
 interface GroupedAssignments {
   [date: string]: {
     [shiftId: string]: Assignment[];
@@ -53,12 +69,28 @@ interface ScheduleDetailsClientProps {
   schedule: Schedule | null;
   assignments: GroupedAssignments;
   error: string | null;
+  timeRequirements: TimeRequirement[];
+  requirementStatuses: RequirementStatus[];
+  approveSchedule: (scheduleId: string) => Promise<{ success: boolean; error?: string }>;
+  deleteSchedule: (scheduleId: string) => Promise<void>;
 }
 
-export default function ScheduleDetailsClient({ schedule, assignments, error }: ScheduleDetailsClientProps) {
+export default function ScheduleDetailsClient({ 
+  schedule, 
+  assignments, 
+  error: initialError,
+  timeRequirements,
+  requirementStatuses,
+  approveSchedule,
+  deleteSchedule
+}: ScheduleDetailsClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [scheduleId, setScheduleId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError);
+  const [isApproving, setIsApproving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Extract schedule ID from pathname
   useEffect(() => {
@@ -69,7 +101,42 @@ export default function ScheduleDetailsClient({ schedule, assignments, error }: 
 
   const handleEdit = () => {
     if (scheduleId) {
-        router.push(`/dashboard/schedules/edit/${scheduleId}`);
+      router.push(`/dashboard/schedules/edit/${scheduleId}`);
+    }
+  };
+
+  const handleApprove = async () => {
+    if (!scheduleId) return;
+    
+    try {
+      setIsApproving(true);
+      setError(null);
+      const result = await approveSchedule(scheduleId);
+      
+      if (!result.success) {
+        setError(result.error || 'Failed to approve schedule');
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve schedule');
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!scheduleId) return;
+    
+    try {
+      setIsDeleting(true);
+      setError(null);
+      await deleteSchedule(scheduleId);
+      // The server will handle the redirect, so we don't need to do anything here
+    } catch (err) {
+      // Only set error if it's not a redirect error
+      if (err instanceof Error && !err.message.includes('NEXT_REDIRECT')) {
+        setError(err.message || 'Failed to delete schedule');
+        setIsDeleting(false);
+      }
     }
   };
 
@@ -96,15 +163,57 @@ export default function ScheduleDetailsClient({ schedule, assignments, error }: 
               {new Date(schedule.start_date).toLocaleDateString()} - {new Date(schedule.end_date).toLocaleDateString()}
             </p>
           </div>
-          <div className="mt-4 sm:mt-0">
+          <div className="mt-4 sm:mt-0 space-x-3">
+            {schedule.status !== 'published' && (
+              <button
+                onClick={handleApprove}
+                disabled={isApproving}
+                className="inline-flex items-center rounded-md border border-transparent bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50"
+              >
+                {isApproving ? 'Approving...' : 'Approve Schedule'}
+              </button>
+            )}
             <button
               onClick={handleEdit}
               className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
             >
               Edit Schedule
             </button>
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="inline-flex items-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
+            >
+              Delete Schedule
+            </button>
           </div>
         </div>
+
+        {/* Delete Confirmation Dialog */}
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg p-6 max-w-sm w-full">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Delete Schedule</h3>
+              <p className="text-sm text-gray-500 mb-4">
+                Are you sure you want to delete this schedule? This action cannot be undone.
+              </p>
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleDelete}
+                  disabled={isDeleting}
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
+                >
+                  {isDeleting ? 'Deleting...' : 'Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Schedule Status */}
         <div className="mb-8 rounded-lg bg-white shadow">
@@ -135,6 +244,52 @@ export default function ScheduleDetailsClient({ schedule, assignments, error }: 
                   day: 'numeric' 
                 })}
               </h3>
+              
+              {/* Staffing Requirements Grid */}
+              <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {timeRequirements.map((req, index) => {
+                  const status = requirementStatuses.find(
+                    s => s.requirement.startTime === req.startTime && 
+                        s.requirement.endTime === req.endTime
+                  );
+                  
+                  return (
+                    <div key={index} className="bg-white rounded-lg shadow-sm p-3">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="text-sm font-medium text-gray-900">
+                          {req.startTime} - {req.endTime}
+                        </span>
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                          status?.isMet
+                            ? 'bg-green-100 text-green-800'
+                            : 'bg-red-100 text-red-800'
+                        }`}>
+                          {status?.isMet ? 'Met' : 'Not Met'}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-gray-500">Required</span>
+                          <ul className="mt-1">
+                            <li>Total: {req.totalRequired}</li>
+                            <li>Sup: {req.supervisorsRequired}</li>
+                            <li>Disp: {req.dispatchersRequired}</li>
+                          </ul>
+                        </div>
+                        <div>
+                          <span className="text-gray-500">Assigned</span>
+                          <ul className="mt-1">
+                            <li>Total: {status?.totalAssigned || 0}</li>
+                            <li>Sup: {status?.supervisorsAssigned || 0}</li>
+                            <li>Disp: {status?.dispatchersAssigned || 0}</li>
+                          </ul>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
               <div className="overflow-hidden bg-white shadow sm:rounded-md">
                 <ul role="list" className="divide-y divide-gray-200">
                   {Object.entries(shifts).map(([shiftId, shiftAssignments]) => {

@@ -1,7 +1,7 @@
 // Updated: 2025-01-11: This file fetches a specific schedule's details from the database in a server component.
 // It then passes the data to the EditScheduleClient component for editing.
 
-import { supabase } from '@/lib/supabase/admin'
+import { supabaseAdmin } from '@/lib/supabase/admin'
 import EditScheduleClient from './EditScheduleClient'
 import { notFound } from 'next/navigation'
 
@@ -14,7 +14,7 @@ export default async function EditSchedulePage({ params }: { params: { id: strin
   let error = null;
 
   try {
-    const { data: schedule, error: fetchError } = await supabase
+    const { data: schedule, error: fetchError } = await supabaseAdmin
       .from('schedules')
       .select('*')
       .eq('id', scheduleId)
