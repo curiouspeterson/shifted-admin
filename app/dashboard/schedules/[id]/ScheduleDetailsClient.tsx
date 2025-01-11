@@ -3,61 +3,60 @@
 import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { 
+  Schedule,
+  Employee,
+  Shift,
+  Assignment,
+  ScheduleStatus,
+  TimeBasedRequirement
+} from '@/app/types/scheduling'
 
-// Add type definitions for your data
-type Schedule = {
-  id: string;
-  name: string;
-  start_date: string;
-  end_date: string;
-  status: string;
-  version: number;
-  is_active: boolean;
-  created_by: string | null;
-  created_at: string;
-  updated_at: string;
+// Helper function to check if a time is between two times, handling overnight periods
+const isTimeBetween = (time: string, start: string, end: string): boolean => {
+  if (end < start) { // Overnight period
+    return time >= start || time < end;
+  }
+  return time >= start && time < end;
 };
 
-type Employee = {
-  id: string;
-  first_name: string;
-  last_name: string;
-  position: string;
-  email: string;
+// Helper function to check if a shift overlaps with a requirement period
+const doesShiftOverlap = (shift: Shift, requirement: TimeBasedRequirement): boolean => {
+  const shiftStart = shift.start_time;
+  const shiftEnd = shift.end_time;
+  const reqStart = requirement.start_time;
+  const reqEnd = requirement.end_time;
+
+  // If either the shift or requirement period crosses midnight
+  if (shiftEnd < shiftStart || reqEnd < reqStart) {
+    // For overnight shifts/requirements, check if any part overlaps
+    if (shiftEnd < shiftStart && reqEnd < reqStart) {
+      // Both shift and requirement are overnight
+      return !(shiftEnd <= reqStart && shiftStart >= reqEnd);
+    } else if (shiftEnd < shiftStart) {
+      // Only shift is overnight
+      return isTimeBetween(reqStart, shiftStart, shiftEnd) || 
+             isTimeBetween(reqEnd, shiftStart, shiftEnd) ||
+             (shiftStart <= reqStart && shiftEnd >= reqEnd);
+    } else {
+      // Only requirement is overnight
+      return isTimeBetween(shiftStart, reqStart, reqEnd) ||
+             isTimeBetween(shiftEnd, reqStart, reqEnd) ||
+             (reqStart <= shiftStart && reqEnd >= shiftEnd);
+    }
+  }
+
+  // Neither crosses midnight, simple overlap check
+  return !(shiftEnd <= reqStart || shiftStart >= reqEnd);
 };
 
-type Shift = {
-  id: string;
-  name: string;
-  start_time: string;
-  end_time: string;
-  duration_hours: number;
-  crosses_midnight: boolean;
-};
-
-type Assignment = {
-  id: string;
-  date: string;
-  employee: Employee;
-  shift: Shift;
-  is_supervisor_shift: boolean;
-};
-
-type TimeRequirement = {
-  startTime: string;
-  endTime: string;
-  totalRequired: number;
-  supervisorsRequired: number;
-  dispatchersRequired: number;
-};
-
-type RequirementStatus = {
-  requirement: TimeRequirement;
+interface RequirementStatus {
+  requirement: TimeBasedRequirement;
   totalAssigned: number;
   supervisorsAssigned: number;
   dispatchersAssigned: number;
   isMet: boolean;
-};
+}
 
 interface GroupedAssignments {
   [date: string]: {
@@ -66,56 +65,46 @@ interface GroupedAssignments {
 }
 
 interface ScheduleDetailsClientProps {
-  schedule: Schedule | null;
-  assignments: GroupedAssignments;
-  error: string | null;
-  timeRequirements: TimeRequirement[];
+  schedule: Schedule;
+  assignments: Assignment[];
+  error?: string | null;
+  timeRequirements: TimeBasedRequirement[];
   requirementStatuses: RequirementStatus[];
-  approveSchedule: (scheduleId: string) => Promise<{ success: boolean; error?: string }>;
+  approveSchedule: (scheduleId: string) => Promise<void>;
   deleteSchedule: (scheduleId: string) => Promise<void>;
 }
 
 export default function ScheduleDetailsClient({ 
   schedule, 
-  assignments, 
+  assignments,
   error: initialError,
   timeRequirements,
   requirementStatuses,
   approveSchedule,
   deleteSchedule
 }: ScheduleDetailsClientProps) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const [scheduleId, setScheduleId] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(initialError);
+  const [error, setError] = useState<string | null>(initialError || null);
   const [isApproving, setIsApproving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const router = useRouter();
 
-  // Extract schedule ID from pathname
-  useEffect(() => {
-    const pathParts = pathname?.split('/');
-    const id = pathParts && pathParts[pathParts.length - 1];
-    setScheduleId(id || null);
-  }, [pathname]);
-
-  const handleEdit = () => {
-    if (scheduleId) {
-      router.push(`/dashboard/schedules/edit/${scheduleId}`);
+  // Group assignments by date and shift
+  const groupedAssignments = assignments.reduce<GroupedAssignments>((acc, assignment) => {
+    if (!acc[assignment.date]) {
+      acc[assignment.date] = {};
     }
-  };
+    if (!acc[assignment.date][assignment.shift.id]) {
+      acc[assignment.date][assignment.shift.id] = [];
+    }
+    acc[assignment.date][assignment.shift.id].push(assignment);
+    return acc;
+  }, {});
 
-  const handleApprove = async () => {
-    if (!scheduleId) return;
-    
+  const handleApprove = async (scheduleId: string) => {
     try {
       setIsApproving(true);
       setError(null);
-      const result = await approveSchedule(scheduleId);
-      
-      if (!result.success) {
-        setError(result.error || 'Failed to approve schedule');
-      }
+      await approveSchedule(scheduleId);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to approve schedule');
     } finally {
@@ -123,211 +112,187 @@ export default function ScheduleDetailsClient({
     }
   };
 
-  const handleDelete = async () => {
-    if (!scheduleId) return;
-    
+  const handleDelete = async (scheduleId: string) => {
     try {
       setIsDeleting(true);
       setError(null);
       await deleteSchedule(scheduleId);
-      // The server will handle the redirect, so we don't need to do anything here
     } catch (err) {
-      // Only set error if it's not a redirect error
-      if (err instanceof Error && !err.message.includes('NEXT_REDIRECT')) {
-        setError(err.message || 'Failed to delete schedule');
-        setIsDeleting(false);
-      }
+      setError(err instanceof Error ? err.message : 'Failed to delete schedule');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
-  if (error || !schedule) {
-    return (
-      <div className="min-h-screen bg-gray-100 py-8">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="rounded-md bg-red-50 p-4">
-            <div className="text-sm text-red-700">{error || 'Schedule not found'}</div>
-          </div>
-        </div>
-      </div>
-    )
-  }
+  const getRequirementStatus = (
+    shift: Shift,
+    assignments: Assignment[],
+    requirements: TimeBasedRequirement[]
+  ): RequirementStatus | null => {
+    // Find all requirements that overlap with this shift
+    const overlappingReqs = requirements.filter(req => doesShiftOverlap(shift, req));
+    
+    if (overlappingReqs.length === 0) return null;
+
+    // Use the most stringent requirement if multiple overlap
+    const requirement = overlappingReqs.reduce((prev, curr) => {
+      return (curr.min_total_staff > prev.min_total_staff) ? curr : prev;
+    }, overlappingReqs[0]);
+
+    const supervisors = assignments.filter(a => a.is_supervisor_shift).length;
+    const dispatchers = assignments.filter(a => !a.is_supervisor_shift).length;
+    const total = assignments.length;
+
+    return {
+      requirement,
+      totalAssigned: total,
+      supervisorsAssigned: supervisors,
+      dispatchersAssigned: dispatchers,
+      isMet: total >= requirement.min_total_staff &&
+             supervisors >= requirement.min_supervisors &&
+             dispatchers >= (requirement.min_total_staff - requirement.min_supervisors)
+    };
+  };
 
   return (
-    <div className="min-h-screen bg-gray-100 py-8">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        {/* Header */}
-        <div className="mb-8 sm:flex sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">{schedule.name}</h1>
-            <p className="mt-2 text-sm text-gray-500">
-              {new Date(schedule.start_date).toLocaleDateString()} - {new Date(schedule.end_date).toLocaleDateString()}
-            </p>
-          </div>
-          <div className="mt-4 sm:mt-0 space-x-3">
-            {schedule.status !== 'published' && (
-              <button
-                onClick={handleApprove}
-                disabled={isApproving}
-                className="inline-flex items-center rounded-md border border-transparent bg-green-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50"
-              >
-                {isApproving ? 'Approving...' : 'Approve Schedule'}
-              </button>
-            )}
-            <button
-              onClick={handleEdit}
-              className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
-            >
-              Edit Schedule
-            </button>
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="inline-flex items-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-            >
-              Delete Schedule
-            </button>
-          </div>
+    <div className="px-4 sm:px-6 lg:px-8">
+      <div className="sm:flex sm:items-center">
+        <div className="sm:flex-auto">
+          <h1 className="text-base font-semibold leading-6 text-gray-900">
+            Schedule Details
+          </h1>
+          <p className="mt-2 text-sm text-gray-700">
+            View and manage schedule details and assignments
+          </p>
         </div>
-
-        {/* Delete Confirmation Dialog */}
-        {showDeleteConfirm && (
-          <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4">
-            <div className="bg-white rounded-lg p-6 max-w-sm w-full">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Delete Schedule</h3>
-              <p className="text-sm text-gray-500 mb-4">
-                Are you sure you want to delete this schedule? This action cannot be undone.
-              </p>
-              <div className="flex justify-end space-x-3">
-                <button
-                  onClick={() => setShowDeleteConfirm(false)}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleDelete}
-                  disabled={isDeleting}
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 disabled:opacity-50"
-                >
-                  {isDeleting ? 'Deleting...' : 'Delete'}
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Schedule Status */}
-        <div className="mb-8 rounded-lg bg-white shadow">
-          <div className="px-4 py-5 sm:p-6">
-            <h2 className="text-lg font-medium text-gray-900">Status</h2>
-            <div className="mt-2">
-              <span className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${
-                schedule.status === 'published' 
-                  ? 'bg-green-100 text-green-800' 
-                  : 'bg-yellow-100 text-yellow-800'
-              }`}>
-                {schedule.status.charAt(0).toUpperCase() + schedule.status.slice(1)}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Assignments */}
-        <div className="mt-8">
-          <h2 className="text-lg font-medium text-gray-900 mb-4">Assignments</h2>
-          {Object.entries(assignments).sort().map(([date, shifts]) => (
-            <div key={date} className="mb-8">
-              <h3 className="text-md font-medium text-gray-900 mb-4">
-                {new Date(date).toLocaleDateString(undefined, { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
-                })}
-              </h3>
-              
-              {/* Staffing Requirements Grid */}
-              <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                {timeRequirements.map((req, index) => {
-                  const status = requirementStatuses.find(
-                    s => s.requirement.startTime === req.startTime && 
-                        s.requirement.endTime === req.endTime
-                  );
-                  
-                  return (
-                    <div key={index} className="bg-white rounded-lg shadow-sm p-3">
-                      <div className="flex justify-between items-center mb-2">
-                        <span className="text-sm font-medium text-gray-900">
-                          {req.startTime} - {req.endTime}
-                        </span>
-                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-                          status?.isMet
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-red-100 text-red-800'
-                        }`}>
-                          {status?.isMet ? 'Met' : 'Not Met'}
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div>
-                          <span className="text-gray-500">Required</span>
-                          <ul className="mt-1">
-                            <li>Total: {req.totalRequired}</li>
-                            <li>Sup: {req.supervisorsRequired}</li>
-                            <li>Disp: {req.dispatchersRequired}</li>
-                          </ul>
-                        </div>
-                        <div>
-                          <span className="text-gray-500">Assigned</span>
-                          <ul className="mt-1">
-                            <li>Total: {status?.totalAssigned || 0}</li>
-                            <li>Sup: {status?.supervisorsAssigned || 0}</li>
-                            <li>Disp: {status?.dispatchersAssigned || 0}</li>
-                          </ul>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              <div className="overflow-hidden bg-white shadow sm:rounded-md">
-                <ul role="list" className="divide-y divide-gray-200">
-                  {Object.entries(shifts).map(([shiftId, shiftAssignments]) => {
-                    const shift = shiftAssignments[0]?.shift
-                    return (
-                      <li key={shiftId}>
-                        <div className="px-4 py-4 sm:px-6">
-                          <div className="mb-2">
-                            <h4 className="text-sm font-medium text-gray-900">
-                              {shift?.name} ({shift?.start_time} - {shift?.end_time})
-                            </h4>
-                          </div>
-                          <ul className="space-y-2">
-                            {shiftAssignments.map((assignment: Assignment) => (
-                              <li key={assignment.id} className="flex items-center justify-between">
-                                <div className="flex items-center">
-                                  <span className="text-sm text-gray-900">
-                                    {assignment.employee.first_name} {assignment.employee.last_name}
-                                  </span>
-                                  {assignment.is_supervisor_shift && (
-                                    <span className="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
-                                      Supervisor
-                                    </span>
-                                  )}
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      </li>
-                    )
-                  })}
-                </ul>
-              </div>
-            </div>
-          ))}
+        <div className="mt-4 sm:ml-16 sm:mt-0 sm:flex-none">
+          <Link
+            href={`/dashboard/schedules/edit/${schedule.id}`}
+            className="block rounded-md bg-indigo-600 px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+          >
+            Edit Schedule
+          </Link>
         </div>
       </div>
+
+      {error && (
+        <div className="mt-4 rounded-md bg-red-50 p-4">
+          <div className="flex">
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Error</h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>{error}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="mt-8">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {timeRequirements.map((req, index) => {
+            const status = requirementStatuses.find(
+              s => s.requirement.start_time === req.start_time && 
+                  s.requirement.end_time === req.end_time
+            );
+            
+            return (
+              <div key={index} className="bg-white rounded-lg shadow-sm p-3">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm font-medium text-gray-900">
+                    {req.start_time} - {req.end_time}
+                  </span>
+                  <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
+                    status?.isMet
+                      ? 'bg-green-100 text-green-800'
+                      : 'bg-red-100 text-red-800'
+                  }`}>
+                    {status?.isMet ? 'Met' : 'Not Met'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div>
+                    <span className="text-gray-500">Required</span>
+                    <ul className="mt-1">
+                      <li>Total: {req.min_total_staff}</li>
+                      <li>Sup: {req.min_supervisors}</li>
+                      <li>Disp: {req.min_total_staff - req.min_supervisors}</li>
+                    </ul>
+                  </div>
+                  <div>
+                    <span className="text-gray-500">Assigned</span>
+                    <ul className="mt-1">
+                      <li>Total: {status?.totalAssigned || 0}</li>
+                      <li>Sup: {status?.supervisorsAssigned || 0}</li>
+                      <li>Disp: {status?.dispatchersAssigned || 0}</li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="overflow-hidden bg-white shadow sm:rounded-md mt-6">
+          <ul role="list" className="divide-y divide-gray-200">
+            {Object.entries(groupedAssignments).map(([date, shifts]) => (
+              <li key={date}>
+                <div className="px-4 py-4 sm:px-6">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-lg font-medium leading-6 text-gray-900">
+                      {new Date(date).toLocaleDateString()}
+                    </h3>
+                  </div>
+                  <div className="mt-4 space-y-6">
+                    {Object.entries(shifts).map(([shiftId, shiftAssignments]) => (
+                      <div key={shiftId} className="bg-gray-50 p-4 rounded-lg">
+                        <h4 className="text-sm font-medium text-gray-900">
+                          {shiftAssignments[0]?.shift.name || 'Unknown Shift'}
+                        </h4>
+                        <div className="mt-2">
+                          {shiftAssignments.map((assignment) => (
+                            <div key={assignment.id} className="flex items-center space-x-3 text-sm">
+                              <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                assignment.is_supervisor_shift
+                                  ? 'bg-purple-100 text-purple-800'
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}>
+                                {assignment.is_supervisor_shift ? 'Supervisor' : 'Dispatcher'}
+                              </span>
+                              <span className="text-gray-900">
+                                {assignment.employee.first_name} {assignment.employee.last_name}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+
+      <div className="mt-6 flex justify-end space-x-4">
+        <button
+          onClick={() => handleDelete(schedule.id)}
+          disabled={isDeleting}
+          className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-red-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600"
+        >
+          {isDeleting ? 'Deleting...' : 'Delete Schedule'}
+        </button>
+        {schedule.status !== 'published' && (
+          <button
+            onClick={() => handleApprove(schedule.id)}
+            disabled={isApproving}
+            className="rounded-md bg-green-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600"
+          >
+            {isApproving ? 'Publishing...' : 'Publish Schedule'}
+          </button>
+        )}
+      </div>
     </div>
-  )
+  );
 } 

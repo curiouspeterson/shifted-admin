@@ -2,13 +2,13 @@
 DELETE FROM auth.users WHERE email LIKE '%@test.com';
 DELETE FROM employees WHERE email LIKE '%@test.com';
 
--- Create auth users and employees for supervisors
+-- Create test users
 DO $$
 DECLARE
-  auth_user_id UUID;
-  supervisor_count INT := 6;  -- Set the exact number of supervisors
+  auth_user_id uuid;
 BEGIN
-  FOR i IN 1..supervisor_count LOOP
+  -- Create supervisor users
+  FOR i IN 1..6 LOOP
     -- Create auth user
     INSERT INTO auth.users (
       instance_id,
@@ -16,10 +16,12 @@ BEGIN
       aud,
       role,
       email,
-      raw_app_meta_data,
-      raw_user_meta_data,
       encrypted_password,
       email_confirmed_at,
+      recovery_sent_at,
+      last_sign_in_at,
+      raw_app_meta_data,
+      raw_user_meta_data,
       created_at,
       updated_at,
       confirmation_token,
@@ -32,16 +34,14 @@ BEGIN
       'authenticated',
       'authenticated',
       'supervisor' || i || '@test.com',
-      '{"provider":"email","providers":["email"]}',
-      jsonb_build_object(
-        'first_name', 'Supervisor' || i,
-        'last_name', 'Smith' || i,
-        'email', 'supervisor' || i || '@test.com'
-      ),
-      crypt('password123', gen_salt('bf')),
-      NOW(),
-      NOW(),
-      NOW(),
+      '$2a$10$2nqIAYBQkheXFj.Tz/gyp.xyVqwZ4LUXYbBwqJk9vp6OTJV8UPxYi', -- 'password123'
+      now(),
+      null,
+      null,
+      '{"provider": "email", "providers": ["email"]}',
+      '{}',
+      now(),
+      now(),
       '',
       '',
       '',
@@ -67,15 +67,9 @@ BEGIN
       true
     );
   END LOOP;
-END $$;
 
--- Create auth users and employees for dispatchers
-DO $$
-DECLARE
-  auth_user_id UUID;
-  dispatcher_count INT := 42;  -- Set the exact number of dispatchers
-BEGIN
-  FOR i IN 1..dispatcher_count LOOP
+  -- Create management users
+  FOR i IN 1..2 LOOP
     -- Create auth user
     INSERT INTO auth.users (
       instance_id,
@@ -83,10 +77,73 @@ BEGIN
       aud,
       role,
       email,
-      raw_app_meta_data,
-      raw_user_meta_data,
       encrypted_password,
       email_confirmed_at,
+      recovery_sent_at,
+      last_sign_in_at,
+      raw_app_meta_data,
+      raw_user_meta_data,
+      created_at,
+      updated_at,
+      confirmation_token,
+      email_change,
+      email_change_token_new,
+      recovery_token
+    ) VALUES (
+      '00000000-0000-0000-0000-000000000000',
+      gen_random_uuid(),
+      'authenticated',
+      'authenticated',
+      'manager' || i || '@test.com',
+      '$2a$10$2nqIAYBQkheXFj.Tz/gyp.xyVqwZ4LUXYbBwqJk9vp6OTJV8UPxYi', -- 'password123'
+      now(),
+      null,
+      null,
+      '{"provider": "email", "providers": ["email"]}',
+      '{}',
+      now(),
+      now(),
+      '',
+      '',
+      '',
+      ''
+    ) RETURNING id INTO auth_user_id;
+
+    -- Create employee record
+    INSERT INTO employees (
+      id,
+      user_id,
+      first_name,
+      last_name,
+      email,
+      position,
+      is_active
+    ) VALUES (
+      gen_random_uuid(),
+      auth_user_id,  -- Link to auth user
+      'Manager' || i,
+      'Johnson' || i,
+      'manager' || i || '@test.com',
+      'management',
+      true
+    );
+  END LOOP;
+
+  -- Create dispatcher users
+  FOR i IN 1..42 LOOP
+    -- Create auth user
+    INSERT INTO auth.users (
+      instance_id,
+      id,
+      aud,
+      role,
+      email,
+      encrypted_password,
+      email_confirmed_at,
+      recovery_sent_at,
+      last_sign_in_at,
+      raw_app_meta_data,
+      raw_user_meta_data,
       created_at,
       updated_at,
       confirmation_token,
@@ -99,16 +156,14 @@ BEGIN
       'authenticated',
       'authenticated',
       'dispatcher' || i || '@test.com',
-      '{"provider":"email","providers":["email"]}',
-      jsonb_build_object(
-        'first_name', 'Dispatcher' || i,
-        'last_name', 'Doe' || i,
-        'email', 'dispatcher' || i || '@test.com'
-      ),
-      crypt('password123', gen_salt('bf')),
-      NOW(),
-      NOW(),
-      NOW(),
+      '$2a$10$2nqIAYBQkheXFj.Tz/gyp.xyVqwZ4LUXYbBwqJk9vp6OTJV8UPxYi', -- 'password123'
+      now(),
+      null,
+      null,
+      '{"provider": "email", "providers": ["email"]}',
+      '{}',
+      now(),
+      now(),
       '',
       '',
       '',
