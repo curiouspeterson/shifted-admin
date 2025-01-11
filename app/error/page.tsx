@@ -1,29 +1,23 @@
+import Link from 'next/link';
+
 export default function ErrorPage() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div>
-          <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            Something went wrong
-          </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            We're having trouble loading the application. Please try:
-          </p>
-          <ul className="mt-4 text-sm text-gray-600 list-disc list-inside">
-            <li>Refreshing the page</li>
-            <li>Clearing your browser cookies</li>
-            <li>Checking your internet connection</li>
-          </ul>
-          <div className="mt-6 text-center">
-            <a
-              href="/"
-              className="font-medium text-indigo-600 hover:text-indigo-500"
-            >
-              Return to home page
-            </a>
-          </div>
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-100">
+      <div className="max-w-xl p-8 text-center">
+        <h1 className="mb-4 text-4xl font-bold">Oops!</h1>
+        <p className="mb-8 text-lg text-gray-600">
+          Something went wrong. We&apos;re sorry for the inconvenience.
+        </p>
+        <p className="mb-8 text-gray-600">
+          Please try again or contact support if the problem persists.
+        </p>
+        <Link
+          href="/"
+          className="inline-block bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors"
+        >
+          Return Home
+        </Link>
       </div>
     </div>
-  )
+  );
 } 

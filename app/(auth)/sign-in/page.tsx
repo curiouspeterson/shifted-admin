@@ -1,24 +1,27 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
-import { supabase } from '@/lib/supabaseClient'
+import { supabase } from '@/lib/supabase/client'
+import LoadingSpinner from '@/app/components/LoadingSpinner'
 
-export default function SignIn() {
+function SignInContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [error, setError] = useState<string | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    // Check for success message from sign-up
-    const msg = searchParams.get('message')
-    if (msg) setMessage(msg)
-  }, [searchParams])
+    const checkSession = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        router.push('/dashboard')
+      }
+    }
+    checkSession()
+  }, [router])
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -34,9 +37,8 @@ export default function SignIn() {
       if (error) throw error
 
       router.push('/dashboard')
-      router.refresh()
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'An error occurred')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred during sign in')
     } finally {
       setLoading(false)
     }
@@ -49,26 +51,18 @@ export default function SignIn() {
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             Sign in to your account
           </h2>
-          <p className="mt-2 text-center text-sm text-gray-600">
-            Or{' '}
-            <Link href="/sign-up" className="font-medium text-indigo-600 hover:text-indigo-500">
-              create a new account
-            </Link>
-          </p>
+          {error && (
+            <div className="mt-2 text-center text-sm text-red-600">
+              {error}
+            </div>
+          )}
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSignIn}>
-          {error && (
-            <div className="rounded-md bg-red-50 p-4">
-              <div className="text-sm text-red-700">{error}</div>
-            </div>
-          )}
-          {message && (
-            <div className="rounded-md bg-green-50 p-4">
-              <div className="text-sm text-green-700">{message}</div>
-            </div>
-          )}
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
+              <label htmlFor="email-address" className="sr-only">
+                Email address
+              </label>
               <input
                 id="email-address"
                 name="email"
@@ -82,6 +76,9 @@ export default function SignIn() {
               />
             </div>
             <div>
+              <label htmlFor="password" className="sr-only">
+                Password
+              </label>
               <input
                 id="password"
                 name="password"
@@ -102,11 +99,23 @@ export default function SignIn() {
               disabled={loading}
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
-              {loading ? 'Signing in...' : 'Sign in'}
+              {loading ? (
+                <LoadingSpinner />
+              ) : (
+                'Sign in'
+              )}
             </button>
           </div>
         </form>
       </div>
     </div>
+  )
+}
+
+export default function SignInPage() {
+  return (
+    <Suspense fallback={<LoadingSpinner />}>
+      <SignInContent />
+    </Suspense>
   )
 } 
