@@ -1,252 +1,204 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { use } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { Database } from '@/lib/database.types'
+import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 
-type Schedule = Database['public']['Tables']['schedules']['Row']
+type Schedule = Database['public']['Tables']['schedules']['Row'] & {
+  name: string
+}
 type ScheduleAssignment = Database['public']['Tables']['schedule_assignments']['Row']
 type Employee = Database['public']['Tables']['employees']['Row']
 type Shift = Database['public']['Tables']['shifts']['Row']
 
-interface ScheduleWithAssignments extends Schedule {
-  assignments: (ScheduleAssignment & {
-    employee: Employee
-    shift: Shift
-  })[]
+interface Assignment extends ScheduleAssignment {
+  employee: Employee
+  shift: Shift
 }
 
-export default function ScheduleDetail({ params }: { params: { id: string } }) {
+interface GroupedAssignments {
+  [date: string]: {
+    [shiftId: string]: Assignment[]
+  }
+}
+
+export default function ScheduleDetailsPage({ params }: { params: { id: string } }) {
+  const scheduleId = use(Promise.resolve(params.id))
   const router = useRouter()
-  const [schedule, setSchedule] = useState<ScheduleWithAssignments | null>(null)
+  const [schedule, setSchedule] = useState<Schedule | null>(null)
+  const [assignments, setAssignments] = useState<GroupedAssignments>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [publishing, setPublishing] = useState(false)
 
   useEffect(() => {
-    fetchSchedule()
-  }, [params.id])
+    const fetchScheduleDetails = async () => {
+      try {
+        // Fetch schedule
+        const { data: scheduleData, error: scheduleError } = await supabase
+          .from('schedules')
+          .select('*')
+          .eq('id', scheduleId)
+          .single()
 
-  const fetchSchedule = async () => {
-    try {
-      console.log('Fetching schedule:', params.id)
-      
-      // Fetch schedule with assignments, employees, and shifts
-      const { data, error } = await supabase
-        .from('schedules')
-        .select(`
-          *,
-          assignments:schedule_assignments(
+        if (scheduleError) throw scheduleError
+        if (!scheduleData) throw new Error('Schedule not found')
+
+        setSchedule(scheduleData as Schedule)
+
+        // Fetch assignments with employee and shift details
+        const { data: assignmentsData, error: assignmentsError } = await supabase
+          .from('schedule_assignments')
+          .select(`
             *,
             employee:employees(*),
             shift:shifts(*)
-          )
-        `)
-        .eq('id', params.id)
-        .single()
+          `)
+          .eq('schedule_id', scheduleId)
 
-      console.log('Fetched schedule data:', data)
+        if (assignmentsError) throw assignmentsError
 
-      if (error) throw error
+        // Group assignments by date and shift
+        const grouped = (assignmentsData || []).reduce((acc: GroupedAssignments, assignment: any) => {
+          const date = assignment.date
+          const shiftId = assignment.shift_id
 
-      // Filter out assignments with null employee or shift
-      const validAssignments = data.assignments.filter(
-        (assignment): assignment is (typeof assignment & { employee: Employee, shift: Shift }) => 
-          assignment.employee !== null && assignment.shift !== null
-      )
+          if (!acc[date]) {
+            acc[date] = {}
+          }
+          if (!acc[date][shiftId]) {
+            acc[date][shiftId] = []
+          }
+          acc[date][shiftId].push(assignment)
+          return acc
+        }, {})
 
-      console.log('Valid assignments:', validAssignments)
-
-      setSchedule({
-        ...data,
-        assignments: validAssignments
-      } as ScheduleWithAssignments)
-    } catch (error) {
-      console.error('Error fetching schedule:', error)
-      setError(error instanceof Error ? error.message : 'Failed to fetch schedule')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handlePublish = async () => {
-    if (!schedule) return
-    setPublishing(true)
-    setError(null)
-
-    try {
-      console.log('Publishing schedule:', schedule.id)
-      
-      // Validate schedule before publishing
-      const { data: assignments } = await supabase
-        .from('schedule_assignments')
-        .select('*')
-        .eq('schedule_id', schedule.id)
-
-      console.log('Schedule assignments:', assignments)
-
-      if (!assignments?.length) {
-        throw new Error('Cannot publish schedule without assignments')
+        setAssignments(grouped)
+      } catch (err) {
+        console.error('Error fetching schedule details:', err)
+        setError(err instanceof Error ? err.message : 'Failed to load schedule details')
+      } finally {
+        setLoading(false)
       }
-
-      // Get current user's employee record
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not authenticated')
-
-      console.log('Current user:', user)
-
-      const { data: employee } = await supabase
-        .from('employees')
-        .select('id, position')
-        .eq('user_id', user.id)
-        .single()
-
-      console.log('Employee record:', employee)
-
-      if (!employee) throw new Error('Employee record not found')
-      if (employee.position !== 'management') throw new Error('Only managers can publish schedules')
-
-      // Update schedule status to published
-      const { error: updateError } = await supabase
-        .from('schedules')
-        .update({
-          status: 'published',
-          published_by: employee.id,
-          published_at: new Date().toISOString()
-        })
-        .eq('id', schedule.id)
-
-      if (updateError) throw updateError
-
-      console.log('Successfully published schedule')
-
-      // Refresh schedule data
-      await fetchSchedule()
-    } catch (error) {
-      console.error('Error publishing schedule:', error)
-      setError(error instanceof Error ? error.message : 'Failed to publish schedule')
-    } finally {
-      setPublishing(false)
     }
-  }
 
-  const getDatesInRange = (startDate: Date, endDate: Date) => {
-    const dates = []
-    const currentDate = new Date(startDate)
-    while (currentDate <= endDate) {
-      dates.push(new Date(currentDate))
-      currentDate.setDate(currentDate.getDate() + 1)
-    }
-    return dates
-  }
+    fetchScheduleDetails()
+  }, [scheduleId])
 
-  const getAssignmentsForDate = (date: Date) => {
-    if (!schedule) return []
-    const dateStr = date.toISOString().split('T')[0]
-    return schedule.assignments.filter(assignment => assignment.date === dateStr)
+  const handleEdit = () => {
+    router.push(`/dashboard/schedules/edit/${params.id}`)
   }
 
   if (loading) {
     return (
-      <div className="flex justify-center items-center h-64">
-        <div className="text-gray-500">Loading schedule...</div>
+      <div className="min-h-screen bg-gray-100 py-8">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="animate-pulse">Loading schedule details...</div>
+        </div>
       </div>
     )
   }
 
-  if (!schedule) {
+  if (error || !schedule) {
     return (
-      <div className="bg-white shadow rounded-lg p-6">
-        <div className="text-red-600">Schedule not found</div>
+      <div className="min-h-screen bg-gray-100 py-8">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <div className="rounded-md bg-red-50 p-4">
+            <div className="text-sm text-red-700">{error || 'Schedule not found'}</div>
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="bg-white shadow rounded-lg">
-      <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-semibold text-gray-900">
-            Schedule Details
-          </h1>
-          <p className="mt-1 text-sm text-gray-500">
-            {new Date(schedule.start_date).toLocaleDateString()} - {new Date(schedule.end_date).toLocaleDateString()}
-          </p>
-        </div>
-        <div className="flex space-x-4 items-center">
-          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-            schedule.status === 'published' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-          }`}>
-            {schedule.status}
-          </span>
-          {schedule.status === 'draft' && (
+    <div className="min-h-screen bg-gray-100 py-8">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* Header */}
+        <div className="mb-8 sm:flex sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">{schedule.name}</h1>
+            <p className="mt-2 text-sm text-gray-500">
+              {new Date(schedule.start_date).toLocaleDateString()} - {new Date(schedule.end_date).toLocaleDateString()}
+            </p>
+          </div>
+          <div className="mt-4 sm:mt-0">
             <button
-              onClick={handlePublish}
-              disabled={publishing}
-              className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+              onClick={handleEdit}
+              className="inline-flex items-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
             >
-              {publishing ? 'Publishing...' : 'Publish Schedule'}
+              Edit Schedule
             </button>
-          )}
+          </div>
         </div>
-      </div>
 
-      {error && (
-        <div className="mx-4 my-2 rounded-md bg-red-50 p-4">
-          <div className="text-sm text-red-700">{error}</div>
+        {/* Schedule Status */}
+        <div className="mb-8 rounded-lg bg-white shadow">
+          <div className="px-4 py-5 sm:p-6">
+            <h2 className="text-lg font-medium text-gray-900">Status</h2>
+            <div className="mt-2">
+              <span className={`inline-flex rounded-full px-3 py-1 text-sm font-medium ${
+                schedule.status === 'published' 
+                  ? 'bg-green-100 text-green-800' 
+                  : 'bg-yellow-100 text-yellow-800'
+              }`}>
+                {schedule.status.charAt(0).toUpperCase() + schedule.status.slice(1)}
+              </span>
+            </div>
+          </div>
         </div>
-      )}
 
-      <div className="border-t border-gray-200 px-4 py-5 sm:px-6">
-        <div className="grid grid-cols-7 gap-4">
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
-            <div key={day} className="text-sm font-medium text-gray-900">
-              {day}
+        {/* Assignments */}
+        <div className="mt-8">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">Assignments</h2>
+          {Object.entries(assignments).sort().map(([date, shifts]) => (
+            <div key={date} className="mb-8">
+              <h3 className="text-md font-medium text-gray-900 mb-4">
+                {new Date(date).toLocaleDateString(undefined, { 
+                  weekday: 'long', 
+                  year: 'numeric', 
+                  month: 'long', 
+                  day: 'numeric' 
+                })}
+              </h3>
+              <div className="overflow-hidden bg-white shadow sm:rounded-md">
+                <ul role="list" className="divide-y divide-gray-200">
+                  {Object.entries(shifts).map(([shiftId, shiftAssignments]) => {
+                    const shift = shiftAssignments[0]?.shift
+                    return (
+                      <li key={shiftId}>
+                        <div className="px-4 py-4 sm:px-6">
+                          <div className="mb-2">
+                            <h4 className="text-sm font-medium text-gray-900">
+                              {shift?.name} ({shift?.start_time} - {shift?.end_time})
+                            </h4>
+                          </div>
+                          <ul className="space-y-2">
+                            {shiftAssignments.map((assignment: Assignment) => (
+                              <li key={assignment.id} className="flex items-center justify-between">
+                                <div className="flex items-center">
+                                  <span className="text-sm text-gray-900">
+                                    {assignment.employee.first_name} {assignment.employee.last_name}
+                                  </span>
+                                  {assignment.is_supervisor_shift && (
+                                    <span className="ml-2 inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
+                                      Supervisor
+                                    </span>
+                                  )}
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+              </div>
             </div>
           ))}
-        </div>
-        <div className="mt-4">
-          {schedule && (
-            <div className="grid grid-cols-7 gap-4">
-              {getDatesInRange(new Date(schedule.start_date), new Date(schedule.end_date)).map((date) => {
-                const assignments = getAssignmentsForDate(date)
-                return (
-                  <div
-                    key={date.toISOString()}
-                    className="min-h-[120px] p-2 border border-gray-200 rounded-lg"
-                  >
-                    <div className="text-sm text-gray-500 mb-2">
-                      {date.getDate()}
-                    </div>
-                    <div className="space-y-2">
-                      {assignments.map((assignment) => (
-                        <div
-                          key={assignment.id}
-                          className="text-xs p-1 rounded bg-indigo-50 border border-indigo-100"
-                        >
-                          <div className="font-medium text-indigo-700">
-                            {assignment.shift.name}
-                          </div>
-                          <div className="text-indigo-600">
-                            {`${assignment.employee.first_name} ${assignment.employee.last_name}`}
-                          </div>
-                          <div className="text-indigo-500">
-                            {assignment.shift.start_time.slice(0, 5)} - {assignment.shift.end_time.slice(0, 5)}
-                            {assignment.is_supervisor_shift && (
-                              <span className="ml-1 px-1 py-0.5 text-[10px] bg-yellow-100 text-yellow-800 rounded">
-                                Supervisor
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
         </div>
       </div>
     </div>

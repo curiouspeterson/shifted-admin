@@ -282,64 +282,127 @@ export type Database = {
       }
       shift_swaps: {
         Row: {
-          approved_at: string | null
           id: string
-          manager_id: string | null
-          offering_employee_id: string | null
-          receiving_employee_id: string | null
-          requested_at: string | null
-          schedule_assignment_id: string | null
+          requester_id: string
+          accepter_id: string | null
+          requester_assignment_id: string
+          accepter_assignment_id: string | null
           status: string
+          created_at: string | null
+          updated_at: string | null
         }
         Insert: {
-          approved_at?: string | null
           id?: string
-          manager_id?: string | null
-          offering_employee_id?: string | null
-          receiving_employee_id?: string | null
-          requested_at?: string | null
-          schedule_assignment_id?: string | null
+          requester_id: string
+          accepter_id?: string | null
+          requester_assignment_id: string
+          accepter_assignment_id?: string | null
           status?: string
+          created_at?: string | null
+          updated_at?: string | null
         }
         Update: {
-          approved_at?: string | null
           id?: string
-          manager_id?: string | null
-          offering_employee_id?: string | null
-          receiving_employee_id?: string | null
-          requested_at?: string | null
-          schedule_assignment_id?: string | null
+          requester_id?: string
+          accepter_id?: string | null
+          requester_assignment_id?: string
+          accepter_assignment_id?: string | null
           status?: string
+          created_at?: string | null
+          updated_at?: string | null
         }
         Relationships: [
           {
-            foreignKeyName: "shift_swaps_manager_id_fkey"
-            columns: ["manager_id"]
+            foreignKeyName: "shift_swaps_accepter_id_fkey"
+            columns: ["accepter_id"]
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
           },
           {
-            foreignKeyName: "shift_swaps_offering_employee_id_fkey"
-            columns: ["offering_employee_id"]
+            foreignKeyName: "shift_swaps_requester_id_fkey"
+            columns: ["requester_id"]
             isOneToOne: false
             referencedRelation: "employees"
             referencedColumns: ["id"]
-          },
+          }
+        ]
+      }
+      time_based_requirements: {
+        Row: {
+          id: string
+          start_time: string
+          end_time: string
+          min_total_staff: number
+          min_supervisors: number
+          crosses_midnight: boolean
+          is_active: boolean
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          start_time: string
+          end_time: string
+          min_total_staff: number
+          min_supervisors: number
+          crosses_midnight?: boolean
+          is_active?: boolean
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          start_time?: string
+          end_time?: string
+          min_total_staff?: number
+          min_supervisors?: number
+          crosses_midnight?: boolean
+          is_active?: boolean
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      employee_scheduling_rules: {
+        Row: {
+          id: string
+          employee_id: string
+          max_weekly_hours: number
+          min_weekly_hours: number
+          preferred_shift_pattern: string
+          require_consecutive_days: boolean
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          employee_id: string
+          max_weekly_hours?: number
+          min_weekly_hours?: number
+          preferred_shift_pattern?: string
+          require_consecutive_days?: boolean
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          employee_id?: string
+          max_weekly_hours?: number
+          min_weekly_hours?: number
+          preferred_shift_pattern?: string
+          require_consecutive_days?: boolean
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
           {
-            foreignKeyName: "shift_swaps_receiving_employee_id_fkey"
-            columns: ["receiving_employee_id"]
-            isOneToOne: false
+            foreignKeyName: "employee_scheduling_rules_employee_id_fkey"
+            columns: ["employee_id"]
+            isOneToOne: true
             referencedRelation: "employees"
             referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "shift_swaps_schedule_assignment_id_fkey"
-            columns: ["schedule_assignment_id"]
-            isOneToOne: false
-            referencedRelation: "schedule_assignments"
-            referencedColumns: ["id"]
-          },
+          }
         ]
       }
       shifts: {

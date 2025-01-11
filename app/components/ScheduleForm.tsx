@@ -3,10 +3,14 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { Database } from '@/lib/database.types'
+import { PostgrestError } from '@supabase/supabase-js'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 
 type Shift = Database['public']['Tables']['shifts']['Row']
 type Employee = Database['public']['Tables']['employees']['Row']
 type EmployeeAvailability = Database['public']['Tables']['employee_availability']['Row']
+type TimeBasedRequirement = Database['public']['Tables']['time_based_requirements']['Row']
+type EmployeeSchedulingRule = Database['public']['Tables']['employee_scheduling_rules']['Row']
 
 interface ScheduleFormProps {
   scheduleId?: string
@@ -14,6 +18,7 @@ interface ScheduleFormProps {
     start_date: string
     end_date: string
     status: string
+    name?: string
   }
   onSave: () => void
   onCancel: () => void
@@ -30,10 +35,50 @@ const getDatesInRange = (startDate: Date, endDate: Date) => {
   return dates
 }
 
+// Helper function to check if a time falls within a requirement period
+const isTimeInRequirement = (time: string, requirement: TimeBasedRequirement): boolean => {
+  if (requirement.crosses_midnight) {
+    return time >= requirement.start_time || time < requirement.end_time
+  }
+  return time >= requirement.start_time && time < requirement.end_time
+}
+
+// Helper function to get the requirement for a specific time
+const getRequirementForTime = (time: string, requirements: TimeBasedRequirement[]): TimeBasedRequirement | null => {
+  return requirements.find(req => isTimeInRequirement(time, req)) || null
+}
+
+// Helper function to calculate weekly hours for an employee
+const calculateWeeklyHours = (
+  employeeId: string,
+  assignments: any[],
+  startDate: Date,
+  endDate: Date
+): number => {
+  return assignments
+    .filter(a => 
+      a.employee_id === employeeId && 
+      new Date(a.date) >= startDate && 
+      new Date(a.date) <= endDate
+    )
+    .reduce((total, assignment) => total + calculateShiftHours(assignment.start_time, assignment.end_time), 0)
+}
+
+// Helper function to calculate shift hours
+const calculateShiftHours = (startTime: string, endTime: string): number => {
+  const start = new Date(`1970-01-01T${startTime}`)
+  let end = new Date(`1970-01-01T${endTime}`)
+  if (end < start) {
+    end = new Date(`1970-01-02T${endTime}`)
+  }
+  return (end.getTime() - start.getTime()) / (1000 * 60 * 60)
+}
+
 export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel }: ScheduleFormProps) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [startDate, setStartDate] = useState(initialData?.start_date?.split('T')[0] || '')
+  const [name, setName] = useState(initialData?.name || '')
 
   // Calculate end date as 14 days after start date
   const calculateEndDate = (start: string) => {
@@ -78,46 +123,136 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
       
       if (availabilityError) throw availabilityError
 
+      // Get time-based requirements
+      const { data: requirements, error: requirementsError } = await supabase
+        .from('time_based_requirements')
+        .select('*')
+        .eq('is_active', true)
+
+      console.log('Fetched time-based requirements:', requirements)
+
+      if (requirementsError) throw requirementsError
+      if (!requirements?.length) throw new Error('No active time-based requirements found')
+
+      // Get employee scheduling rules
+      const { data: schedulingRules, error: rulesError } = await supabase
+        .from('employee_scheduling_rules')
+        .select('*')
+
+      console.log('Fetched employee scheduling rules:', schedulingRules)
+
+      if (rulesError) throw rulesError
+
       // Get all dates in the schedule period
       const dates = getDatesInRange(startDate, endDate)
       console.log('Schedule dates:', dates)
 
-      // Create assignments for each day
+      // Track assignments and employee schedules
       const assignments = []
+      const employeeWeeklyHours: { [key: string]: number } = {}
+      const employeeConsecutiveDays: { [key: string]: number } = {}
+
+      // For each day in the schedule
       for (const date of dates) {
         const dayOfWeek = date.getDay() // 0-6, where 0 is Sunday
         
-        // For each shift on this day
+        // Reset consecutive days counter at the start of each week
+        if (dayOfWeek === 0) {
+          Object.keys(employeeWeeklyHours).forEach(id => {
+            employeeWeeklyHours[id] = 0
+          })
+        }
+
+        // For each shift
         for (const shift of shifts) {
+          // Get the requirement that applies at the start of this shift
+          const requirement = getRequirementForTime(shift.start_time, requirements)
+          
+          if (!requirement) {
+            console.warn(`No staffing requirement found for ${shift.name} at ${shift.start_time}`)
+            continue
+          }
+
           // Get available employees for this shift based on their availability
           const availableEmployees = employees.filter(employee => {
+            // Check availability
             const employeeAvailability = availability?.find(
               a => a.employee_id === employee.id && a.day_of_week === dayOfWeek
             )
-            return employeeAvailability?.is_available
+            if (!employeeAvailability?.is_available) return false
+
+            // Get employee's scheduling rules
+            const rules = schedulingRules?.find(r => r.employee_id === employee.id)
+            if (!rules) return true // If no rules, assume default
+
+            // Check weekly hours
+            const currentWeeklyHours = employeeWeeklyHours[employee.id] || 0
+            const shiftHours = calculateShiftHours(shift.start_time, shift.end_time)
+            if (currentWeeklyHours + shiftHours > (rules.max_weekly_hours || 40)) return false
+
+            return true
           })
 
           console.log(`Available employees for ${shift.name} on ${date.toISOString().split('T')[0]}:`, availableEmployees)
 
-          // Ensure we have enough employees for minimum staffing
-          if (availableEmployees.length < shift.min_staff_count) {
-            console.warn(`Not enough available employees for ${shift.name} on ${date.toISOString().split('T')[0]}`)
-            continue
-          }
-
-          // Create assignments for minimum staff count
-          for (let i = 0; i < shift.min_staff_count; i++) {
-            if (availableEmployees[i]) {
+          // First, assign supervisors
+          let assignedCount = 0
+          if (requirement.min_supervisors > 0) {
+            const supervisors = availableEmployees.filter(emp => emp.position === 'supervisor')
+            
+            for (let i = 0; i < requirement.min_supervisors && i < supervisors.length; i++) {
+              const supervisor = supervisors[i]
               assignments.push({
                 schedule_id: scheduleId,
-                employee_id: availableEmployees[i].id,
+                employee_id: supervisor.id,
                 shift_id: shift.id,
                 date: date.toISOString().split('T')[0],
-                is_supervisor_shift: shift.requires_supervisor && i === 0, // First assignment is supervisor if required
+                is_supervisor_shift: true,
+                start_time: shift.start_time,
+                end_time: shift.end_time,
                 created_at: new Date().toISOString(),
                 updated_at: new Date().toISOString()
               })
+              
+              // Update weekly hours
+              employeeWeeklyHours[supervisor.id] = (employeeWeeklyHours[supervisor.id] || 0) + 
+                calculateShiftHours(shift.start_time, shift.end_time)
+              
+              assignedCount++
             }
+          }
+
+          // Then assign remaining staff
+          const remainingStaff = requirement.min_total_staff - assignedCount
+          const availableNonSupervisors = availableEmployees.filter(emp => {
+            // Filter out supervisors and employees who would exceed weekly hours
+            if (emp.position === 'supervisor') return false
+            
+            const rules = schedulingRules?.find(r => r.employee_id === emp.id)
+            if (!rules) return true
+
+            const currentWeeklyHours = employeeWeeklyHours[emp.id] || 0
+            const shiftHours = calculateShiftHours(shift.start_time, shift.end_time)
+            return currentWeeklyHours + shiftHours <= (rules.max_weekly_hours || 40)
+          })
+
+          for (let i = 0; i < remainingStaff && i < availableNonSupervisors.length; i++) {
+            const employee = availableNonSupervisors[i]
+            assignments.push({
+              schedule_id: scheduleId,
+              employee_id: employee.id,
+              shift_id: shift.id,
+              date: date.toISOString().split('T')[0],
+              is_supervisor_shift: false,
+              start_time: shift.start_time,
+              end_time: shift.end_time,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+
+            // Update weekly hours
+            employeeWeeklyHours[employee.id] = (employeeWeeklyHours[employee.id] || 0) + 
+              calculateShiftHours(shift.start_time, shift.end_time)
           }
         }
       }
@@ -146,8 +281,12 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
     setError(null)
 
     try {
-      console.log('Creating schedule...')
+      if (!name.trim()) {
+        throw new Error('Schedule name is required')
+      }
+
       const scheduleData = {
+        name: name.trim(),
         start_date: new Date(startDate).toISOString(),
         end_date: new Date(endDate).toISOString(),
         status: 'draft',
@@ -155,24 +294,20 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
         is_active: true
       }
 
-      console.log('Schedule data:', scheduleData)
-
       if (scheduleId) {
-        // Update existing schedule
-        const { error } = await supabase
+        const { error: updateError } = await supabase
           .from('schedules')
           .update(scheduleData)
           .eq('id', scheduleId)
         
-        if (error) throw error
+        if (updateError) throw updateError
       } else {
-        // Create new schedule and assignments
-        const { data, error } = await supabase
+        const { data, error: insertError } = await supabase
           .from('schedules')
           .insert([scheduleData])
           .select()
         
-        if (error) throw error
+        if (insertError) throw insertError
         if (!data?.[0]?.id) throw new Error('Failed to create schedule')
 
         console.log('Created schedule:', data[0])
@@ -201,6 +336,22 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
           <div className="text-sm text-red-700">{error}</div>
         </div>
       )}
+
+      <div>
+        <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+          Schedule Name
+        </label>
+        <input
+          type="text"
+          id="name"
+          name="name"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          required
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+          placeholder="Enter schedule name"
+        />
+      </div>
 
       <div>
         <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">
