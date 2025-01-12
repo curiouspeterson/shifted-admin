@@ -48,6 +48,22 @@ interface ShiftPattern {
   startDate: Date;
 }
 
+// Add type definitions at the top of the file
+type BlockType = 'early' | 'day' | 'night' | 'overnight';
+
+interface CoverageCount {
+  total: number;
+  supervisors: number;
+  dispatchers: number;
+}
+
+interface DailyCoverage {
+  early: CoverageCount;
+  day: CoverageCount;
+  night: CoverageCount;
+  overnight: CoverageCount;
+}
+
 // Helper function to get all dates in a date range
 const getDatesInRange = (startDate: Date, endDate: Date) => {
   const dates = []
@@ -156,6 +172,60 @@ function validateAssignment(assignment: AssignmentInsert): { isValid: boolean; e
   return { isValid: errors.length === 0, errors };
 }
 
+// Update the coverage tracking initialization
+function initializeDailyCoverage(): DailyCoverage {
+  return {
+    early: { total: 0, supervisors: 0, dispatchers: 0 },
+    day: { total: 0, supervisors: 0, dispatchers: 0 },
+    night: { total: 0, supervisors: 0, dispatchers: 0 },
+    overnight: { total: 0, supervisors: 0, dispatchers: 0 }
+  };
+}
+
+// Add the isTimeInRange helper function
+function isTimeInRange(time: string, start: string, end: string): boolean {
+  const timeMinutes = convertTimeToMinutes(time);
+  const startMinutes = convertTimeToMinutes(start);
+  const endMinutes = convertTimeToMinutes(end);
+  
+  if (endMinutes < startMinutes) { // Handles overnight shifts
+    return timeMinutes >= startMinutes || timeMinutes <= endMinutes;
+  }
+  return timeMinutes >= startMinutes && timeMinutes <= endMinutes;
+}
+
+function convertTimeToMinutes(time: string): number {
+  const [hours, minutes] = time.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+// Update type references
+const coverageTracking = new Map<string, DailyCoverage>();
+
+// Update function signatures
+function findCoverageGaps(coverage: DailyCoverage): BlockType[] {
+  const gaps: BlockType[] = [];
+  const timeBlocks: BlockType[] = ['early', 'day', 'night', 'overnight'];
+  
+  for (const block of timeBlocks) {
+    if (coverage[block].total < getRequiredTotal(block)) {
+      gaps.push(block);
+    }
+  }
+  return gaps;
+}
+
+function getRequiredTotal(blockType: BlockType): number {
+  switch (blockType) {
+    case 'day':
+      return 8;
+    case 'night':
+      return 7;
+    default:
+      return 6;
+  }
+}
+
 // Modified createScheduleAssignments function
 const createScheduleAssignments = async (scheduleId: string, startDate: Date, endDate: Date) => {
   try {
@@ -190,7 +260,11 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
     })) as Employee[];
 
     // Separate supervisors and dispatchers
-    const supervisors = typedEmployees.filter(e => e.position === 'supervisor' || e.position === 'management');
+    const supervisors = typedEmployees.filter(e => 
+      e.position === 'supervisor' || 
+      e.position === 'management' || 
+      e.position === 'shift_supervisor'
+    );
     const dispatchers = typedEmployees.filter(e => e.position === 'dispatcher');
 
     // Get employee availability and rules
@@ -206,156 +280,103 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
     const assignments: AssignmentInsert[] = [];
     const employeePatterns: Map<string, ShiftPattern> = new Map();
     const weeklyHours: Map<string, number> = new Map();
-    const coverageTracking: Map<string, Map<string, { total: number; supervisors: number }>> = new Map();
+    const coverageTracking: Map<string, DailyCoverage> = new Map();
 
     // Get all dates in the schedule period
     const dates = getDatesInRange(startDate, endDate);
 
-    // First, assign supervisors to ensure coverage
+    // First, assign supervisors to cover all time blocks
     for (const date of dates) {
       const dateStr = date.toISOString().split('T')[0];
-      const dayOfWeek = date.getDay();
-
-      // Reset weekly hours on Sunday
-      if (dayOfWeek === 0) {
-        weeklyHours.clear();
-      }
-
+      
       // Initialize coverage tracking for this date
       if (!coverageTracking.has(dateStr)) {
-        coverageTracking.set(dateStr, new Map());
-        timeBlocks.forEach(block => {
-          coverageTracking.get(dateStr)!.set(`${block.start}-${block.end}`, { total: 0, supervisors: 0 });
-        });
+        coverageTracking.set(dateStr, initializeDailyCoverage());
       }
-
-      // Assign supervisors first
-      for (const supervisor of supervisors) {
-        // Skip if already assigned a pattern
-        if (employeePatterns.has(supervisor.id)) continue;
-
-        // Check availability
-        const canWork = availability?.find(
-          a => a.employee_id === supervisor.id && a.day_of_week === dayOfWeek
-        )?.is_available;
-
-        if (!canWork) continue;
-
-        // Try to assign a 4x10 pattern
-        const pattern = tryAssignPattern(
-          supervisor,
-          date,
-          tenHourShifts,
-          ShiftPatternType.FourTen,
-          dates,
-          weeklyHours,
-          coverageTracking
-        );
-
-        if (pattern) {
-          employeePatterns.set(supervisor.id, pattern);
-          // Create assignments for the pattern
-          createPatternAssignments(
-            pattern,
-            supervisor,
-            scheduleId,
-            assignments,
-            weeklyHours,
-            shifts
-          );
-          
-          // Update coverage tracking for supervisor
-          updateCoverageTracking(
-            pattern,
-            supervisor,
-            coverageTracking,
-            shifts.find(s => s.id === pattern.shifts[0])!
-          );
-        }
-      }
-    }
-
-    // Then assign dispatchers
-    for (const date of dates) {
-      const dateStr = date.toISOString().split('T')[0];
-      const dayOfWeek = date.getDay();
-
-      // Skip if it's a new week (already handled in supervisor loop)
-      if (dayOfWeek === 0) continue;
-
-      for (const dispatcher of dispatchers) {
-        // Skip if already assigned a pattern
-        if (employeePatterns.has(dispatcher.id)) continue;
-
-        // Check availability
-        const canWork = availability?.find(
-          a => a.employee_id === dispatcher.id && a.day_of_week === dayOfWeek
-        )?.is_available;
-
-        if (!canWork) continue;
-
-        // Try 4x10 pattern first
-        let pattern = tryAssignPattern(
-          dispatcher,
-          date,
-          tenHourShifts,
-          ShiftPatternType.FourTen,
-          dates,
-          weeklyHours,
-          coverageTracking
-        );
-
-        // If 4x10 doesn't work, try 3x12plus4
-        if (!pattern) {
-          pattern = tryAssignPattern(
-            dispatcher,
-            date,
-            twelveHourShifts,
-            ShiftPatternType.ThreeTwelvePlusFour,
-            dates,
-            weeklyHours,
-            coverageTracking
-          );
-
-          if (pattern) {
-            // Find a suitable 4-hour shift for the fourth day
-            const fourthDay = new Date(date);
-            fourthDay.setDate(fourthDay.getDate() + 3);
-            
-            const suitableFourHourShift = findSuitableFourHourShift(
-              fourHourShifts,
-              pattern,
-              coverageTracking,
-              fourthDay
+      
+      // First, assign supervisors to cover all time blocks
+      const timeBlockPriority: BlockType[] = ['night', 'overnight', 'early', 'day']; // Prioritize harder-to-fill shifts
+      for (const blockType of timeBlockPriority) {
+        const coverage = coverageTracking.get(dateStr)!;
+        
+        if (coverage[blockType].supervisors < 1) { // Need a supervisor
+          const availableSupervisors = supervisors.filter(sup => {
+            // Check if supervisor is already assigned for this date
+            return !assignments.some(a => 
+              a.employee_id === sup.id && 
+              a.date === dateStr
             );
-
-            if (suitableFourHourShift) {
-              pattern.shifts.push(suitableFourHourShift.id);
-            } else {
-              pattern = null;
+          });
+          
+          if (availableSupervisors.length > 0) {
+            const supervisor = availableSupervisors[0]; // Get the first available supervisor
+            // Find a suitable shift for this block
+            const suitableShift = shifts.find(s => {
+              const shiftHours = calculateShiftHours(s.start_time, s.end_time);
+              return (shiftHours === 10 || shiftHours === 12) && // Allow both 10 and 12 hour shifts
+                     isShiftInTimeBlock(s, blockType);
+            });
+            
+            if (suitableShift) {
+              assignments.push({
+                schedule_id: scheduleId,
+                employee_id: supervisor.id,
+                shift_id: suitableShift.id,
+                date: dateStr,
+                is_supervisor_shift: supervisor.position === 'supervisor' || 
+                                    supervisor.position === 'management' || 
+                                    supervisor.position === 'shift_supervisor'
+              });
+              
+              // Update coverage
+              updateCoverageForShift(coverage, suitableShift, true, false);
             }
           }
         }
-
-        if (pattern) {
-          employeePatterns.set(dispatcher.id, pattern);
-          // Create assignments for the pattern
-          createPatternAssignments(
-            pattern,
-            dispatcher,
-            scheduleId,
-            assignments,
-            weeklyHours,
-            shifts
-          );
+      }
+      
+      // Then assign dispatchers to fill remaining gaps
+      for (const blockType of timeBlockPriority) {
+        const coverage = coverageTracking.get(dateStr)!;
+        const requiredTotal = blockType === 'day' ? 8 : blockType === 'night' ? 7 : 6;
+        
+        while (coverage[blockType].total < requiredTotal) {
+          const availableDispatchers = dispatchers.filter(disp => {
+            // Check if dispatcher is already assigned for this date
+            return !assignments.some(a => 
+              a.employee_id === disp.id && 
+              a.date === dateStr
+            );
+          });
           
-          // Update coverage tracking for dispatcher
-          updateCoverageTracking(
-            pattern,
-            dispatcher,
-            coverageTracking,
-            shifts.find(s => s.id === pattern.shifts[0])!
-          );
+          if (availableDispatchers.length === 0) break; // No more available dispatchers
+          
+          // Find a suitable shift for this block
+          const suitableShift = shifts.find(s => {
+            const shiftHours = calculateShiftHours(s.start_time, s.end_time);
+            return (shiftHours === 10 || shiftHours === 12) && // Allow both 10 and 12 hour shifts
+                   isShiftInTimeBlock(s, blockType) &&
+                   // Check if this shift is already assigned to someone else for this block
+                   !assignments.some(a => 
+                     a.shift_id === s.id && 
+                     a.date === dateStr
+                   );
+          });
+          
+          if (suitableShift) {
+            assignments.push({
+              schedule_id: scheduleId,
+              employee_id: availableDispatchers[0].id,
+              shift_id: suitableShift.id,
+              date: dateStr,
+              is_supervisor_shift: false
+            });
+            
+            // Update coverage
+            updateCoverageForShift(coverage, suitableShift, false, true);
+          } else {
+            break; // No suitable shifts available
+          }
         }
       }
     }
@@ -371,16 +392,25 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
           
           // Validate each assignment in the batch
           const validatedBatch = batch.map(assignment => {
+            const shift = shifts.find(s => s.id === assignment.shift_id);
+            if (!shift) {
+              console.error('Could not find shift:', assignment.shift_id);
+              throw new Error('Invalid shift_id');
+            }
+            
             const { isValid, errors } = validateAssignment(assignment);
             if (!isValid) {
               console.error('Invalid assignment:', { assignment, errors });
             }
+            
             return {
               schedule_id: assignment.schedule_id,
               employee_id: assignment.employee_id,
               shift_id: assignment.shift_id,
               date: assignment.date,
-              is_supervisor_shift: assignment.is_supervisor_shift
+              is_supervisor_shift: assignment.is_supervisor_shift,
+              start_time: shift.start_time,
+              end_time: shift.end_time
             };
           });
           
@@ -395,7 +425,7 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
           const { error: assignmentError } = await supabase
             .from('schedule_assignments')
             .insert(validatedBatch)
-            .select();
+            .select('schedule_id, employee_id, shift_id, date, is_supervisor_shift');
           
           if (assignmentError) {
             console.error('Assignment insert error details:', {
@@ -429,13 +459,13 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
 
 // Helper function to try assigning a pattern
 function tryAssignPattern(
-  employee: any, // Keep as any since we can't guarantee all fields are non-null from DB
+  employee: any,
   startDate: Date,
   shifts: Shift[],
   patternType: ShiftPatternType,
   allDates: Date[],
   weeklyHours: Map<string, number>,
-  coverageTracking: Map<string, Map<string, { total: number; supervisors: number }>>
+  coverageTracking: Map<string, DailyCoverage>
 ): ShiftPattern | null {
   // For each shift, try to create a pattern starting on this date
   for (const shift of shifts) {
@@ -464,31 +494,19 @@ function tryAssignPattern(
       }
       
       // Check if adding this shift would exceed requirements
-      for (const block of timeBlocks) {
-        const blockKey = `${block.start}-${block.end}`;
-        const currentCoverage = coverage.get(blockKey);
-        if (!currentCoverage) continue;
-        
-        const overlap = calculateShiftOverlap(shift, block);
-        if (overlap > 0) {
-          // If this is a supervisor, check supervisor limits
-          if (employee.position === 'supervisor' || employee.position === 'management') {
-            if (currentCoverage.supervisors >= block.supervisorRequired) {
-              canAssignPattern = false;
-              break;
-            }
-          }
-          
-          // Check total staff limits
-          if (currentCoverage.total >= block.required) {
-            canAssignPattern = false;
-            break;
-          }
-        }
+      const blockType = getBlockTypeForShift(shift);
+      if (!blockType) {
+        canAssignPattern = false;
+        break;
       }
       
-      if (!canAssignPattern) break;
-      patternDates.push(date);
+      const currentCoverage = coverage[blockType];
+      const requiredTotal = getRequiredTotal(blockType);
+      
+      if (currentCoverage.total >= requiredTotal) {
+        canAssignPattern = false;
+        break;
+      }
     }
     
     // If we can assign the pattern, create it
@@ -527,7 +545,9 @@ function createPatternAssignments(
       employee_id: employee.id,
       shift_id: pattern.shifts[i],
       date: dateStr,
-      is_supervisor_shift: employee.position === 'supervisor' || employee.position === 'management'
+      is_supervisor_shift: employee.position === 'supervisor' || 
+                          employee.position === 'management' || 
+                          employee.position === 'shift_supervisor'
     };
 
     assignments.push(assignment);
@@ -553,7 +573,9 @@ function createPatternAssignments(
       employee_id: employee.id,
       shift_id: pattern.shifts[3],
       date: dateStr,
-      is_supervisor_shift: employee.position === 'supervisor' || employee.position === 'management'
+      is_supervisor_shift: employee.position === 'supervisor' || 
+                          employee.position === 'management' || 
+                          employee.position === 'shift_supervisor'
     };
     
     assignments.push(assignment);
@@ -568,86 +590,68 @@ function createPatternAssignments(
 function findSuitableFourHourShift(
   fourHourShifts: any[],
   pattern: ShiftPattern,
-  coverageTracking: Map<string, Map<string, { total: number; supervisors: number }>>,
+  coverageTracking: Map<string, DailyCoverage>,
   date: Date
 ): any {
   const dateStr = date.toISOString().split('T')[0];
   const coverage = coverageTracking.get(dateStr);
   if (!coverage) return null;
-
+  
   // Try to find a 4-hour shift that helps meet coverage requirements
   return fourHourShifts.find(shift => {
-    for (const block of timeBlocks) {
-      const blockKey = `${block.start}-${block.end}`;
-      const currentCoverage = coverage.get(blockKey);
-      if (!currentCoverage) continue;
-
-      const overlap = calculateShiftOverlap(shift, block);
-      if (overlap > 0 && currentCoverage.total < block.required) {
-        return true;
-      }
-    }
-    return false;
+    const blockType = getBlockTypeForShift(shift);
+    if (!blockType) return false;
+    
+    const currentCoverage = coverage[blockType];
+    const requiredTotal = getRequiredTotal(blockType);
+    
+    return currentCoverage.total < requiredTotal;
   });
 }
 
-// Helper function to update coverage tracking
-function updateCoverageTracking(
-  pattern: ShiftPattern,
-  employee: Employee,
-  coverageTracking: Map<string, Map<string, { total: number; supervisors: number }>>,
-  shift: any
-) {
-  const consecutiveDays = pattern.type === ShiftPatternType.FourTen ? 4 : 3;
+// Helper function to update coverage for a shift
+function updateCoverageForShift(
+  coverage: DailyCoverage,
+  shift: Shift,
+  isSupervisor: boolean,
+  isDispatcher: boolean
+): void {
+  const blockType = getBlockTypeForShift(shift);
+  if (blockType) {
+    coverage[blockType].total++;
+    if (isSupervisor) coverage[blockType].supervisors++;
+    if (isDispatcher) coverage[blockType].dispatchers++;
+  }
+}
+
+// Add helper function to determine block type
+function getBlockTypeForShift(shift: Shift): BlockType | null {
+  const timeBlocks = {
+    early: { start: '05:00', end: '09:00' },
+    day: { start: '09:00', end: '21:00' },
+    night: { start: '21:00', end: '01:00' },
+    overnight: { start: '01:00', end: '05:00' }
+  };
   
-  for (let i = 0; i < consecutiveDays; i++) {
-    const date = new Date(pattern.startDate);
-    date.setDate(date.getDate() + i);
-    const dateStr = date.toISOString().split('T')[0];
-    
-    const coverage = coverageTracking.get(dateStr);
-    if (!coverage) continue;
-
-    // Update coverage for each time block
-    for (const block of timeBlocks) {
-      const blockKey = `${block.start}-${block.end}`;
-      const currentCoverage = coverage.get(blockKey);
-      if (!currentCoverage) continue;
-
-      const overlap = calculateShiftOverlap(shift, block);
-      if (overlap > 0) {
-        currentCoverage.total++;
-        if (employee.position === 'supervisor' || employee.position === 'management') {
-          currentCoverage.supervisors++;
-        }
-      }
+  for (const [blockType, block] of Object.entries(timeBlocks)) {
+    if (isTimeInRange(shift.start_time, block.start, block.end)) {
+      return blockType as BlockType;
     }
   }
+  return null;
+}
 
-  // Update coverage for 4-hour shift if applicable
-  if (pattern.type === ShiftPatternType.ThreeTwelvePlusFour && pattern.shifts.length === 4) {
-    const date = new Date(pattern.startDate);
-    date.setDate(date.getDate() + 3);
-    const dateStr = date.toISOString().split('T')[0];
-    
-    const coverage = coverageTracking.get(dateStr);
-    if (!coverage) return;
-
-    const fourHourShift = shift; // We should actually get this from the database
-    for (const block of timeBlocks) {
-      const blockKey = `${block.start}-${block.end}`;
-      const currentCoverage = coverage.get(blockKey);
-      if (!currentCoverage) continue;
-
-      const overlap = calculateShiftOverlap(fourHourShift, block);
-      if (overlap > 0) {
-        currentCoverage.total++;
-        if (employee.position === 'supervisor' || employee.position === 'management') {
-          currentCoverage.supervisors++;
-        }
-      }
-    }
-  }
+// Helper function to determine if a shift falls within a time block
+function isShiftInTimeBlock(shift: Shift, blockType: BlockType): boolean {
+  const timeBlocks = {
+    early: { start: '05:00', end: '09:00' },
+    day: { start: '09:00', end: '21:00' },
+    night: { start: '21:00', end: '01:00' },
+    overnight: { start: '01:00', end: '05:00' }
+  };
+  
+  const block = timeBlocks[blockType];
+  return isTimeInRange(shift.start_time, block.start, block.end);
 }
 
 export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel }: ScheduleFormProps) {
