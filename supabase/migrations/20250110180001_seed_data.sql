@@ -1,6 +1,14 @@
 -- Clean up existing test data
-DELETE FROM auth.users WHERE email LIKE '%@test.com';
-DELETE FROM employees WHERE email LIKE '%@test.com';
+DO $$ BEGIN
+  -- First delete from auth.users (this will cascade to employees due to foreign key)
+  DELETE FROM auth.users WHERE email LIKE '%@test.com';
+  
+  -- Then explicitly delete from employees (just to be thorough)
+  DELETE FROM employees WHERE email LIKE '%@test.com';
+END $$;
+
+-- Temporarily disable the trigger
+ALTER TABLE auth.users DISABLE TRIGGER on_auth_user_created;
 
 -- Create test users
 DO $$
@@ -59,7 +67,7 @@ BEGIN
       is_active
     ) VALUES (
       gen_random_uuid(),
-      auth_user_id,  -- Link to auth user
+      auth_user_id,
       'Supervisor' || i,
       'Smith' || i,
       'supervisor' || i || '@test.com',
@@ -120,7 +128,7 @@ BEGIN
       is_active
     ) VALUES (
       gen_random_uuid(),
-      auth_user_id,  -- Link to auth user
+      auth_user_id,
       'Manager' || i,
       'Johnson' || i,
       'manager' || i || '@test.com',
@@ -181,7 +189,7 @@ BEGIN
       is_active
     ) VALUES (
       gen_random_uuid(),
-      auth_user_id,  -- Link to auth user
+      auth_user_id,
       'Dispatcher' || i,
       'Doe' || i,
       'dispatcher' || i || '@test.com',
@@ -191,18 +199,44 @@ BEGIN
   END LOOP;
 END $$;
 
--- Create default shifts
-INSERT INTO shifts (name, start_time, end_time, duration_hours, crosses_midnight, min_staff_count, requires_supervisor)
+-- Re-enable the trigger
+ALTER TABLE auth.users ENABLE TRIGGER on_auth_user_created;
+
+-- Insert all possible shifts
+INSERT INTO shifts (name, start_time, end_time, duration_hours, crosses_midnight, requires_supervisor)
 VALUES 
-  ('Early Morning', '06:00:00', '14:00:00', 8.00, false, 3, true),
-  ('Day Shift', '14:00:00', '22:00:00', 8.00, false, 3, true),
-  ('Evening', '16:00:00', '00:00:00', 8.00, true, 3, true),
-  ('Night', '22:00:00', '06:00:00', 8.00, true, 3, true);
+    -- Day Shift Early variations
+    ('Day Shift Early (4h)', '05:00:00', '09:00:00', 4.00, false, true),
+    ('Day Shift Early (10h)', '05:00:00', '15:00:00', 10.00, false, true),
+    ('Day Shift Early (12h)', '05:00:00', '17:00:00', 12.00, false, true),
+
+    -- Day Shift variations
+    ('Day Shift (4h)', '09:00:00', '13:00:00', 4.00, false, true),
+    ('Day Shift (10h)', '09:00:00', '19:00:00', 10.00, false, true),
+    ('Day Shift (12h)', '09:00:00', '21:00:00', 12.00, false, true),
+
+    -- Swing Shift variations
+    ('Swing Shift (4h)', '13:00:00', '17:00:00', 4.00, false, true),
+    ('Swing Shift (10h)', '15:00:00', '01:00:00', 10.00, true, true),
+    ('Swing Shift (12h)', '15:00:00', '03:00:00', 12.00, true, true),
+
+    -- Graveyard variations
+    ('Graveyard (4h)', '01:00:00', '05:00:00', 4.00, false, true),
+    ('Graveyard (10h)', '19:00:00', '05:00:00', 10.00, true, true),
+    ('Graveyard (12h)', '17:00:00', '05:00:00', 12.00, true, true);
+
+-- Insert time-based requirements
+INSERT INTO time_based_requirements 
+    (start_time, end_time, min_total_staff, min_supervisors, crosses_midnight)
+VALUES 
+    ('05:00:00', '09:00:00', 6, 1, false),
+    ('09:00:00', '21:00:00', 8, 1, false),
+    ('21:00:00', '01:00:00', 7, 1, true),
+    ('01:00:00', '05:00:00', 6, 1, false);
 
 -- Morning shift pattern (roughly 1/3 of dispatchers)
-INSERT INTO employee_availability (id, employee_id, day_of_week, start_time, end_time, is_available)
+INSERT INTO employee_availability (employee_id, day_of_week, start_time, end_time, is_available)
 SELECT 
-  gen_random_uuid(),
   e.id,
   d.day,
   '06:00:00'::time,
@@ -218,9 +252,8 @@ AND e.id IN (
 );
 
 -- Day shift pattern (roughly 1/3 of dispatchers)
-INSERT INTO employee_availability (id, employee_id, day_of_week, start_time, end_time, is_available)
+INSERT INTO employee_availability (employee_id, day_of_week, start_time, end_time, is_available)
 SELECT 
-  gen_random_uuid(),
   e.id,
   d.day,
   '14:00:00'::time,
@@ -237,9 +270,8 @@ AND e.id IN (
 );
 
 -- Night shift pattern (remaining dispatchers)
-INSERT INTO employee_availability (id, employee_id, day_of_week, start_time, end_time, is_available)
+INSERT INTO employee_availability (employee_id, day_of_week, start_time, end_time, is_available)
 SELECT 
-  gen_random_uuid(),
   e.id,
   d.day,
   '22:00:00'::time,
@@ -255,9 +287,8 @@ AND e.id IN (
 
 -- Supervisor availability
 -- Morning supervisors (2)
-INSERT INTO employee_availability (id, employee_id, day_of_week, start_time, end_time, is_available)
+INSERT INTO employee_availability (employee_id, day_of_week, start_time, end_time, is_available)
 SELECT 
-  gen_random_uuid(),
   e.id,
   d.day,
   '06:00:00'::time,
@@ -273,9 +304,8 @@ AND e.id IN (
 );
 
 -- Day supervisors (2)
-INSERT INTO employee_availability (id, employee_id, day_of_week, start_time, end_time, is_available)
+INSERT INTO employee_availability (employee_id, day_of_week, start_time, end_time, is_available)
 SELECT 
-  gen_random_uuid(),
   e.id,
   d.day,
   '14:00:00'::time,
@@ -292,9 +322,8 @@ AND e.id IN (
 );
 
 -- Night supervisors (2)
-INSERT INTO employee_availability (id, employee_id, day_of_week, start_time, end_time, is_available)
+INSERT INTO employee_availability (employee_id, day_of_week, start_time, end_time, is_available)
 SELECT 
-  gen_random_uuid(),
   e.id,
   d.day,
   '22:00:00'::time,
@@ -306,4 +335,31 @@ WHERE e.position = 'shift_supervisor'
 AND e.id IN (
   SELECT id FROM employees WHERE position = 'shift_supervisor'
   AND id NOT IN (SELECT DISTINCT employee_id FROM employee_availability)
-); 
+);
+
+-- Add scheduling rules for each employee
+INSERT INTO employee_scheduling_rules (
+    employee_id,
+    preferred_shift_pattern,
+    max_weekly_hours,
+    min_weekly_hours,
+    require_consecutive_days
+)
+SELECT 
+    e.id,
+    CASE 
+        WHEN e.position IN ('shift_supervisor', 'management') THEN '4x10'::shift_pattern_type
+        WHEN random() < 0.7 THEN '4x10'::shift_pattern_type  -- 70% prefer 4x10
+        ELSE '3x12plus4'::shift_pattern_type                 -- 30% prefer 3x12plus4
+    END,
+    40,  -- max weekly hours
+    32,  -- min weekly hours
+    true -- require consecutive days
+FROM employees e
+ON CONFLICT (employee_id) DO UPDATE
+SET 
+    preferred_shift_pattern = EXCLUDED.preferred_shift_pattern,
+    max_weekly_hours = EXCLUDED.max_weekly_hours,
+    min_weekly_hours = EXCLUDED.min_weekly_hours,
+    require_consecutive_days = EXCLUDED.require_consecutive_days,
+    updated_at = timezone('utc'::text, now()); 

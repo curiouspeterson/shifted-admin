@@ -77,8 +77,6 @@ interface ScheduleDetailsClientProps {
   error?: string | null;
   timeRequirements: TimeBasedRequirement[];
   requirementStatuses: RequirementStatus[];
-  approveSchedule: (scheduleId: string) => Promise<void>;
-  deleteSchedule: (scheduleId: string) => Promise<void>;
   previousScheduleAssignments?: PreviousScheduleAssignments;
 }
 
@@ -348,8 +346,6 @@ export default function ScheduleDetailsClient({
   error: initialError,
   timeRequirements,
   requirementStatuses,
-  approveSchedule,
-  deleteSchedule,
   previousScheduleAssignments
 }: ScheduleDetailsClientProps) {
   const [error, setError] = useState<string | null>(initialError || null);
@@ -383,7 +379,22 @@ export default function ScheduleDetailsClient({
     try {
       setIsApproving(true);
       setError(null);
-      await approveSchedule(scheduleId);
+
+      const response = await fetch(`/api/schedules/${scheduleId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'published' }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to approve schedule');
+      }
+
+      // Refresh the page to show updated status
+      window.location.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to approve schedule');
     } finally {
@@ -395,7 +406,18 @@ export default function ScheduleDetailsClient({
     try {
       setIsDeleting(true);
       setError(null);
-      await deleteSchedule(scheduleId);
+
+      const response = await fetch(`/api/schedules/${scheduleId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete schedule');
+      }
+
+      // Redirect to schedules list
+      router.push('/dashboard/schedules');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete schedule');
     } finally {

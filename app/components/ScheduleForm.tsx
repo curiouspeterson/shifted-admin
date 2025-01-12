@@ -706,36 +706,63 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
         throw new Error('Schedule name is required')
       }
 
+      // Get current user's session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      if (sessionError) throw sessionError
+      if (!session) throw new Error('No active session')
+
       const scheduleData = {
         name: name.trim(),
-        start_date: new Date(startDate).toISOString(),
-        end_date: new Date(endDate).toISOString(),
+        start_date: startDate,
+        end_date: endDate,
         status: 'draft',
         version: 1,
         is_active: true
       }
 
+      let schedule
       if (scheduleId) {
-        const { error: updateError } = await supabase
-          .from('schedules')
-          .update(scheduleData)
-          .eq('id', scheduleId)
-        
-        if (updateError) throw updateError
-      } else {
-        const { data, error: insertError } = await supabase
-          .from('schedules')
-          .insert([scheduleData])
-          .select()
-        
-        if (insertError) throw insertError
-        if (!data?.[0]?.id) throw new Error('Failed to create schedule')
+        // Update existing schedule via API route
+        const response = await fetch(`/api/schedules/${scheduleId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify(scheduleData)
+        })
 
-        console.log('Created schedule:', data[0])
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || 'Failed to update schedule')
+        }
+
+        const result = await response.json()
+        schedule = result.schedule
+      } else {
+        // Create new schedule via API route
+        const response = await fetch('/api/schedules', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify(scheduleData)
+        })
+
+        if (!response.ok) {
+          const data = await response.json()
+          throw new Error(data.error || 'Failed to create schedule')
+        }
+
+        const result = await response.json()
+        schedule = result.schedule
+
+        console.log('Created schedule:', schedule)
 
         // Create schedule assignments
         await createScheduleAssignments(
-          data[0].id,
+          schedule.id,
           new Date(startDate),
           new Date(endDate)
         )
