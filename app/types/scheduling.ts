@@ -59,9 +59,22 @@ export type EmployeeSchedulingRule = Omit<
   require_consecutive_days: boolean;
 };
 
-export type Employee = Database['public']['Tables']['employees']['Row'] & {
-  email: string;  // Make email required
-};
+// Base employee type matching the database schema
+interface BaseEmployee {
+  id: string;
+  user_id: string | null;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string | null;
+  position: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// Export the Employee type
+export type Employee = BaseEmployee;
 
 export type Assignment = Database['public']['Tables']['schedule_assignments']['Row'] & {
   employee: Employee;

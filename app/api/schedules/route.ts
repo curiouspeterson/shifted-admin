@@ -137,7 +137,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Create new schedule
+    // Create new schedule using user.id for created_by
     const { data: schedule, error: createError } = await supabaseAdmin
       .from('schedules')
       .insert([{
@@ -147,7 +147,7 @@ export async function POST(request: Request) {
         status: 'draft',
         version: 1,
         is_active: true,
-        created_by: employee.id,
+        created_by: user.id,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }])
