@@ -10,9 +10,17 @@ import {
   TimeBasedRequirement,
   EmployeeSchedulingRule,
   Assignment,
-  ShiftPatternType,
-  AssignmentInsert
+  ShiftPatternType
 } from '@/app/types/scheduling'
+
+// Define AssignmentInsert type
+interface AssignmentInsert {
+  schedule_id: string
+  employee_id: string
+  shift_id: string
+  date: string
+  is_supervisor_shift: boolean
+}
 
 interface ScheduleFormProps {
   scheduleId?: string
@@ -125,6 +133,29 @@ const timeBlocks: TimeBlock[] = [
   { start: '01:00', end: '05:00', required: 6, supervisorRequired: 1 }
 ];
 
+// Add validation helper
+function validateAssignment(assignment: AssignmentInsert): { isValid: boolean; errors: string[] } {
+  const errors: string[] = [];
+  
+  if (!assignment.schedule_id || typeof assignment.schedule_id !== 'string') {
+    errors.push(`Invalid schedule_id: ${assignment.schedule_id}`);
+  }
+  if (!assignment.employee_id || typeof assignment.employee_id !== 'string') {
+    errors.push(`Invalid employee_id: ${assignment.employee_id}`);
+  }
+  if (!assignment.shift_id || typeof assignment.shift_id !== 'string') {
+    errors.push(`Invalid shift_id: ${assignment.shift_id}`);
+  }
+  if (!assignment.date || !/^\d{4}-\d{2}-\d{2}$/.test(assignment.date)) {
+    errors.push(`Invalid date format: ${assignment.date}`);
+  }
+  if (typeof assignment.is_supervisor_shift !== 'boolean') {
+    errors.push(`Invalid is_supervisor_shift: ${assignment.is_supervisor_shift}`);
+  }
+  
+  return { isValid: errors.length === 0, errors };
+}
+
 // Modified createScheduleAssignments function
 const createScheduleAssignments = async (scheduleId: string, startDate: Date, endDate: Date) => {
   try {
@@ -146,16 +177,16 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
     // Get all active employees
     const { data: employees, error: employeesError } = await supabase
       .from('employees')
-      .select('*, auth_user:user_id(email)')
+      .select('*')
       .eq('is_active', true);
     
     if (employeesError) throw employeesError;
     if (!employees?.length) throw new Error('No active employees found');
 
-    // Cast employees to include email from auth_user
+    // Cast employees without email for now
     const typedEmployees = employees.map(emp => ({
       ...emp,
-      email: emp.auth_user?.email || ''
+      email: '' // Email not needed for schedule creation
     })) as Employee[];
 
     // Separate supervisors and dispatchers
@@ -333,17 +364,60 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
     if (assignments.length > 0) {
       console.log('Inserting assignments:', assignments);
       
-      const { error: assignmentError } = await supabase
-        .from('schedule_assignments')
-        .insert(assignments)
-        .select();
-      
-      if (assignmentError) {
-        console.error('Assignment insert error:', assignmentError);
-        throw assignmentError;
+      try {
+        // Insert in smaller batches of 20
+        for (let i = 0; i < assignments.length; i += 20) {
+          const batch = assignments.slice(i, i + 20);
+          
+          // Validate each assignment in the batch
+          const validatedBatch = batch.map(assignment => {
+            const { isValid, errors } = validateAssignment(assignment);
+            if (!isValid) {
+              console.error('Invalid assignment:', { assignment, errors });
+            }
+            return {
+              schedule_id: assignment.schedule_id,
+              employee_id: assignment.employee_id,
+              shift_id: assignment.shift_id,
+              date: assignment.date,
+              is_supervisor_shift: assignment.is_supervisor_shift
+            };
+          });
+          
+          // Log the exact payload being sent
+          console.log('Batch validation complete. Sending payload:', {
+            batchNumber: i/20 + 1,
+            batchSize: validatedBatch.length,
+            firstItem: validatedBatch[0],
+            payloadString: JSON.stringify(validatedBatch)
+          });
+          
+          const { error: assignmentError } = await supabase
+            .from('schedule_assignments')
+            .insert(validatedBatch)
+            .select();
+          
+          if (assignmentError) {
+            console.error('Assignment insert error details:', {
+              code: assignmentError.code,
+              message: assignmentError.message,
+              details: assignmentError.details,
+              hint: assignmentError.hint,
+              failedBatch: validatedBatch
+            });
+            throw assignmentError;
+          }
+        }
+        
+        console.log('Successfully inserted all assignments');
+      } catch (error: any) {
+        console.error('Detailed assignment error:', {
+          error,
+          firstAssignment: assignments[0],
+          lastAssignment: assignments[assignments.length - 1]
+        });
+        throw error;
       }
-      
-      console.log('Successfully inserted assignments');
     }
 
     return { success: true };
@@ -453,9 +527,7 @@ function createPatternAssignments(
       employee_id: employee.id,
       shift_id: pattern.shifts[i],
       date: dateStr,
-      is_supervisor_shift: employee.position === 'supervisor' || employee.position === 'management',
-      overtime_hours: null,
-      overtime_status: null
+      is_supervisor_shift: employee.position === 'supervisor' || employee.position === 'management'
     };
 
     assignments.push(assignment);
@@ -481,9 +553,7 @@ function createPatternAssignments(
       employee_id: employee.id,
       shift_id: pattern.shifts[3],
       date: dateStr,
-      is_supervisor_shift: employee.position === 'supervisor' || employee.position === 'management',
-      overtime_hours: null,
-      overtime_status: null
+      is_supervisor_shift: employee.position === 'supervisor' || employee.position === 'management'
     };
     
     assignments.push(assignment);
