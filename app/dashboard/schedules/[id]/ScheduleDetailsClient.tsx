@@ -528,81 +528,84 @@ export default function ScheduleDetailsClient({
                     />
 
                     <div className="mt-4 space-y-6">
-                      {groupAndSortShifts(shifts).map((group) => (
-                        <div key={group.name} className="bg-gray-50 p-4 rounded-lg">
-                          <h4 className="text-sm font-medium text-gray-900 border-b border-gray-200 pb-2">
-                            {group.name}
-                          </h4>
-                          <div className="relative mt-4">
-                            {/* Timeline header */}
-                            <div className="absolute left-64 right-0 flex border-b border-gray-200">
-                              {Array.from({ length: 24 }, (_, i) => (
-                                <div key={i} className="flex-1 text-center text-xs text-gray-500">
-                                  {`${i.toString().padStart(2, '0')}:00`}
-                                </div>
-                              ))}
-                            </div>
-                            
-                            {/* Timeline grid */}
-                            <div className="absolute left-64 right-0 top-6 bottom-0">
-                              <div className="h-full grid grid-cols-24 gap-px bg-gray-200">
+                      {Object.entries(shifts).map(([shiftId, assignments]) => {
+                        const shiftGroups = groupAndSortShifts({ [shiftId]: assignments });
+                        return shiftGroups.map((group) => (
+                          <div key={`${group.name}-${shiftId}`} className="bg-gray-50 p-4 rounded-lg">
+                            <h4 className="text-sm font-medium text-gray-900 border-b border-gray-200 pb-2">
+                              {group.name}
+                            </h4>
+                            <div className="relative mt-4">
+                              {/* Timeline header */}
+                              <div className="absolute left-64 right-0 flex border-b border-gray-200">
                                 {Array.from({ length: 24 }, (_, i) => (
-                                  <div key={i} className="bg-white" />
+                                  <div key={i} className="flex-1 text-center text-xs text-gray-500">
+                                    {`${i.toString().padStart(2, '0')}:00`}
+                                  </div>
                                 ))}
                               </div>
-                            </div>
-                          </div>
-                          
-                          {group.assignments.map(({ duration, assignments }) => {
-                            const timeSpan = formatTimeSpan(group.startTime, duration);
-                            return (
-                              <div key={duration} className="mt-8">
-                                <h5 className="text-xs font-medium text-gray-500 mb-2">
-                                  {duration}h Shift ({timeSpan})
-                                </h5>
-                                <div className="space-y-2">
-                                  {assignments.map((assignment) => (
-                                    <div key={assignment.id} className="flex items-center">
-                                      <div className="w-64 flex items-center space-x-3 text-sm">
-                                        <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                                          assignment.is_supervisor_shift
-                                            ? 'bg-purple-100 text-purple-800'
-                                            : 'bg-blue-100 text-blue-800'
-                                        }`}>
-                                          {assignment.is_supervisor_shift ? 'Supervisor' : 'Dispatcher'}
-                                        </span>
-                                        <span className="text-gray-900">
-                                          {assignment.employee.first_name} {assignment.employee.last_name}
-                                        </span>
-                                      </div>
-                                      
-                                      {/* Timeline bar */}
-                                      <div className="relative flex-1 h-8">
-                                        <div
-                                          className={`absolute top-1 h-6 rounded ${
-                                            assignment.is_supervisor_shift
-                                              ? 'bg-purple-200'
-                                              : 'bg-blue-200'
-                                          } border border-opacity-50 ${
-                                            assignment.is_supervisor_shift
-                                              ? 'border-purple-300'
-                                              : 'border-blue-300'
-                                          }`}
-                                          style={getShiftBarStyle(assignment.shift)}
-                                        >
-                                          <div className="absolute inset-0 flex items-center justify-center text-xs font-medium">
-                                            {assignment.shift.start_time} - {assignment.shift.end_time}
-                                          </div>
-                                        </div>
-                                      </div>
-                                    </div>
+                              
+                              {/* Timeline grid */}
+                              <div className="absolute left-64 right-0 top-6 bottom-0">
+                                <div className="h-full grid grid-cols-24 gap-px bg-gray-200">
+                                  {Array.from({ length: 24 }, (_, i) => (
+                                    <div key={i} className="bg-white" />
                                   ))}
                                 </div>
                               </div>
-                            );
-                          })}
-                        </div>
-                      ))}
+                            </div>
+                            
+                            {group.assignments.map(({ duration, assignments }) => {
+                              const timeSpan = formatTimeSpan(group.startTime, duration);
+                              return (
+                                <div key={duration} className="mt-8">
+                                  <h5 className="text-xs font-medium text-gray-500 mb-2">
+                                    {duration}h Shift ({timeSpan})
+                                  </h5>
+                                  <div className="space-y-2">
+                                    {assignments.map((assignment) => (
+                                      <div key={assignment.id} className="flex items-center">
+                                        <div className="w-64 flex items-center space-x-3 text-sm">
+                                          <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                                            assignment.is_supervisor_shift
+                                              ? 'bg-purple-100 text-purple-800'
+                                              : 'bg-blue-100 text-blue-800'
+                                          }`}>
+                                            {assignment.is_supervisor_shift ? 'Supervisor' : 'Dispatcher'}
+                                          </span>
+                                          <span className="text-gray-900">
+                                            {assignment.employee.first_name} {assignment.employee.last_name}
+                                          </span>
+                                        </div>
+                                        
+                                        {/* Timeline bar */}
+                                        <div className="relative flex-1 h-8">
+                                          <div
+                                            className={`absolute top-1 h-6 rounded ${
+                                              assignment.is_supervisor_shift
+                                                ? 'bg-purple-200'
+                                                : 'bg-blue-200'
+                                            } border border-opacity-50 ${
+                                              assignment.is_supervisor_shift
+                                                ? 'border-purple-300'
+                                                : 'border-blue-300'
+                                            }`}
+                                            style={getShiftBarStyle(assignment.shift)}
+                                          >
+                                            <div className="absolute inset-0 flex items-center justify-center text-xs font-medium">
+                                              {assignment.shift.start_time} - {assignment.shift.end_time}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ));
+                      })}
                     </div>
                   </div>
                 </li>

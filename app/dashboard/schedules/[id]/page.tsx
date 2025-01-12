@@ -266,7 +266,7 @@ async function getPreviousScheduleAssignments(schedule: BaseSchedule): Promise<P
       overtime_status,
       created_at,
       updated_at,
-      employees:employees (
+      employees!inner (
         id,
         user_id,
         first_name,
@@ -278,13 +278,9 @@ async function getPreviousScheduleAssignments(schedule: BaseSchedule): Promise<P
         created_at,
         updated_at
       ),
-      shifts:shifts (*)
+      shifts (*)
     `)
-    .eq('date', formattedDate)
-    .not('employees.email', 'is', null)
-    .not('employees.is_active', 'is', null)
-    .not('employees.created_at', 'is', null)
-    .not('employees.updated_at', 'is', null);
+    .eq('date', formattedDate);
 
   if (error || !rawAssignments?.length) {
     return undefined;
@@ -450,8 +446,17 @@ export default async function ScheduleDetailsPage({
   const { data: assignments, error: assignmentsError } = await supabase
     .from('schedule_assignments')
     .select(`
-      *,
-      employees (
+      id,
+      schedule_id,
+      employee_id,
+      shift_id,
+      date,
+      is_supervisor_shift,
+      overtime_hours,
+      overtime_status,
+      created_at,
+      updated_at,
+      employees!inner (
         id,
         first_name,
         last_name,

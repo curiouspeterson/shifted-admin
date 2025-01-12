@@ -408,9 +408,7 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
               employee_id: assignment.employee_id,
               shift_id: assignment.shift_id,
               date: assignment.date,
-              is_supervisor_shift: assignment.is_supervisor_shift,
-              start_time: shift.start_time,
-              end_time: shift.end_time
+              is_supervisor_shift: assignment.is_supervisor_shift
             };
           });
           
