@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { 
@@ -10,7 +10,8 @@ import {
   TimeBasedRequirement,
   EmployeeSchedulingRule,
   Assignment,
-  ShiftPatternType
+  ShiftPatternType,
+  AssignmentInsert
 } from '@/app/types/scheduling'
 
 interface ScheduleFormProps {
@@ -145,15 +146,21 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
     // Get all active employees
     const { data: employees, error: employeesError } = await supabase
       .from('employees')
-      .select('*')
+      .select('*, auth_user:user_id(email)')
       .eq('is_active', true);
     
     if (employeesError) throw employeesError;
     if (!employees?.length) throw new Error('No active employees found');
 
+    // Cast employees to include email from auth_user
+    const typedEmployees = employees.map(emp => ({
+      ...emp,
+      email: emp.auth_user?.email || ''
+    })) as Employee[];
+
     // Separate supervisors and dispatchers
-    const supervisors = employees.filter(e => e.position === 'supervisor' || e.position === 'management');
-    const dispatchers = employees.filter(e => e.position === 'dispatcher');
+    const supervisors = typedEmployees.filter(e => e.position === 'supervisor' || e.position === 'management');
+    const dispatchers = typedEmployees.filter(e => e.position === 'dispatcher');
 
     // Get employee availability and rules
     const { data: availability } = await supabase
@@ -165,7 +172,7 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
       .select('*');
 
     // Initialize tracking structures
-    const assignments: Assignment[] = [];
+    const assignments: AssignmentInsert[] = [];
     const employeePatterns: Map<string, ShiftPattern> = new Map();
     const weeklyHours: Map<string, number> = new Map();
     const coverageTracking: Map<string, Map<string, { total: number; supervisors: number }>> = new Map();
@@ -324,14 +331,22 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
 
     // Insert all assignments
     if (assignments.length > 0) {
+      console.log('Inserting assignments:', assignments);
+      
       const { error: assignmentError } = await supabase
         .from('schedule_assignments')
-        .insert(assignments);
+        .insert(assignments)
+        .select();
       
-      if (assignmentError) throw assignmentError;
+      if (assignmentError) {
+        console.error('Assignment insert error:', assignmentError);
+        throw assignmentError;
+      }
+      
       console.log('Successfully inserted assignments');
     }
 
+    return { success: true };
   } catch (error) {
     console.error('Error creating schedule assignments:', error);
     throw error;
@@ -418,9 +433,9 @@ function tryAssignPattern(
 // Helper function to create assignments for a pattern
 function createPatternAssignments(
   pattern: ShiftPattern,
-  employee: any, // Keep as any since we can't guarantee all fields are non-null from DB
+  employee: Employee,
   scheduleId: string,
-  assignments: Assignment[],
+  assignments: AssignmentInsert[],
   weeklyHours: Map<string, number>,
   shifts: Shift[]
 ) {
@@ -433,19 +448,14 @@ function createPatternAssignments(
     const shift = shifts.find(s => s.id === pattern.shifts[i]);
     if (!shift) continue;
 
-    const assignment: Assignment = {
-      id: crypto.randomUUID(),
+    const assignment: AssignmentInsert = {
       schedule_id: scheduleId,
       employee_id: employee.id,
       shift_id: pattern.shifts[i],
       date: dateStr,
       is_supervisor_shift: employee.position === 'supervisor' || employee.position === 'management',
       overtime_hours: null,
-      overtime_status: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      employee: employee,
-      shift: shift
+      overtime_status: null
     };
 
     assignments.push(assignment);
@@ -466,19 +476,14 @@ function createPatternAssignments(
     if (!shift) return;
     
     // Create the 4-hour assignment
-    const assignment: Assignment = {
-      id: crypto.randomUUID(),
+    const assignment: AssignmentInsert = {
       schedule_id: scheduleId,
       employee_id: employee.id,
       shift_id: pattern.shifts[3],
       date: dateStr,
       is_supervisor_shift: employee.position === 'supervisor' || employee.position === 'management',
       overtime_hours: null,
-      overtime_status: null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-      employee: employee,
-      shift: shift
+      overtime_status: null
     };
     
     assignments.push(assignment);
@@ -519,7 +524,7 @@ function findSuitableFourHourShift(
 // Helper function to update coverage tracking
 function updateCoverageTracking(
   pattern: ShiftPattern,
-  employee: any,
+  employee: Employee,
   coverageTracking: Map<string, Map<string, { total: number; supervisors: number }>>,
   shift: any
 ) {
@@ -576,19 +581,46 @@ function updateCoverageTracking(
 }
 
 export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel }: ScheduleFormProps) {
+  const [name, setName] = useState(initialData?.name || '')
+  const [startDate, setStartDate] = useState(initialData?.start_date || '')
+  const [endDate, setEndDate] = useState(initialData?.end_date || '')
+  const [status] = useState(initialData?.status || 'draft')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [startDate, setStartDate] = useState(initialData?.start_date?.split('T')[0] || '')
-  const [name, setName] = useState(initialData?.name || '')
+  const [hasEditedName, setHasEditedName] = useState(false)
 
-  // Calculate end date as 14 days after start date
-  const calculateEndDate = (start: string) => {
-    const date = new Date(start)
-    date.setDate(date.getDate() + 13) // 14 days total (bi-weekly)
-    return date.toISOString().split('T')[0]
+  const formatDateRange = (start: string, end: string) => {
+    // Ensure dates are interpreted in local timezone by appending T00:00:00
+    const startDateObj = new Date(`${start}T00:00:00`)
+    const endDateObj = new Date(`${end}T00:00:00`)
+    return `${startDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
   }
 
-  const endDate = startDate ? calculateEndDate(startDate) : ''
+  const calculateEndDate = (start: string) => {
+    if (!start) return ''
+    // Ensure date is interpreted in local timezone
+    const endDate = new Date(`${start}T00:00:00`)
+    endDate.setDate(endDate.getDate() + 13) // 14 days total (start date + 13)
+    return endDate.toISOString().split('T')[0]
+  }
+
+  // Update end date and name when start date changes
+  useEffect(() => {
+    if (startDate) {
+      const newEndDate = calculateEndDate(startDate)
+      setEndDate(newEndDate)
+      
+      // Only auto-update name if it hasn't been manually edited
+      if (!hasEditedName) {
+        setName(formatDateRange(startDate, newEndDate))
+      }
+    }
+  }, [startDate, hasEditedName])
+
+  const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setName(e.target.value)
+    setHasEditedName(true)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -658,11 +690,10 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
         </label>
         <input
           type="text"
-          id="name"
           name="name"
+          id="name"
           value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
+          onChange={handleNameChange}
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
           placeholder="Enter schedule name"
         />
@@ -674,11 +705,11 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
         </label>
         <input
           type="date"
+          name="startDate"
           id="startDate"
           value={startDate}
           onChange={(e) => setStartDate(e.target.value)}
-          required
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
+          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
 
@@ -688,10 +719,11 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
         </label>
         <input
           type="date"
+          name="endDate"
           id="endDate"
           value={endDate}
           disabled
-          className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm text-gray-900 sm:text-sm"
+          className="mt-1 block w-full rounded-md border-gray-300 bg-gray-50 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
         />
       </div>
 

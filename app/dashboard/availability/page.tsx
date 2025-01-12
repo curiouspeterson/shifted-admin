@@ -82,7 +82,11 @@ export default function AvailabilityPage() {
       const { availability: savedAvailability } = await response.json()
 
       if (savedAvailability && savedAvailability.length > 0) {
-        setAvailability(savedAvailability)
+        setAvailability(savedAvailability.map((slot: AvailabilitySlot) => ({
+          ...slot,
+          start_time: slot.start_time.substring(0, 5),
+          end_time: slot.end_time.substring(0, 5),
+        })))
       } else {
         console.log('No saved availability found - using default schedule')
       }
@@ -114,6 +118,12 @@ export default function AvailabilityPage() {
         return
       }
 
+      const availabilityWithSeconds = availability.map(slot => ({
+        ...slot,
+        start_time: `${slot.start_time}:00`,
+        end_time: `${slot.end_time}:00`
+      }))
+
       const response = await fetch('/api/availability', {
         method: 'POST',
         credentials: 'include',
@@ -121,7 +131,7 @@ export default function AvailabilityPage() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${session.access_token}`
         },
-        body: JSON.stringify({ availability })
+        body: JSON.stringify({ availability: availabilityWithSeconds })
       })
 
       if (!response.ok) {

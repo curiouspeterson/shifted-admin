@@ -66,7 +66,7 @@ interface GroupedAssignments {
 
 interface ScheduleDetailsClientProps {
   schedule: Schedule;
-  assignments: Assignment[];
+  assignments: GroupedAssignments;
   error?: string | null;
   timeRequirements: TimeBasedRequirement[];
   requirementStatuses: RequirementStatus[];
@@ -88,17 +88,8 @@ export default function ScheduleDetailsClient({
   const [isDeleting, setIsDeleting] = useState(false);
   const router = useRouter();
 
-  // Group assignments by date and shift
-  const groupedAssignments = assignments.reduce<GroupedAssignments>((acc, assignment) => {
-    if (!acc[assignment.date]) {
-      acc[assignment.date] = {};
-    }
-    if (!acc[assignment.date][assignment.shift.id]) {
-      acc[assignment.date][assignment.shift.id] = [];
-    }
-    acc[assignment.date][assignment.shift.id].push(assignment);
-    return acc;
-  }, {});
+  // Remove the grouping logic since assignments are already grouped
+  const groupedAssignments = assignments;
 
   const handleApprove = async (scheduleId: string) => {
     try {
