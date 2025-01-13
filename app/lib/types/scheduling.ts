@@ -68,7 +68,10 @@ export interface Schedule {
   version: number;
   is_active: boolean;
   created_at: string | null;
-  updated_at?: string;
+  updated_at: string | null;
+  created_by: string | null;
+  published_at: string | null;
+  published_by: string | null;
 }
 
 export interface EmployeeSchedulingRule {
@@ -103,4 +106,19 @@ export interface RequirementStatus {
   required: number;
   actual: number;
   type: 'total' | 'supervisor';
+}
+
+export interface ScheduleAssignment {
+  id: string;
+  schedule_id: string | null;
+  employee_id: string | null;
+  shift_id: string | null;
+  date: string;
+  is_supervisor_shift: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+  overtime_hours: number | null;
+  overtime_status: string | null;
+  employee?: Employee;
+  shift?: Shift;
 } 
