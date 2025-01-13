@@ -1,15 +1,4 @@
-import { Shift, Employee } from '@/lib/types/scheduling';
-
-export interface ScheduleAssignment {
-  id: string;
-  schedule_id: string;
-  employee_id: string;
-  shift_id: string;
-  date: string;
-  is_supervisor_shift: boolean;
-  employee: Employee;
-  shift: Shift;
-}
+import type { ScheduleAssignment } from '../types/scheduling';
 
 export interface GroupedAssignments {
   [date: string]: {

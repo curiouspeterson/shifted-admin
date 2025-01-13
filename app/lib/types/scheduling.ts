@@ -67,11 +67,9 @@ export interface Schedule {
   status: 'draft' | 'published' | 'archived';
   version: number;
   is_active: boolean;
-  created_at: string | null;
-  updated_at: string | null;
-  created_by: string | null;
-  published_at: string | null;
-  published_by: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface EmployeeSchedulingRule {
@@ -93,8 +91,8 @@ export interface TimeBasedRequirement {
   min_employees: number;
   max_employees: number | null;
   min_supervisors: number;
-  created_at?: string;
-  updated_at?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface RequirementStatus {
@@ -110,15 +108,18 @@ export interface RequirementStatus {
 
 export interface ScheduleAssignment {
   id: string;
-  schedule_id: string | null;
-  employee_id: string | null;
-  shift_id: string | null;
-  date: string;
-  is_supervisor_shift: boolean;
-  created_at: string | null;
-  updated_at: string | null;
-  overtime_hours: number | null;
-  overtime_status: string | null;
-  employee?: Employee;
-  shift?: Shift;
+  schedule_id: string;
+  employee_id: string;
+  shift_id: string;
+  start_time: string;
+  end_time: string;
+  created_at: string;
+  updated_at: string;
+  employee?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    role: string;
+  };
 } 

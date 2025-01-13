@@ -2,7 +2,7 @@
 import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { TimeBasedRequirement } from '@/lib/types/scheduling';
+import { TimeBasedRequirement } from '@/app/lib/types/scheduling';
 import { z } from 'zod';
 
 const requirementSchema = z.object({
@@ -74,39 +74,51 @@ export async function GET(
   request: Request,
   { params }: { params: { id: string } }
 ) {
+  const scheduleId = params.id;
+  
+  // Debug logging
+  console.log('[Requirements API] Init:', {
+    scheduleId,
+    url: request.url
+  });
+
   try {
+    // Initialize Supabase client with cookie store
     const cookieStore = cookies();
     const supabase = createRouteHandlerClient({ cookies: () => cookieStore });
-    const scheduleId = params.id;
 
-    const { data: schedule, error: scheduleError } = await supabase
-      .from('schedules')
-      .select('*')
-      .eq('id', scheduleId)
-      .single();
+    // Verify auth session
+    console.log('[Requirements API] Auth Check:', { checking: true });
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-    if (scheduleError || !schedule) {
-      return NextResponse.json(
-        { error: 'Schedule not found' },
-        { status: 404 }
-      );
+    if (sessionError) {
+      console.log('[Requirements API] Auth Error:', sessionError);
+      return NextResponse.json({ error: 'Authentication error' }, { status: 401 });
     }
 
-    const { data: requirements, error } = await supabase
+    if (!session) {
+      console.log('[Requirements API] Auth Failed:', { reason: 'No user session found' });
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    console.log('[Requirements API] Auth Result:', { hasSession: true });
+
+    // Fetch requirements
+    const { data: requirements, error: requirementsError } = await supabase
       .from('time_based_requirements')
       .select('*')
       .eq('schedule_id', scheduleId)
       .order('day_of_week')
       .order('start_time');
 
-    if (error) throw error;
+    if (requirementsError) {
+      console.error('[Requirements API] Query Error:', requirementsError);
+      return NextResponse.json({ error: 'Failed to fetch requirements' }, { status: 500 });
+    }
 
     return NextResponse.json(requirements);
   } catch (error) {
-    console.error('Error fetching requirements:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch requirements' },
-      { status: 500 }
-    );
+    console.error('[Requirements API] Unexpected Error:', error);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

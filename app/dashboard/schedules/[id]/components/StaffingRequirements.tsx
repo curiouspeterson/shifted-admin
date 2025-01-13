@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { TimeBasedRequirement } from '@/lib/types/scheduling';
@@ -42,7 +42,22 @@ export function StaffingRequirements({
 }: StaffingRequirementsProps) {
   const dayOfWeek = new Date(date).getDay();
 
+  // Debug logging
+  useEffect(() => {
+    console.log('StaffingRequirements props:', {
+      scheduleId,
+      date,
+      dayOfWeek,
+      assignmentsCount: assignments?.length,
+      timeRequirementsCount: timeRequirements?.length,
+      requirementStatusesCount: requirementStatuses?.length,
+      isLoading,
+      error
+    });
+  }, [scheduleId, date, assignments, timeRequirements, requirementStatuses, isLoading, error]);
+
   if (error) {
+    console.log('StaffingRequirements error:', error);
     return (
       <Card className="w-full">
         <CardHeader>
@@ -56,6 +71,7 @@ export function StaffingRequirements({
   }
 
   if (isLoading) {
+    console.log('StaffingRequirements loading');
     return (
       <Card className="w-full">
         <CardHeader>
@@ -73,20 +89,24 @@ export function StaffingRequirements({
   }
 
   const getRequirementStatus = (start: string, end: string) => {
-    return requirementStatuses.find(
+    const status = requirementStatuses.find(
       status => 
         status.date === date &&
         status.timeBlock.start === start &&
         status.timeBlock.end === end
     );
+    console.log('Requirement status lookup:', { start, end, status });
+    return status;
   };
 
   const getRequirement = (start: string, end: string) => {
-    return timeRequirements.find(r => 
+    const requirement = timeRequirements.find(r => 
       r.day_of_week === dayOfWeek && 
       r.start_time === start && 
       r.end_time === end
     );
+    console.log('Requirement lookup:', { start, end, requirement });
+    return requirement;
   };
 
   return (
@@ -102,7 +122,10 @@ export function StaffingRequirements({
           {TIME_BLOCKS.map(block => {
             const req = getRequirement(block.start, block.end);
             const status = getRequirementStatus(block.start, block.end);
-            if (!req || !status) return null;
+            if (!req || !status) {
+              console.log('Missing requirement or status:', { block, req, status });
+              return null;
+            }
 
             const isMet = status.actual >= status.required;
 
