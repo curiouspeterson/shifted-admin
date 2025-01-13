@@ -27,18 +27,21 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/error', request.url))
     }
 
-    // Create Supabase client with minimal cookie handling
+    // Create Supabase client with complete cookie handling
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
       {
         cookies: {
           get(name: string) {
-            return request.cookies.get(name)?.value
+            const cookie = request.cookies.get(name)
+            console.log('Getting cookie:', name, !!cookie)
+            return cookie?.value
           },
           set(name: string, value: string, options: any) {
-            // Only set essential auth cookies
-            if (name === 'sb-access-token' || name === 'sb-refresh-token') {
+            console.log('Setting cookie:', name)
+            // Handle all Supabase auth cookies
+            if (name.startsWith('sb-')) {
               response.cookies.set({
                 name,
                 value,
@@ -52,7 +55,8 @@ export async function middleware(request: NextRequest) {
             }
           },
           remove(name: string, options: any) {
-            if (name === 'sb-access-token' || name === 'sb-refresh-token') {
+            if (name.startsWith('sb-')) {
+              console.log('Removing cookie:', name)
               response.cookies.delete(name)
             }
           },
@@ -65,8 +69,14 @@ export async function middleware(request: NextRequest) {
       }
     )
 
-    // Get session with minimal data
-    const { data: { session } } = await supabase.auth.getSession()
+    // Get session with debug logging
+    console.log('Getting session in middleware')
+    const { data: { session }, error } = await supabase.auth.getSession()
+    if (error) {
+      console.error('Session error in middleware:', error)
+    } else {
+      console.log('Session found:', !!session)
+    }
 
     // Handle routing based on auth state
     const isAuthPage = request.nextUrl.pathname.startsWith('/sign-in') || 
