@@ -89,6 +89,12 @@ interface StaffingRequirementsProps {
 
 // Update StaffingRequirements component to handle overnight shifts from previous day
 function StaffingRequirements({ assignments, date, previousDayAssignments = [] }: StaffingRequirementsProps) {
+  console.log('StaffingRequirements - Props:', {
+    assignments,
+    date,
+    previousDayAssignments
+  });
+
   const timeBlocks = [
     { name: 'Early Morning', start: '05:00', end: '09:00', required: 6, supervisorRequired: 1 },
     { name: 'Day', start: '09:00', end: '21:00', required: 8, supervisorRequired: 1 },
@@ -98,10 +104,23 @@ function StaffingRequirements({ assignments, date, previousDayAssignments = [] }
 
   // Helper function to check if a shift overlaps with a time block
   function doesShiftOverlapBlock(shift: Shift, blockStart: string, blockEnd: string): boolean {
+    console.log('doesShiftOverlapBlock - Checking shift:', {
+      shift,
+      blockStart,
+      blockEnd
+    });
+
     const shiftStart = convertTimeToMinutes(shift.start_time);
     const shiftEnd = convertTimeToMinutes(shift.end_time);
     const blockStartMins = convertTimeToMinutes(blockStart);
     const blockEndMins = convertTimeToMinutes(blockEnd);
+
+    console.log('Converted times to minutes:', {
+      shiftStart,
+      shiftEnd,
+      blockStartMins,
+      blockEndMins
+    });
 
     // Handle overnight blocks (end time is less than start time)
     if (blockEndMins < blockStartMins) {
@@ -110,38 +129,56 @@ function StaffingRequirements({ assignments, date, previousDayAssignments = [] }
       // 2. Starts after midnight and ends before block end
       if (shiftEnd < shiftStart) {
         // Overnight shift
+        console.log('Overnight shift detected - covering overnight block');
         return true; // Overnight shifts cover overnight blocks
       } else {
-        return (shiftStart <= blockStartMins && shiftEnd > 0) || 
-               (shiftStart >= 0 && shiftStart < blockEndMins);
+        const result = (shiftStart <= blockStartMins && shiftEnd > 0) || 
+                      (shiftStart >= 0 && shiftStart < blockEndMins);
+        console.log('Regular shift with overnight block:', result);
+        return result;
       }
     }
 
     // Handle overnight shifts
     if (shiftEnd < shiftStart) {
       // Shift goes past midnight
-      return (shiftStart <= blockStartMins) || (shiftEnd >= blockEndMins);
+      const result = (shiftStart <= blockStartMins) || (shiftEnd >= blockEndMins);
+      console.log('Overnight shift with regular block:', result);
+      return result;
     }
 
     // Normal case: check if shift overlaps with block
-    return (shiftStart < blockEndMins && shiftEnd > blockStartMins);
+    const result = (shiftStart < blockEndMins && shiftEnd > blockStartMins);
+    console.log('Normal shift overlap check:', result);
+    return result;
   }
 
   // Calculate coverage for each block, including overnight shifts from previous day
   const coverage = timeBlocks.map(block => {
+    console.log(`Processing time block: ${block.name}`);
+
     // Get assignments that overlap with this block
     const blockAssignments = assignments.filter(assignment => 
       doesShiftOverlapBlock(assignment.shift, block.start, block.end)
     );
+    console.log('Assignments overlapping with block:', blockAssignments);
 
     // For early morning blocks, also check previous day's overnight shifts
     let relevantPreviousAssignments: Assignment[] = [];
     if (block.name === 'Early Morning' || block.name === 'Overnight') {
+      console.log('Checking previous day assignments for overnight shifts');
       relevantPreviousAssignments = previousDayAssignments.filter(assignment => {
         const shiftEnd = convertTimeToMinutes(assignment.shift.end_time);
-        return shiftEnd < convertTimeToMinutes(assignment.shift.start_time) && // Is overnight shift
-               doesShiftOverlapBlock(assignment.shift, block.start, block.end);
+        const isOvernight = shiftEnd < convertTimeToMinutes(assignment.shift.start_time);
+        const overlaps = doesShiftOverlapBlock(assignment.shift, block.start, block.end);
+        console.log('Previous day assignment check:', {
+          assignment,
+          isOvernight,
+          overlaps
+        });
+        return isOvernight && overlaps;
       });
+      console.log('Relevant previous day assignments:', relevantPreviousAssignments);
     }
 
     // Combine current and relevant previous assignments
@@ -151,7 +188,7 @@ function StaffingRequirements({ assignments, date, previousDayAssignments = [] }
     const dispatchers = allRelevantAssignments.filter(a => !a.is_supervisor_shift).length;
     const total = supervisors + dispatchers;
 
-    return {
+    const blockCoverage = {
       ...block,
       assigned: {
         total,
@@ -160,7 +197,11 @@ function StaffingRequirements({ assignments, date, previousDayAssignments = [] }
       },
       isMet: total >= block.required && supervisors >= block.supervisorRequired
     };
+    console.log(`Coverage for ${block.name}:`, blockCoverage);
+    return blockCoverage;
   });
+
+  console.log('Final coverage for all blocks:', coverage);
 
   return (
     <div className="grid grid-cols-4 gap-4 mb-6">
@@ -223,21 +264,27 @@ interface ShiftGroup {
 
 // Add helper functions for shift grouping and sorting
 function getShiftDuration(shift: Shift): number {
+  console.log('getShiftDuration - Input shift:', shift);
   const startTime = new Date(`1970-01-01T${shift.start_time}`);
   let endTime = new Date(`1970-01-01T${shift.end_time}`);
   if (endTime < startTime) {
     endTime = new Date(`1970-01-02T${shift.end_time}`);
   }
-  return (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+  const duration = (endTime.getTime() - startTime.getTime()) / (1000 * 60 * 60);
+  console.log('getShiftDuration - Calculated duration:', duration);
+  return duration;
 }
 
 function groupAndSortShifts(shifts: Record<string, Assignment[]>): ShiftGroup[] {
+  console.log('groupAndSortShifts - Input shifts:', shifts);
+  
   // First, group assignments by shift name
   const shiftGroups = new Map<string, Map<number, Assignment[]>>();
   const startTimes = new Map<string, string>();
 
   // Group shifts by name and duration
   Object.values(shifts).flat().forEach(assignment => {
+    console.log('Processing assignment:', assignment);
     const shiftName = assignment.shift.name.replace(/ \(\d+h\)$/, ''); // Remove duration from name
     const duration = getShiftDuration(assignment.shift);
     
@@ -253,8 +300,13 @@ function groupAndSortShifts(shifts: Record<string, Assignment[]>): ShiftGroup[] 
     durationMap.get(duration)!.push(assignment);
   });
 
+  console.log('Shift groups after processing:', {
+    shiftGroups: Array.from(shiftGroups.entries()),
+    startTimes: Array.from(startTimes.entries())
+  });
+
   // Convert to array and sort
-  return Array.from(shiftGroups.entries())
+  const result = Array.from(shiftGroups.entries())
     .map(([name, durationMap]) => ({
       name,
       startTime: startTimes.get(name)!,
@@ -272,10 +324,14 @@ function groupAndSortShifts(shifts: Record<string, Assignment[]>): ShiftGroup[] 
       const timeB = convertTimeToMinutes(b.startTime);
       return timeA - timeB;
     });
+
+  console.log('groupAndSortShifts - Final result:', result);
+  return result;
 }
 
 // Add helper function to calculate and format time span
 function formatTimeSpan(startTime: string, duration: number): string {
+  console.log('formatTimeSpan - Input:', { startTime, duration });
   const start = new Date(`1970-01-01T${startTime}`);
   let end = new Date(start.getTime() + duration * 60 * 60 * 1000);
   
@@ -284,7 +340,9 @@ function formatTimeSpan(startTime: string, duration: number): string {
     return date.toTimeString().substring(0, 5);
   };
   
-  return `${formatTime(start)} - ${formatTime(end)}`;
+  const result = `${formatTime(start)} - ${formatTime(end)}`;
+  console.log('formatTimeSpan - Result:', result);
+  return result;
 }
 
 // Add TimelineView component
@@ -348,6 +406,14 @@ export default function ScheduleDetailsClient({
   requirementStatuses,
   previousScheduleAssignments
 }: ScheduleDetailsClientProps) {
+  console.log('ScheduleDetailsClient - Initial render with props:', {
+    schedule,
+    assignments,
+    timeRequirements,
+    requirementStatuses,
+    previousScheduleAssignments
+  });
+
   const [error, setError] = useState<string | null>(initialError || null);
   const [isApproving, setIsApproving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -355,6 +421,7 @@ export default function ScheduleDetailsClient({
 
   // Remove the grouping logic since assignments are already grouped
   const groupedAssignments = assignments;
+  console.log('ScheduleDetailsClient - Grouped assignments:', groupedAssignments);
 
   // Helper function for shift bar styling
   function getShiftBarStyle(shift: Shift): { left: string; width: string } {
@@ -507,10 +574,13 @@ export default function ScheduleDetailsClient({
         <div className="overflow-hidden bg-white shadow sm:rounded-md">
           <ul role="list" className="divide-y divide-gray-200">
             {Object.entries(groupedAssignments).map(([date, shifts]) => {
+              console.log(`Processing date ${date} with shifts:`, shifts);
+              
               // Get previous day's assignments if available
               const previousDayAssignments = previousScheduleAssignments?.date === getPreviousDay(date) 
                 ? previousScheduleAssignments.assignments 
                 : [];
+              console.log(`Previous day assignments for ${date}:`, previousDayAssignments);
 
               return (
                 <li key={date}>
@@ -529,7 +599,9 @@ export default function ScheduleDetailsClient({
 
                     <div className="mt-4 space-y-6">
                       {Object.entries(shifts).map(([shiftId, assignments]) => {
+                        console.log(`Processing shift ${shiftId} with assignments:`, assignments);
                         const shiftGroups = groupAndSortShifts({ [shiftId]: assignments });
+                        console.log(`Shift groups for ${shiftId}:`, shiftGroups);
                         return shiftGroups.map((group) => (
                           <div key={`${group.name}-${shiftId}`} className="bg-gray-50 p-4 rounded-lg">
                             <h4 className="text-sm font-medium text-gray-900 border-b border-gray-200 pb-2">

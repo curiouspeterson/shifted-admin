@@ -2,59 +2,71 @@
 
 import { notFound } from 'next/navigation';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import type { Employee, Assignment, Shift, TimeBasedRequirement, Schedule } from '@/app/types/scheduling';
 import type { Database } from '@/lib/database.types';
 import type { PostgrestError } from '@supabase/supabase-js';
-import type { Assignment, TimeBasedRequirement, Shift, Employee } from '@/app/types/scheduling';
 import ScheduleDetailsClient from './ScheduleDetailsClient';
-
-/**
- * TODO: Fix type generation and database type alignment
- * 
- * Current Issues:
- * 1. Type Generation: The Supabase type generator creates nullable types for fields that are NOT NULL
- *    in the database schema. This causes type mismatches between our TypeScript types and the actual
- *    database structure.
- * 
- * 2. Type Mismatches:
- *    - Employee fields (email, is_active, created_at, updated_at) are marked as nullable in generated
- *      types but are NOT NULL in the database
- *    - overtime_hours comes back as a number but is stored as text in the database
- * 
- * Current Workarounds:
- * 1. Using runtime checks and type assertions to handle nullable fields
- * 2. Implementing type guards to validate data shape
- * 3. Converting overtime_hours between string and number as needed
- * 
- * Long-term Solutions:
- * 1. Update type generation to correctly reflect NOT NULL constraints
- * 2. Align TypeScript types with database schema
- * 3. Remove type assertions once types are properly aligned
- * 4. Consider using a schema validation library (e.g., Zod) for runtime type safety
- */
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 // Initialize Supabase client
 const supabase = createClientComponentClient<Database>();
 
-// Define types based on database schema
-type BaseSchedule = Database['public']['Tables']['schedules']['Row'];
-type DbSchedule = BaseSchedule & {
-  name: string;
-  updated_at: string | null;
+// Define database types
+type DbEmployee = Database['public']['Tables']['employees']['Row'];
+type DbShift = Database['public']['Tables']['shifts']['Row'];
+type DbAssignment = Database['public']['Tables']['schedule_assignments']['Row'];
+type DbSchedule = Database['public']['Tables']['schedules']['Row'] & {
+  name: string; // This field exists in the database but is missing from the generated types
+};
+type DbRequirement = Database['public']['Tables']['time_based_requirements']['Row'];
+
+// Define raw assignment type with joined data
+type RawAssignmentWithJoins = Database['public']['Tables']['schedule_assignments']['Row'] & {
+  employee: Database['public']['Tables']['employees']['Row'] | null;
+  shift: Database['public']['Tables']['shifts']['Row'] | null;
 };
 
-// Define missing types
+// Define base assignment data without employee and shift
+type BaseAssignmentData = Omit<Assignment, 'employee' | 'shift'>;
+
+// Function to create base assignment data
+function createBaseAssignmentData(raw: RawAssignmentWithJoins): BaseAssignmentData {
+  return {
+    id: raw.id,
+    schedule_id: raw.schedule_id || '',
+    employee_id: raw.employee_id || '',
+    shift_id: raw.shift_id || '',
+    date: raw.date,
+    is_supervisor_shift: Boolean(raw.is_supervisor_shift),
+    overtime_hours: typeof raw.overtime_hours === 'string' 
+      ? parseFloat(raw.overtime_hours)
+      : raw.overtime_hours,
+    overtime_status: raw.overtime_status || null,
+    created_at: raw.created_at || new Date().toISOString(),
+    updated_at: raw.updated_at || new Date().toISOString()
+  };
+}
+
+// Function to combine base data with employee and shift
+function createAssignment(
+  baseData: BaseAssignmentData,
+  employee: Employee,
+  shift: Shift
+): Assignment {
+  return {
+    ...baseData,
+    employee,
+    shift
+  };
+}
+
+// Define helper types
 interface GroupedAssignments {
   [date: string]: {
     [shiftId: string]: Assignment[];
   };
 }
 
-interface PreviousScheduleAssignments {
-  date: string;
-  assignments: Assignment[];
-}
-
-// Add RequirementStatus interface
 interface RequirementStatus {
   requirement: TimeBasedRequirement;
   totalAssigned: number;
@@ -63,79 +75,35 @@ interface RequirementStatus {
   isMet: boolean;
 }
 
-// Use the database types directly
-type DbShift = Database['public']['Tables']['shifts']['Row'];
-type BaseDbRequirement = Database['public']['Tables']['time_based_requirements']['Row'];
-type DbRequirement = Omit<BaseDbRequirement, 'created_at' | 'updated_at'> & {
-  created_at: string;
-  updated_at: string;
-};
-
-interface DbAssignment {
-  id: string;
-  schedule_id: string | null;
-  employee_id: string | null;
-  shift_id: string | null;
-  date: string;
-  is_supervisor_shift: boolean;
-  overtime_hours: string | number | null; // Allow both string and number
-  overtime_status: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-  employees: Employee | null;
-  shifts: DbShift | null;
-}
-
-// Define client-side schedule type
-interface ClientSchedule {
-  id: string;
-  name: string;
-  start_date: string;
-  end_date: string;
-  status: string;
-  version: number;
-  is_active: boolean;
-  created_by: string | null;
-  created_at: string | null;
-  updated_at: string | null;
-  published_at: string | null;
-  published_by: string | null;
-}
-
-// Helper function to convert database schedule to client schedule
-function mapDatabaseScheduleToClient(dbSchedule: BaseSchedule): ClientSchedule {
+// Convert database schedule to client schedule
+function mapDatabaseScheduleToClient(dbSchedule: DbSchedule): Schedule {
   return {
     id: dbSchedule.id,
-    name: 'Untitled Schedule', // Default name since it's not in BaseSchedule
+    name: dbSchedule.name || 'Untitled Schedule',
     start_date: dbSchedule.start_date,
     end_date: dbSchedule.end_date,
     status: dbSchedule.status,
     version: dbSchedule.version,
     is_active: dbSchedule.is_active,
-    created_by: dbSchedule.created_by,
-    created_at: dbSchedule.created_at,
-    updated_at: dbSchedule.created_at, // Use created_at as fallback
-    published_at: dbSchedule.published_at,
-    published_by: dbSchedule.published_by
+    created_by: dbSchedule.created_by || null,
+    created_at: dbSchedule.created_at || new Date().toISOString(),
+    published_at: dbSchedule.published_at || null,
+    published_by: dbSchedule.published_by || null
   };
 }
 
-// Helper function to convert database requirement to client requirement
+// Convert database requirement to client requirement
 function mapDatabaseRequirementToClient(dbRequirement: DbRequirement): TimeBasedRequirement {
-  // We can safely assert non-null since these have NOT NULL DEFAULT now() in the database
-  const created_at = dbRequirement.created_at!;
-  const updated_at = dbRequirement.updated_at!;
-
   return {
     id: dbRequirement.id,
     start_time: dbRequirement.start_time,
     end_time: dbRequirement.end_time,
     min_total_staff: dbRequirement.min_total_staff,
     min_supervisors: dbRequirement.min_supervisors,
-    crosses_midnight: dbRequirement.crosses_midnight || false,
-    is_active: dbRequirement.is_active || false,
-    created_at,
-    updated_at
+    crosses_midnight: dbRequirement.crosses_midnight,
+    is_active: dbRequirement.is_active,
+    created_at: dbRequirement.created_at || new Date().toISOString(),
+    updated_at: dbRequirement.updated_at || new Date().toISOString()
   };
 }
 
@@ -156,221 +124,11 @@ function doesShiftOverlap(shift: { start_time: string; end_time: string }, requi
   return !(shiftEnd <= reqStart || shiftStart >= reqEnd);
 }
 
-// Type guard for database assignments
-function isValidAssignment(assignment: any): assignment is DbAssignment {
-  return (
-    assignment &&
-    typeof assignment.id === 'string' &&
-    typeof assignment.date === 'string' &&
-    typeof assignment.is_supervisor_shift === 'boolean' &&
-    (!assignment.overtime_hours || typeof assignment.overtime_hours === 'string' || typeof assignment.overtime_hours === 'number') &&
-    assignment.employees &&
-    assignment.shifts &&
-    typeof assignment.employees.id === 'string' &&
-    typeof assignment.employees.first_name === 'string' &&
-    typeof assignment.employees.last_name === 'string' &&
-    typeof assignment.employees.email === 'string' &&
-    typeof assignment.employees.position === 'string' &&
-    typeof assignment.employees.is_active === 'boolean' &&
-    typeof assignment.employees.created_at === 'string' &&
-    typeof assignment.employees.updated_at === 'string'
-  );
-}
-
-// Update the mapping function to handle database types
-function mapDatabaseAssignmentToClient(dbAssignment: DbAssignment): Assignment {
-  if (!dbAssignment.employees || !dbAssignment.shifts) {
-    throw new Error('Invalid assignment data: missing employee or shift');
-  }
-
-  // Ensure email is not null as required by the Employee type
-  if (!dbAssignment.employees.email) {
-    throw new Error('Invalid employee data: missing email');
-  }
-
-  // Handle overtime_hours that might come back as a number despite the text cast
-  const overtimeHours = typeof dbAssignment.overtime_hours === 'number' 
-    ? dbAssignment.overtime_hours.toString()
-    : dbAssignment.overtime_hours;
-
-  return {
-    id: dbAssignment.id,
-    schedule_id: dbAssignment.schedule_id || '',
-    employee_id: dbAssignment.employee_id || '',
-    shift_id: dbAssignment.shift_id || '',
-    date: dbAssignment.date,
-    is_supervisor_shift: dbAssignment.is_supervisor_shift,
-    overtime_hours: overtimeHours ? parseFloat(overtimeHours) : null,
-    overtime_status: dbAssignment.overtime_status || null,
-    created_at: dbAssignment.created_at || new Date().toISOString(),
-    updated_at: dbAssignment.updated_at || new Date().toISOString(),
-    employee: {
-      ...dbAssignment.employees,
-      email: dbAssignment.employees.email // This is now guaranteed to be non-null
-    },
-    shift: dbAssignment.shifts
-  };
-}
-
-// Get previous schedule's last day assignments
-async function getPreviousScheduleAssignments(schedule: BaseSchedule): Promise<PreviousScheduleAssignments | undefined> {
-  const startDate = new Date(schedule.start_date);
-  const previousDay = new Date(startDate);
-  previousDay.setDate(previousDay.getDate() - 1);
-  
-  const formattedDate = previousDay.toISOString().split('T')[0];
-
-  // Define the exact shape we get from the database
-  type RawAssignment = {
-    id: string;
-    schedule_id: string | null;
-    employee_id: string | null;
-    shift_id: string | null;
-    date: string;
-    is_supervisor_shift: boolean;
-    overtime_hours: number | null;
-    overtime_status: string | null;
-    created_at: string | null;
-    updated_at: string | null;
-    employees: {
-      id: string;
-      user_id: string | null;
-      first_name: string;
-      last_name: string;
-      email: string;
-      phone: string | null;
-      position: string;
-      is_active: boolean;
-      created_at: string;
-      updated_at: string;
-    };
-    shifts: DbShift | null;
-  };
-  
-  // TODO: Fix type generation for the employees table
-  // Currently, the generated types show nullable fields for columns that are NOT NULL in the database
-  // This causes type mismatches between our Employee type and the database types
-  // For now, we're using type assertions to handle this, but we should:
-  // 1. Update the type generation to correctly reflect NOT NULL constraints
-  // 2. Remove the type assertions once the types are fixed
-  const { data: rawAssignments, error } = await supabase
-    .from('schedule_assignments')
-    .select(`
-      id,
-      schedule_id,
-      employee_id,
-      shift_id,
-      date,
-      is_supervisor_shift,
-      overtime_hours,
-      overtime_status,
-      created_at,
-      updated_at,
-      employees!inner (
-        id,
-        user_id,
-        first_name,
-        last_name,
-        email,
-        phone,
-        position,
-        is_active,
-        created_at,
-        updated_at
-      ),
-      shifts (*)
-    `)
-    .eq('date', formattedDate);
-
-  if (error || !rawAssignments?.length) {
-    return undefined;
-  }
-
-  // Type guard to ensure employee data is present and valid
-  function isValidRawAssignment(raw: any): raw is RawAssignment {
-    return (
-      raw &&
-      typeof raw.id === 'string' &&
-      typeof raw.date === 'string' &&
-      typeof raw.is_supervisor_shift === 'boolean' &&
-      raw.employees &&
-      typeof raw.employees.id === 'string' &&
-      typeof raw.employees.first_name === 'string' &&
-      typeof raw.employees.last_name === 'string' &&
-      typeof raw.employees.email === 'string' &&
-      typeof raw.employees.position === 'string' &&
-      typeof raw.employees.is_active === 'boolean' &&
-      typeof raw.employees.created_at === 'string' &&
-      typeof raw.employees.updated_at === 'string'
-    );
-  }
-
-  // Filter and map the assignments using our type guard
-  const validRawAssignments = rawAssignments.filter(isValidRawAssignment);
-
-  // Map raw assignments to DbAssignment type
-  const previousAssignments = validRawAssignments.map(raw => {
-    // Our type guard ensures raw.employees exists, but TypeScript doesn't recognize this
-    // Add a runtime check to satisfy the type checker
-    if (!raw.employees) {
-      throw new Error('Employee data missing after validation');
-    }
-
-    // First create the employee object with the correct shape
-    const employee: Employee = {
-      id: raw.employees.id,
-      user_id: raw.employees.user_id,
-      first_name: raw.employees.first_name,
-      last_name: raw.employees.last_name,
-      email: raw.employees.email,
-      phone: raw.employees.phone,
-      position: raw.employees.position,
-      is_active: raw.employees.is_active,
-      created_at: raw.employees.created_at,
-      updated_at: raw.employees.updated_at
-    };
-
-    // Then create the full assignment
-    return {
-      id: raw.id,
-      schedule_id: raw.schedule_id,
-      employee_id: raw.employee_id,
-      shift_id: raw.shift_id,
-      date: raw.date,
-      is_supervisor_shift: raw.is_supervisor_shift,
-      overtime_hours: raw.overtime_hours ? raw.overtime_hours.toString() : null,
-      overtime_status: raw.overtime_status,
-      created_at: raw.created_at,
-      updated_at: raw.updated_at,
-      employees: employee,
-      shifts: raw.shifts
-    } satisfies DbAssignment;
-  });
-
-  const validAssignments = previousAssignments.filter(isValidAssignment);
-
-  return {
-    date: formattedDate,
-    assignments: validAssignments.map(mapDatabaseAssignmentToClient)
-  };
-}
-
 // Add helper function to calculate requirement statuses
-function calculateRequirementStatuses(assignments: DbAssignment[] | null, timeRequirements: TimeBasedRequirement[]): RequirementStatus[] {
-  if (!assignments) {
-    // Return default statuses if no assignments
-    return timeRequirements.map(requirement => ({
-      requirement,
-      totalAssigned: 0,
-      supervisorsAssigned: 0,
-      dispatchersAssigned: 0,
-      isMet: false
-    }));
-  }
-
+function calculateRequirementStatuses(assignments: Assignment[], timeRequirements: TimeBasedRequirement[]): RequirementStatus[] {
   return timeRequirements.map(requirement => {
     const overlappingAssignments = assignments.filter(assignment => 
-      assignment.shifts && doesShiftOverlap(assignment.shifts, requirement)
+      assignment.shift && doesShiftOverlap(assignment.shift, requirement)
     );
 
     const supervisors = overlappingAssignments.filter(a => a.is_supervisor_shift).length;
@@ -387,11 +145,108 @@ function calculateRequirementStatuses(assignments: DbAssignment[] | null, timeRe
   });
 }
 
-// Update the group assignments logic to use type guard
-function groupAssignments(rawAssignments: any[]): GroupedAssignments {
-  const validAssignments = rawAssignments.filter(isValidAssignment);
-  
-  return validAssignments.reduce((acc: GroupedAssignments, assignment) => {
+// Add type guard for database employee
+function isValidDatabaseEmployee(employee: any): employee is DbEmployee {
+  return (
+    employee &&
+    typeof employee.id === 'string' &&
+    typeof employee.first_name === 'string' &&
+    typeof employee.last_name === 'string' &&
+    (employee.email === null || typeof employee.email === 'string') &&
+    typeof employee.position === 'string' &&
+    (employee.is_active === null || typeof employee.is_active === 'boolean') &&
+    (employee.created_at === null || typeof employee.created_at === 'string') &&
+    (employee.updated_at === null || typeof employee.updated_at === 'string')
+  );
+}
+
+// Add type guard for database shift
+function isValidDatabaseShift(shift: any): shift is DbShift {
+  return (
+    shift &&
+    typeof shift.id === 'string' &&
+    typeof shift.name === 'string' &&
+    typeof shift.start_time === 'string' &&
+    typeof shift.end_time === 'string' &&
+    typeof shift.duration_hours === 'number' &&
+    typeof shift.crosses_midnight === 'boolean' &&
+    typeof shift.requires_supervisor === 'boolean' &&
+    (shift.created_at === null || typeof shift.created_at === 'string')
+  );
+}
+
+// Convert database employee to application employee
+function mapDatabaseEmployeeToEmployee(dbEmployee: DbEmployee): Employee {
+  return {
+    id: dbEmployee.id,
+    user_id: dbEmployee.user_id,
+    first_name: dbEmployee.first_name,
+    last_name: dbEmployee.last_name,
+    email: dbEmployee.email || '', // Convert null to empty string
+    phone: dbEmployee.phone?.toString() || null,
+    position: dbEmployee.position,
+    is_active: dbEmployee.is_active ?? false, // Convert null to false
+    created_at: dbEmployee.created_at || new Date().toISOString(),
+    updated_at: dbEmployee.updated_at || new Date().toISOString()
+  };
+}
+
+// Convert database shift to application shift
+function mapDatabaseShiftToShift(dbShift: DbShift): Shift {
+  return {
+    ...dbShift,
+    crosses_midnight: dbShift.crosses_midnight,
+    requires_supervisor: dbShift.requires_supervisor
+  };
+}
+
+// Update mapping function with proper typing
+function mapRawAssignmentToAssignment(rawAssignment: RawAssignmentWithJoins): Assignment | null {
+  if (!rawAssignment || typeof rawAssignment.id !== 'string' || typeof rawAssignment.date !== 'string') {
+    console.warn('Invalid assignment data:', rawAssignment);
+    return null;
+  }
+
+  // Validate employee data
+  if (!rawAssignment.employee || !isValidDatabaseEmployee(rawAssignment.employee)) {
+    console.warn('Invalid employee data in assignment:', rawAssignment.id, {
+      hasEmployee: !!rawAssignment.employee,
+      employeeValid: rawAssignment.employee ? isValidDatabaseEmployee(rawAssignment.employee) : false
+    });
+    return null;
+  }
+
+  // Validate shift data
+  if (!rawAssignment.shift || !isValidDatabaseShift(rawAssignment.shift)) {
+    console.warn('Invalid shift data in assignment:', rawAssignment.id, {
+      hasShift: !!rawAssignment.shift,
+      shiftValid: rawAssignment.shift ? isValidDatabaseShift(rawAssignment.shift) : false
+    });
+    return null;
+  }
+
+  // Map the employee and shift data
+  const mappedEmployee = mapDatabaseEmployeeToEmployee(rawAssignment.employee);
+  const mappedShift = mapDatabaseShiftToShift(rawAssignment.shift);
+
+  if (!mappedEmployee || !mappedShift) {
+    console.warn('Failed to map employee or shift data:', {
+      employeeMapped: !!mappedEmployee,
+      shiftMapped: !!mappedShift
+    });
+    return null;
+  }
+
+  // Create the base assignment data
+  const baseData = createBaseAssignmentData(rawAssignment);
+
+  // Create the final assignment
+  return createAssignment(baseData, mappedEmployee, mappedShift);
+}
+
+// Add function to group assignments by date and shift
+function groupAssignments(assignments: Assignment[]): GroupedAssignments {
+  return assignments.reduce((acc: GroupedAssignments, assignment) => {
     const date = assignment.date;
     const shiftId = assignment.shift_id;
 
@@ -403,7 +258,7 @@ function groupAssignments(rawAssignments: any[]): GroupedAssignments {
       if (!acc[date][shiftId]) {
         acc[date][shiftId] = [];
       }
-      acc[date][shiftId].push(mapDatabaseAssignmentToClient(assignment));
+      acc[date][shiftId].push(assignment);
     }
     
     return acc;
@@ -419,7 +274,7 @@ export default async function ScheduleDetailsPage({
   const scheduleId = resolvedParams.id;
 
   // Get schedule details
-  const { data: schedule, error: scheduleError } = await supabase
+  const { data: schedule, error: scheduleError } = await supabaseAdmin
     .from('schedules')
     .select('*')
     .eq('id', scheduleId)
@@ -435,54 +290,25 @@ export default async function ScheduleDetailsPage({
   }
 
   if (!schedule) {
+    console.error('Schedule not found for ID:', scheduleId);
     return (
       <div className="text-red-500">
         Schedule not found
       </div>
     );
   }
-
-  // Get assignments for this schedule
-  const { data: assignments, error: assignmentsError } = await supabase
+  
+  const { data: rawAssignments, error: assignmentsError } = await supabaseAdmin
     .from('schedule_assignments')
     .select(`
-      id,
-      schedule_id,
-      employee_id,
-      shift_id,
-      date,
-      is_supervisor_shift,
-      overtime_hours,
-      overtime_status,
-      created_at,
-      updated_at,
-      employees!inner (
-        id,
-        first_name,
-        last_name,
-        email,
-        position,
-        created_at,
-        updated_at,
-        is_active,
-        phone,
-        user_id
-      ),
-      shifts (
-        id,
-        name,
-        start_time,
-        end_time,
-        duration_hours,
-        crosses_midnight,
-        requires_supervisor,
-        created_at
-      )
+      *,
+      employee:employees!schedule_assignments_employee_id_fkey (*),
+      shift:shifts!schedule_assignments_shift_id_fkey (*)
     `)
     .eq('schedule_id', scheduleId);
-
+  
   if (assignmentsError) {
-    console.error('Error fetching assignments:', assignmentsError);
+    console.error('Error loading assignments:', assignmentsError);
     return (
       <div className="text-red-500">
         Error loading assignments: {assignmentsError.message}
@@ -490,10 +316,19 @@ export default async function ScheduleDetailsPage({
     );
   }
 
+  // Map and validate assignments
+  const validAssignments = (rawAssignments || [])
+    .map(assignment => mapRawAssignmentToAssignment(assignment as RawAssignmentWithJoins))
+    .filter((assignment): assignment is Assignment => assignment !== null);
+  
+  // Group assignments
+  const groupedAssignments = groupAssignments(validAssignments);
+
   // Get time-based requirements
-  const { data: rawTimeRequirements, error: requirementsError } = await supabase
+  const { data: rawTimeRequirements, error: requirementsError } = await supabaseAdmin
     .from('time_based_requirements')
-    .select('*');
+    .select('*')
+    .eq('is_active', true);
 
   if (requirementsError) {
     console.error('Error fetching requirements:', requirementsError);
@@ -504,30 +339,17 @@ export default async function ScheduleDetailsPage({
     );
   }
 
-  // Assert timestamps are non-null since they have NOT NULL DEFAULT now() in the database
-  const timeRequirements = (rawTimeRequirements || []).map(req => ({
-    ...req,
-    created_at: req.created_at!,
-    updated_at: req.updated_at!
-  })) as DbRequirement[];
-
-  // Get previous schedule assignments if needed
-  const previousScheduleAssignments = await getPreviousScheduleAssignments(schedule);
-
-  // Calculate requirement statuses
-  const requirementStatuses = calculateRequirementStatuses(assignments, timeRequirements);
-
-  // Group assignments by date and shift
-  const groupedAssignments = groupAssignments(assignments);
+  // Map requirements and calculate statuses
+  const timeRequirements = (rawTimeRequirements || []).map(mapDatabaseRequirementToClient);
+  const requirementStatuses = calculateRequirementStatuses(validAssignments, timeRequirements);
 
   return (
     <ScheduleDetailsClient
-      schedule={mapDatabaseScheduleToClient(schedule)}
+      schedule={mapDatabaseScheduleToClient(schedule as DbSchedule)}
       assignments={groupedAssignments}
       error={null}
-      timeRequirements={timeRequirements.map(mapDatabaseRequirementToClient)}
+      timeRequirements={timeRequirements}
       requirementStatuses={requirementStatuses}
-      previousScheduleAssignments={previousScheduleAssignments}
     />
   );
 } 
