@@ -91,26 +91,23 @@ CREATE TABLE schedule_assignments (
     employee_id UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
     shift_id UUID NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
     date DATE NOT NULL,
-    start_time TIME NOT NULL,
-    end_time TIME NOT NULL,
     is_supervisor_shift BOOLEAN NOT NULL DEFAULT false,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
-    CONSTRAINT unique_employee_daily_assignment UNIQUE (schedule_id, employee_id, date)
+    CONSTRAINT unique_employee_assignment UNIQUE (employee_id, date)
 );
 
 -- Create time_based_requirements table
 CREATE TABLE time_based_requirements (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    schedule_id UUID NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
-    min_total_staff INTEGER NOT NULL CHECK (min_total_staff >= 0),
-    min_supervisors INTEGER NOT NULL CHECK (min_supervisors >= 0),
-    crosses_midnight BOOLEAN NOT NULL DEFAULT false,
-    is_active BOOLEAN NOT NULL DEFAULT true,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CONSTRAINT valid_staff_count CHECK (min_supervisors <= min_total_staff)
+    min_employees INTEGER NOT NULL,
+    max_employees INTEGER,
+    day_of_week INTEGER NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- Create employee_scheduling_rules table
@@ -431,6 +428,5 @@ CREATE POLICY "Supervisors can manage scheduling rules"
 -- Add comments
 COMMENT ON TABLE time_based_requirements IS 'Stores minimum staffing requirements for different time periods';
 COMMENT ON TABLE employee_scheduling_rules IS 'Stores employee-specific scheduling preferences and constraints';
-COMMENT ON COLUMN time_based_requirements.crosses_midnight IS 'Indicates if the time period spans across midnight';
 COMMENT ON COLUMN employee_scheduling_rules.preferred_shift_pattern IS 'Either 4x10 (four 10-hour shifts) or 3x12plus4 (three 12-hour shifts plus one 4-hour shift)';
 COMMENT ON CONSTRAINT schedule_assignments_shift_id_fkey ON schedule_assignments IS 'Foreign key relationship between schedule_assignments and shifts tables'; 

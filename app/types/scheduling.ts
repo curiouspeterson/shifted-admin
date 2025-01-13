@@ -39,12 +39,8 @@ export type TimeBasedRequirement = Omit<
   updated_at: string;
 };
 
-export type Schedule = Omit<
-  Database['public']['Tables']['schedules']['Row'],
-  'is_active'
-> & {
+export type Schedule = Database['public']['Tables']['schedules']['Row'] & {
   is_active: boolean;
-  name: string;
 };
 
 export type EmployeeSchedulingRule = Omit<

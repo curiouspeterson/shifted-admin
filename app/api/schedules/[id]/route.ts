@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { Database } from '@/lib/database.types'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { scheduleResponseSchema } from '@/app/lib/schemas/schedule'
+import { APIError, handleError } from '@/app/lib/utils/errors'
 
 export async function PUT(
   request: Request,
@@ -295,5 +298,42 @@ export async function DELETE(
       { error: 'Internal server error' },
       { status: 500 }
     );
+  }
+}
+
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const { data: schedule, error } = await supabaseAdmin
+      .from('schedules')
+      .select('*')
+      .eq('id', params.id)
+      .single();
+
+    if (error) {
+      throw new APIError(error.message, error.code === 'PGRST116' ? 404 : 500);
+    }
+
+    // Validate response data
+    const validatedResponse = scheduleResponseSchema.parse({
+      data: schedule,
+      error: null,
+    });
+
+    return NextResponse.json(validatedResponse);
+  } catch (error) {
+    console.error('Error fetching schedule:', error);
+    
+    const { message, status } = handleError(error);
+    
+    // Validate error response
+    const validatedResponse = scheduleResponseSchema.parse({
+      data: null,
+      error: message,
+    });
+
+    return NextResponse.json(validatedResponse, { status });
   }
 } 
