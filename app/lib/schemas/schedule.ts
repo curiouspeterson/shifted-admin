@@ -88,8 +88,8 @@ export const scheduleSchema = z.object({
   end_date: dateStringSchema,
   created_at: datetimeSchema.nullable(),
   created_by: z.string().nullable(),
-  published_at: datetimeSchema.nullable(),
-  published_by: z.string().nullable(),
+  published_at: datetimeSchema.nullable().optional(),
+  published_by: z.string().nullable().optional(),
   version: z.number(),
   is_active: z.boolean(),
 });

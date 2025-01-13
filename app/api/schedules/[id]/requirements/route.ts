@@ -6,13 +6,14 @@ import { APIError, handleError } from '@/app/lib/utils/errors';
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const resolvedParams = await params;
     const { data: requirements, error } = await supabaseAdmin
       .from('time_based_requirements')
       .select('*')
-      .eq('schedule_id', params.id);
+      .eq('schedule_id', resolvedParams.id);
 
     if (error) {
       throw new APIError(error.message, error.code === 'PGRST116' ? 404 : 500);

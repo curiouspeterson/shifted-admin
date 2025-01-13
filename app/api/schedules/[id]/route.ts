@@ -303,13 +303,14 @@ export async function DELETE(
 
 export async function GET(
   request: Request,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const resolvedParams = await params;
     const { data: schedule, error } = await supabaseAdmin
       .from('schedules')
       .select('*')
-      .eq('id', params.id)
+      .eq('id', resolvedParams.id)
       .single();
 
     if (error) {
