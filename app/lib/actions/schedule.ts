@@ -1,14 +1,21 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { cookies } from 'next/headers';
-import { createClient } from '@/app/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 import type { ScheduleFormData } from '../schemas/forms';
 import { scheduleFormSchema } from '../schemas/forms';
 
 export async function createSchedule(data: ScheduleFormData) {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
+  const supabase = await createClient();
+  
+  // Get the current user
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) {
+    return {
+      data: null,
+      error: 'Unauthorized'
+    };
+  }
   
   // Validate form data
   const validatedData = scheduleFormSchema.parse(data);
@@ -18,6 +25,7 @@ export async function createSchedule(data: ScheduleFormData) {
       .from('schedules')
       .insert([{
         ...validatedData,
+        created_by: user.id,
         version: 1,
         created_at: new Date().toISOString(),
       }])

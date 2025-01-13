@@ -1,47 +1,50 @@
-'use client'
-
-import { useEffect, useState, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { supabase } from '@/lib/supabase/client'
+import { Suspense } from 'react'
+import { signIn } from '../actions'
 import LoadingSpinner from '@/app/components/LoadingSpinner'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
 
-function SignInContent() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        router.push('/dashboard')
-      }
+async function getSession() {
+  const cookieStore = await cookies()
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options: any) {
+          try {
+            cookieStore.set({ name, value, ...options })
+          } catch (error) {
+            // Handle cookie setting error
+          }
+        },
+        remove(name: string, options: any) {
+          try {
+            cookieStore.delete(name)
+          } catch (error) {
+            // Handle cookie removal error
+          }
+        },
+      },
     }
-    checkSession()
-  }, [router])
+  )
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
+  const { data: { session } } = await supabase.auth.getSession()
+  return session
+}
 
-    try {
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) throw error
-
-      router.push('/dashboard')
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred during sign in')
-    } finally {
-      setLoading(false)
-    }
+export default async function SignInPage({
+  searchParams,
+}: {
+  searchParams: { error?: string; message?: string }
+}) {
+  const session = await getSession()
+  if (session) {
+    redirect('/dashboard')
   }
 
   return (
@@ -51,13 +54,13 @@ function SignInContent() {
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
             Sign in to your account
           </h2>
-          {error && (
+          {searchParams?.error && (
             <div className="mt-2 text-center text-sm text-red-600">
-              {error}
+              {searchParams.error}
             </div>
           )}
         </div>
-        <form className="mt-8 space-y-6" onSubmit={handleSignIn}>
+        <form className="mt-8 space-y-6" action={signIn}>
           <div className="rounded-md shadow-sm -space-y-px">
             <div>
               <label htmlFor="email-address" className="sr-only">
@@ -71,8 +74,6 @@ function SignInContent() {
                 required
                 className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
                 placeholder="Email address"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div>
@@ -87,8 +88,6 @@ function SignInContent() {
                 required
                 className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
                 placeholder="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
               />
             </div>
           </div>
@@ -96,26 +95,13 @@ function SignInContent() {
           <div>
             <button
               type="submit"
-              disabled={loading}
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
             >
-              {loading ? (
-                <LoadingSpinner />
-              ) : (
-                'Sign in'
-              )}
+              Sign in
             </button>
           </div>
         </form>
       </div>
     </div>
-  )
-}
-
-export default function SignInPage() {
-  return (
-    <Suspense fallback={<LoadingSpinner />}>
-      <SignInContent />
-    </Suspense>
   )
 } 

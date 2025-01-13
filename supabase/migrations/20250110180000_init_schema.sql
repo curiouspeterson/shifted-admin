@@ -100,14 +100,14 @@ CREATE TABLE schedule_assignments (
 -- Create time_based_requirements table
 CREATE TABLE time_based_requirements (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    day_of_week INTEGER NOT NULL,
+    schedule_id UUID NOT NULL REFERENCES schedules(id) ON DELETE CASCADE,
+    day_of_week INTEGER NOT NULL CHECK (day_of_week >= 0 AND day_of_week <= 6),
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
     min_employees INTEGER NOT NULL,
     max_employees INTEGER,
-    min_supervisors INTEGER NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- Create employee_scheduling_rules table

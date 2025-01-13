@@ -1,60 +1,27 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useContext, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase/client'
-import LoadingSpinner from '@/app/components/LoadingSpinner'
+import { AppContext } from '@/app/lib/providers/providers'
+import LoadingSpinner from '@/components/LoadingSpinner'
 import Link from 'next/link'
 
 export default function Dashboard() {
   const router = useRouter()
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { isLoading, isAuthenticated } = useContext(AppContext)
 
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession()
-        
-        if (error) throw error
-        
-        if (!session) {
-          router.push('/sign-in')
-          return
-        }
-
-        setLoading(false)
-      } catch (err) {
-        console.error('Dashboard error:', err)
-        setError(err instanceof Error ? err.message : 'An error occurred')
-        setLoading(false)
-      }
+    if (!isLoading && !isAuthenticated) {
+      router.push('/sign-in')
     }
+  }, [isLoading, isAuthenticated, router])
 
-    checkSession()
-  }, [router])
-
-  if (loading) {
+  if (isLoading) {
     return <LoadingSpinner />
   }
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full space-y-8">
-          <div className="text-center">
-            <h2 className="text-3xl font-extrabold text-gray-900">Error</h2>
-            <p className="mt-2 text-sm text-red-600">{error}</p>
-            <button
-              onClick={() => router.push('/sign-in')}
-              className="mt-4 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
-            >
-              Return to Sign In
-            </button>
-          </div>
-        </div>
-      </div>
-    )
+  if (!isAuthenticated) {
+    return null // Will redirect in useEffect
   }
 
   return (
