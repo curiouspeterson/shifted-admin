@@ -15,11 +15,11 @@ export async function GET() {
       throw new Error(error.message);
     }
 
-    return Response.json({ data, error: null });
+    return Response.json({ employees: data, error: null });
   } catch (error) {
     console.error('Failed to fetch employees:', error);
     return Response.json(
-      { data: [], error: error instanceof Error ? error.message : 'Failed to fetch employees' },
+      { employees: [], error: error instanceof Error ? error.message : 'Failed to fetch employees' },
       { status: 500 }
     );
   }

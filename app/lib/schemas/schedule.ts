@@ -70,12 +70,17 @@ export const assignmentSchema = z.object({
 // Time-based requirement schema
 export const timeBasedRequirementSchema = z.object({
   id: z.string().uuid(),
-  start_time: timeStringSchema,
-  end_time: timeStringSchema,
-  min_total_staff: z.number().int().min(0),
-  min_supervisors: z.number().int().min(0),
-  crosses_midnight: z.boolean(),
-  is_active: z.boolean(),
+  schedule_id: z.string().uuid(),
+  start_time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/, {
+    message: 'Time must be in 24-hour format (HH:MM:SS)',
+  }),
+  end_time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/, {
+    message: 'Time must be in 24-hour format (HH:MM:SS)',
+  }),
+  min_employees: z.number().int().min(0),
+  max_employees: z.number().int().nullable(),
+  min_supervisors: z.number().int().min(0).default(1),
+  day_of_week: z.number().int().min(0).max(6),
   created_at: datetimeSchema.nullable(),
   updated_at: datetimeSchema.nullable(),
 });

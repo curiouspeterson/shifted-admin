@@ -231,14 +231,44 @@ VALUES ('Test Schedule', CURRENT_DATE, CURRENT_DATE + INTERVAL '7 days', 'draft'
   (SELECT id FROM auth.users WHERE email = 'supervisor1@test.com' LIMIT 1)
 );
 
--- Insert time-based requirements
-INSERT INTO time_based_requirements 
-    (schedule_id, start_time, end_time, min_employees, max_employees, day_of_week)
+-- Insert time-based requirements for test schedule
+INSERT INTO time_based_requirements (schedule_id, start_time, end_time, min_employees, max_employees, min_supervisors, day_of_week)
 VALUES 
-    ((SELECT id FROM schedules WHERE name = 'Test Schedule' LIMIT 1), '05:00:00', '09:00:00', 6, 8, 0),
-    ((SELECT id FROM schedules WHERE name = 'Test Schedule' LIMIT 1), '09:00:00', '21:00:00', 8, 10, 0),
-    ((SELECT id FROM schedules WHERE name = 'Test Schedule' LIMIT 1), '21:00:00', '01:00:00', 7, 9, 0),
-    ((SELECT id FROM schedules WHERE name = 'Test Schedule' LIMIT 1), '01:00:00', '05:00:00', 6, 8, 0);
+    -- Early Morning Block (5 AM - 9 AM)
+    ('${scheduleId}', '05:00:00', '09:00:00', 6, 8, 1, 0),
+    ('${scheduleId}', '05:00:00', '09:00:00', 6, 8, 1, 1),
+    ('${scheduleId}', '05:00:00', '09:00:00', 6, 8, 1, 2),
+    ('${scheduleId}', '05:00:00', '09:00:00', 6, 8, 1, 3),
+    ('${scheduleId}', '05:00:00', '09:00:00', 6, 8, 1, 4),
+    ('${scheduleId}', '05:00:00', '09:00:00', 6, 8, 1, 5),
+    ('${scheduleId}', '05:00:00', '09:00:00', 6, 8, 1, 6),
+    
+    -- Day Block (9 AM - 9 PM)
+    ('${scheduleId}', '09:00:00', '21:00:00', 8, 10, 1, 0),
+    ('${scheduleId}', '09:00:00', '21:00:00', 8, 10, 1, 1),
+    ('${scheduleId}', '09:00:00', '21:00:00', 8, 10, 1, 2),
+    ('${scheduleId}', '09:00:00', '21:00:00', 8, 10, 1, 3),
+    ('${scheduleId}', '09:00:00', '21:00:00', 8, 10, 1, 4),
+    ('${scheduleId}', '09:00:00', '21:00:00', 8, 10, 1, 5),
+    ('${scheduleId}', '09:00:00', '21:00:00', 8, 10, 1, 6),
+    
+    -- Night Block (9 PM - 1 AM)
+    ('${scheduleId}', '21:00:00', '01:00:00', 7, 9, 1, 0),
+    ('${scheduleId}', '21:00:00', '01:00:00', 7, 9, 1, 1),
+    ('${scheduleId}', '21:00:00', '01:00:00', 7, 9, 1, 2),
+    ('${scheduleId}', '21:00:00', '01:00:00', 7, 9, 1, 3),
+    ('${scheduleId}', '21:00:00', '01:00:00', 7, 9, 1, 4),
+    ('${scheduleId}', '21:00:00', '01:00:00', 7, 9, 1, 5),
+    ('${scheduleId}', '21:00:00', '01:00:00', 7, 9, 1, 6),
+    
+    -- Overnight Block (1 AM - 5 AM)
+    ('${scheduleId}', '01:00:00', '05:00:00', 6, 8, 1, 0),
+    ('${scheduleId}', '01:00:00', '05:00:00', 6, 8, 1, 1),
+    ('${scheduleId}', '01:00:00', '05:00:00', 6, 8, 1, 2),
+    ('${scheduleId}', '01:00:00', '05:00:00', 6, 8, 1, 3),
+    ('${scheduleId}', '01:00:00', '05:00:00', 6, 8, 1, 4),
+    ('${scheduleId}', '01:00:00', '05:00:00', 6, 8, 1, 5),
+    ('${scheduleId}', '01:00:00', '05:00:00', 6, 8, 1, 6);
 
 -- Morning shift pattern (roughly 1/3 of dispatchers)
 INSERT INTO employee_availability (employee_id, day_of_week, start_time, end_time, is_available)

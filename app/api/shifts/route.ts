@@ -15,11 +15,11 @@ export async function GET() {
       throw new Error(error.message);
     }
 
-    return Response.json({ data, error: null });
+    return Response.json({ shifts: data, error: null });
   } catch (error) {
     console.error('Failed to fetch shifts:', error);
     return Response.json(
-      { data: [], error: error instanceof Error ? error.message : 'Failed to fetch shifts' },
+      { shifts: [], error: error instanceof Error ? error.message : 'Failed to fetch shifts' },
       { status: 500 }
     );
   }

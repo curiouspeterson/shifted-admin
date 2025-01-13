@@ -2,154 +2,123 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { 
-  EmployeeAvailability,
-  Shift,
+import { ShiftPatternType } from '../lib/types/scheduling'
+import type { 
+  BlockCoverage, 
+  DailyCoverage, 
+  TimeBlock, 
+  ShiftPattern,
+  AssignmentInsert,
   Employee,
-  TimeBasedRequirement,
+  Shift,
   EmployeeSchedulingRule,
-  Assignment,
-  ShiftPatternType
-} from '@/app/types/scheduling'
+  Schedule
+} from '../lib/types/scheduling';
 
-// Define AssignmentInsert type
-interface AssignmentInsert {
-  schedule_id: string
-  employee_id: string
-  shift_id: string
-  date: string
-  is_supervisor_shift: boolean
-}
-
-interface ScheduleFormProps {
-  scheduleId?: string
-  initialData?: {
-    start_date: string
-    end_date: string
-    status: string
-    name?: string
-  }
-  onSave: () => void
-  onCancel: () => void
-}
-
-// Helper types and interfaces
-interface TimeBlock {
-  start: string;
-  end: string;
-  required: number;
-  supervisorRequired: number;
-}
-
-interface ShiftPattern {
-  type: ShiftPatternType;
-  shifts: string[];
-  startDate: Date;
-}
-
-// Add type definitions at the top of the file
-type BlockType = 'early' | 'day' | 'night' | 'overnight';
-
-interface CoverageCount {
-  total: number;
-  supervisors: number;
-  dispatchers: number;
-}
-
-interface DailyCoverage {
-  early: CoverageCount;
-  day: CoverageCount;
-  night: CoverageCount;
-  overnight: CoverageCount;
-}
-
-// Helper function to get all dates in a date range
-const getDatesInRange = (startDate: Date, endDate: Date) => {
-  const dates = []
-  const currentDate = new Date(startDate)
-  while (currentDate <= endDate) {
-    dates.push(new Date(currentDate))
-    currentDate.setDate(currentDate.getDate() + 1)
-  }
-  return dates
-}
-
-// Helper function to check if a time falls within a requirement period
-const isTimeInRequirement = (time: string, requirement: TimeBasedRequirement): boolean => {
-  if (requirement.crosses_midnight) {
-    return time >= requirement.start_time || time < requirement.end_time
-  }
-  return time >= requirement.start_time && time < requirement.end_time
-}
-
-// Helper function to get the requirement for a specific time
-const getRequirementForTime = (time: string, requirements: TimeBasedRequirement[]): TimeBasedRequirement | null => {
-  return requirements.find(req => isTimeInRequirement(time, req)) || null
-}
-
-// Helper function to calculate weekly hours for an employee
-const calculateWeeklyHours = (
-  employeeId: string,
-  assignments: any[],
-  startDate: Date,
-  endDate: Date
-): number => {
-  return assignments
-    .filter(a => 
-      a.employee_id === employeeId && 
-      new Date(a.date) >= startDate && 
-      new Date(a.date) <= endDate
-    )
-    .reduce((total, assignment) => total + calculateShiftHours(assignment.start_time, assignment.end_time), 0)
-}
-
-// Helper function to calculate shift hours
-const calculateShiftHours = (startTime: string, endTime: string): number => {
-  const start = new Date(`1970-01-01T${startTime}`)
-  let end = new Date(`1970-01-01T${endTime}`)
-  if (end < start) {
-    end = new Date(`1970-01-02T${endTime}`)
-  }
-  return (end.getTime() - start.getTime()) / (1000 * 60 * 60)
-}
-
-// Helper functions for time calculations
-function parseTimeToMinutes(time: string): number {
+// Helper functions for time and shift calculations
+function timeToMinutes(time: string): number {
   const [hours, minutes] = time.split(':').map(Number);
   return hours * 60 + minutes;
 }
 
-function calculateShiftOverlap(shift: { start_time: string; end_time: string; crosses_midnight: boolean }, block: TimeBlock): number {
-  const shiftStart = parseTimeToMinutes(shift.start_time);
-  const shiftEnd = parseTimeToMinutes(shift.end_time);
-  const blockStart = parseTimeToMinutes(block.start);
-  const blockEnd = parseTimeToMinutes(block.end);
+function calculateShiftHours(start: string, end: string): number {
+  const startMinutes = timeToMinutes(start);
+  let endMinutes = timeToMinutes(end);
+  
+  if (endMinutes <= startMinutes) {
+    // Shift crosses midnight
+    endMinutes += 24 * 60;
+  }
+  
+  return (endMinutes - startMinutes) / 60;
+}
 
-  if (shift.crosses_midnight) {
-    // Handle overnight shifts
-    if (shiftStart >= blockStart) {
-      return Math.min(24 * 60 - shiftStart, blockEnd);
-    } else {
-      return Math.min(shiftEnd, blockEnd);
-    }
+// Initialize daily coverage
+function initializeDailyCoverage(): DailyCoverage {
+  return {
+    '05:00': { total: 0, supervisors: 0 },
+    '09:00': { total: 0, supervisors: 0 },
+    '21:00': { total: 0, supervisors: 0 },
+    '01:00': { total: 0, supervisors: 0 },
+  };
+}
+
+// Helper function to check if a shift covers a time block
+function isShiftInTimeBlock(shift: Shift, block: { start: string; end: string }): boolean {
+  const shiftStart = timeToMinutes(shift.start_time);
+  const shiftEnd = timeToMinutes(shift.end_time);
+  const blockStart = timeToMinutes(block.start);
+  const blockEnd = timeToMinutes(block.end);
+  
+  // Handle shifts that cross midnight
+  if (shiftEnd <= shiftStart) {
+    // Shift crosses midnight
+    return (shiftStart <= blockStart || shiftStart <= blockEnd) &&
+           (shiftEnd >= blockStart || shiftEnd >= blockEnd);
   } else {
-    // Handle regular shifts
-    const start = Math.max(shiftStart, blockStart);
-    const end = Math.min(shiftEnd, blockEnd);
-    return Math.max(0, end - start);
+    // Normal shift
+    return shiftStart <= blockStart && shiftEnd >= blockEnd;
   }
 }
 
-// Time blocks with requirements
-const timeBlocks: TimeBlock[] = [
-  { start: '05:00', end: '09:00', required: 6, supervisorRequired: 1 },
-  { start: '09:00', end: '21:00', required: 8, supervisorRequired: 1 },
-  { start: '21:00', end: '01:00', required: 7, supervisorRequired: 1 },
-  { start: '01:00', end: '05:00', required: 6, supervisorRequired: 1 }
-];
+// Helper function to check if we can assign consecutive days
+function canAssignConsecutiveDays(
+  employeeId: string,
+  startDate: Date,
+  requiredDays: number,
+  existingAssignments: AssignmentInsert[]
+): boolean {
+  for (let i = 0; i < requiredDays; i++) {
+    const date = new Date(startDate);
+    date.setDate(date.getDate() + i);
+    const dateStr = date.toISOString().split('T')[0];
+    
+    // Check if employee is already assigned on this date
+    if (existingAssignments.some(a => a.employee_id === employeeId && a.date === dateStr)) {
+      return false;
+    }
+  }
+  return true;
+}
 
-// Add validation helper
+// Helper function to update coverage for a shift
+function updateCoverageForShift(
+  coverage: DailyCoverage,
+  shift: Shift,
+  isSupervisor: boolean
+) {
+  const timeBlocks = [
+    { start: '05:00', end: '09:00' },
+    { start: '09:00', end: '21:00' },
+    { start: '21:00', end: '01:00' },
+    { start: '01:00', end: '05:00' },
+  ];
+  
+  for (const block of timeBlocks) {
+    if (isShiftInTimeBlock(shift, block)) {
+      const blockCoverage = coverage[block.start];
+      if (blockCoverage) {
+        blockCoverage.total++;
+        if (isSupervisor) {
+          blockCoverage.supervisors++;
+        }
+      }
+    }
+  }
+}
+
+// Helper function to get all dates in a range
+function getDatesInRange(startDate: Date, endDate: Date): Date[] {
+  const dates = [];
+  const currentDate = new Date(startDate);
+  while (currentDate <= endDate) {
+    dates.push(new Date(currentDate));
+    currentDate.setDate(currentDate.getDate() + 1);
+  }
+  return dates;
+}
+
+// Helper function to validate assignment
 function validateAssignment(assignment: AssignmentInsert): { isValid: boolean; errors: string[] } {
   const errors: string[] = [];
   
@@ -172,62 +141,8 @@ function validateAssignment(assignment: AssignmentInsert): { isValid: boolean; e
   return { isValid: errors.length === 0, errors };
 }
 
-// Update the coverage tracking initialization
-function initializeDailyCoverage(): DailyCoverage {
-  return {
-    early: { total: 0, supervisors: 0, dispatchers: 0 },
-    day: { total: 0, supervisors: 0, dispatchers: 0 },
-    night: { total: 0, supervisors: 0, dispatchers: 0 },
-    overnight: { total: 0, supervisors: 0, dispatchers: 0 }
-  };
-}
-
-// Add the isTimeInRange helper function
-function isTimeInRange(time: string, start: string, end: string): boolean {
-  const timeMinutes = convertTimeToMinutes(time);
-  const startMinutes = convertTimeToMinutes(start);
-  const endMinutes = convertTimeToMinutes(end);
-  
-  if (endMinutes < startMinutes) { // Handles overnight shifts
-    return timeMinutes >= startMinutes || timeMinutes <= endMinutes;
-  }
-  return timeMinutes >= startMinutes && timeMinutes <= endMinutes;
-}
-
-function convertTimeToMinutes(time: string): number {
-  const [hours, minutes] = time.split(':').map(Number);
-  return hours * 60 + minutes;
-}
-
-// Update type references
-const coverageTracking = new Map<string, DailyCoverage>();
-
-// Update function signatures
-function findCoverageGaps(coverage: DailyCoverage): BlockType[] {
-  const gaps: BlockType[] = [];
-  const timeBlocks: BlockType[] = ['early', 'day', 'night', 'overnight'];
-  
-  for (const block of timeBlocks) {
-    if (coverage[block].total < getRequiredTotal(block)) {
-      gaps.push(block);
-    }
-  }
-  return gaps;
-}
-
-function getRequiredTotal(blockType: BlockType): number {
-  switch (blockType) {
-    case 'day':
-      return 8;
-    case 'night':
-      return 7;
-    default:
-      return 6;
-  }
-}
-
-// Modified createScheduleAssignments function
-const createScheduleAssignments = async (scheduleId: string, startDate: Date, endDate: Date) => {
+// Create schedule assignments
+async function createScheduleAssignments(scheduleId: string, startDate: Date, endDate: Date) {
   try {
     console.log('Creating schedule assignments...');
     
@@ -240,10 +155,6 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
     if (shiftsError) throw shiftsError;
     if (!shifts?.length) throw new Error('No shifts found');
 
-    const tenHourShifts = shifts.filter(s => calculateShiftHours(s.start_time, s.end_time) === 10);
-    const twelveHourShifts = shifts.filter(s => calculateShiftHours(s.start_time, s.end_time) === 12);
-    const fourHourShifts = shifts.filter(s => calculateShiftHours(s.start_time, s.end_time) === 4);
-
     // Get all active employees
     const { data: employees, error: employeesError } = await supabase
       .from('employees')
@@ -253,39 +164,36 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
     if (employeesError) throw employeesError;
     if (!employees?.length) throw new Error('No active employees found');
 
-    // Cast employees without email for now
-    const typedEmployees = employees.map(emp => ({
-      ...emp,
-      email: '' // Email not needed for schedule creation
-    })) as Employee[];
-
     // Separate supervisors and dispatchers
-    const supervisors = typedEmployees.filter(e => 
+    const supervisors = employees.filter(e => 
       e.position === 'supervisor' || 
       e.position === 'management' || 
       e.position === 'shift_supervisor'
     );
-    const dispatchers = typedEmployees.filter(e => e.position === 'dispatcher');
+    const dispatchers = employees.filter(e => e.position === 'dispatcher');
 
-    // Get employee availability and rules
-    const { data: availability } = await supabase
-      .from('employee_availability')
-      .select('*');
-
+    // Get employee scheduling rules
     const { data: schedulingRules } = await supabase
       .from('employee_scheduling_rules')
       .select('*');
 
     // Initialize tracking structures
     const assignments: AssignmentInsert[] = [];
-    const employeePatterns: Map<string, ShiftPattern> = new Map();
     const weeklyHours: Map<string, number> = new Map();
     const coverageTracking: Map<string, DailyCoverage> = new Map();
 
     // Get all dates in the schedule period
     const dates = getDatesInRange(startDate, endDate);
 
-    // First, assign supervisors to cover all time blocks
+    // Define time blocks and their requirements
+    const timeBlocks = [
+      { start: '05:00', end: '09:00', minEmployees: 6, minSupervisors: 1 },
+      { start: '09:00', end: '21:00', minEmployees: 8, minSupervisors: 1 },
+      { start: '21:00', end: '01:00', minEmployees: 7, minSupervisors: 1 },
+      { start: '01:00', end: '05:00', minEmployees: 6, minSupervisors: 1 },
+    ];
+
+    // For each date in the schedule period
     for (const date of dates) {
       const dateStr = date.toISOString().split('T')[0];
       
@@ -295,85 +203,135 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
       }
       
       // First, assign supervisors to cover all time blocks
-      const timeBlockPriority: BlockType[] = ['night', 'overnight', 'early', 'day']; // Prioritize harder-to-fill shifts
-      for (const blockType of timeBlockPriority) {
+      for (const block of timeBlocks) {
         const coverage = coverageTracking.get(dateStr)!;
         
-        if (coverage[blockType].supervisors < 1) { // Need a supervisor
+        // Check if we need a supervisor for this block
+        const blockCoverage = coverage[block.start];
+        if (!blockCoverage || blockCoverage.supervisors < block.minSupervisors) {
+          // Find available supervisors who:
+          // 1. Haven't exceeded weekly hours
+          // 2. Aren't already assigned on this date
+          // 3. Match their preferred pattern
           const availableSupervisors = supervisors.filter(sup => {
-            // Check if supervisor is already assigned for this date
-            return !assignments.some(a => 
-              a.employee_id === sup.id && 
-              a.date === dateStr
-            );
+            // Check weekly hours
+            const currentHours = weeklyHours.get(sup.id) || 0;
+            if (currentHours >= 40) return false;
+
+            // Check if already assigned today
+            if (assignments.some(a => a.employee_id === sup.id && a.date === dateStr)) {
+              return false;
+            }
+
+            // Get supervisor's scheduling rules
+            const rules = schedulingRules?.find(r => r.employee_id === sup.id);
+            if (!rules) return true; // If no rules, assume available
+
+            // Check pattern compatibility
+            const pattern = rules.preferred_shift_pattern;
+            if (pattern === ShiftPatternType.FourTen) {
+              // For 4x10 pattern, ensure we have 4 consecutive days available
+              return canAssignConsecutiveDays(sup.id, date, 4, assignments);
+            } else {
+              // For 3x12+4 pattern, ensure we have 3 consecutive days + 1 day available
+              return canAssignConsecutiveDays(sup.id, date, 3, assignments);
+            }
           });
           
           if (availableSupervisors.length > 0) {
-            const supervisor = availableSupervisors[0]; // Get the first available supervisor
-            // Find a suitable shift for this block
+            const supervisor = availableSupervisors[0];
+            
+            // Find a suitable shift that covers this block
             const suitableShift = shifts.find(s => {
               const shiftHours = calculateShiftHours(s.start_time, s.end_time);
-              return (shiftHours === 10 || shiftHours === 12) && // Allow both 10 and 12 hour shifts
-                     isShiftInTimeBlock(s, blockType);
+              return (shiftHours === 10 || shiftHours === 12) && 
+                     isShiftInTimeBlock(s, block);
             });
             
             if (suitableShift) {
-              assignments.push({
+              // Create the assignment
+              const assignment: AssignmentInsert = {
                 schedule_id: scheduleId,
                 employee_id: supervisor.id,
                 shift_id: suitableShift.id,
                 date: dateStr,
-                is_supervisor_shift: supervisor.position === 'supervisor' || 
-                                    supervisor.position === 'management' || 
-                                    supervisor.position === 'shift_supervisor'
-              });
+                is_supervisor_shift: true
+              };
+              
+              assignments.push(assignment);
+              
+              // Update weekly hours
+              const currentHours = weeklyHours.get(supervisor.id) || 0;
+              weeklyHours.set(supervisor.id, currentHours + calculateShiftHours(suitableShift.start_time, suitableShift.end_time));
               
               // Update coverage
-              updateCoverageForShift(coverage, suitableShift, true, false);
+              updateCoverageForShift(coverage, suitableShift, true);
             }
           }
         }
       }
       
-      // Then assign dispatchers to fill remaining gaps
-      for (const blockType of timeBlockPriority) {
+      // Then assign dispatchers to meet minimum staffing requirements
+      for (const block of timeBlocks) {
         const coverage = coverageTracking.get(dateStr)!;
-        const requiredTotal = blockType === 'day' ? 8 : blockType === 'night' ? 7 : 6;
+        const blockCoverage = coverage[block.start];
         
-        while (coverage[blockType].total < requiredTotal) {
+        // Keep assigning until we meet minimum requirements
+        while (blockCoverage && blockCoverage.total < block.minEmployees) {
+          // Find available dispatchers
           const availableDispatchers = dispatchers.filter(disp => {
-            // Check if dispatcher is already assigned for this date
-            return !assignments.some(a => 
-              a.employee_id === disp.id && 
-              a.date === dateStr
-            );
+            // Check weekly hours
+            const currentHours = weeklyHours.get(disp.id) || 0;
+            if (currentHours >= 40) return false;
+
+            // Check if already assigned today
+            if (assignments.some(a => a.employee_id === disp.id && a.date === dateStr)) {
+              return false;
+            }
+
+            // Get dispatcher's scheduling rules
+            const rules = schedulingRules?.find(r => r.employee_id === disp.id);
+            if (!rules) return true; // If no rules, assume available
+
+            // Check pattern compatibility
+            const pattern = rules.preferred_shift_pattern;
+            if (pattern === ShiftPatternType.FourTen) {
+              return canAssignConsecutiveDays(disp.id, date, 4, assignments);
+            } else {
+              return canAssignConsecutiveDays(disp.id, date, 3, assignments);
+            }
           });
           
           if (availableDispatchers.length === 0) break; // No more available dispatchers
           
-          // Find a suitable shift for this block
+          // Find a suitable shift
           const suitableShift = shifts.find(s => {
             const shiftHours = calculateShiftHours(s.start_time, s.end_time);
-            return (shiftHours === 10 || shiftHours === 12) && // Allow both 10 and 12 hour shifts
-                   isShiftInTimeBlock(s, blockType) &&
-                   // Check if this shift is already assigned to someone else for this block
-                   !assignments.some(a => 
-                     a.shift_id === s.id && 
-                     a.date === dateStr
-                   );
+            return (shiftHours === 10 || shiftHours === 12) && 
+                   isShiftInTimeBlock(s, block) &&
+                   !assignments.some(a => a.shift_id === s.id && a.date === dateStr);
           });
           
           if (suitableShift) {
-            assignments.push({
+            const dispatcher = availableDispatchers[0];
+            
+            // Create the assignment
+            const assignment: AssignmentInsert = {
               schedule_id: scheduleId,
-              employee_id: availableDispatchers[0].id,
+              employee_id: dispatcher.id,
               shift_id: suitableShift.id,
               date: dateStr,
               is_supervisor_shift: false
-            });
+            };
+            
+            assignments.push(assignment);
+            
+            // Update weekly hours
+            const currentHours = weeklyHours.get(dispatcher.id) || 0;
+            weeklyHours.set(dispatcher.id, currentHours + calculateShiftHours(suitableShift.start_time, suitableShift.end_time));
             
             // Update coverage
-            updateCoverageForShift(coverage, suitableShift, false, true);
+            updateCoverageForShift(coverage, suitableShift, false);
           } else {
             break; // No suitable shifts available
           }
@@ -412,14 +370,6 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
             };
           });
           
-          // Log the exact payload being sent
-          console.log('Batch validation complete. Sending payload:', {
-            batchNumber: i/20 + 1,
-            batchSize: validatedBatch.length,
-            firstItem: validatedBatch[0],
-            payloadString: JSON.stringify(validatedBatch)
-          });
-          
           const { error: assignmentError } = await supabase
             .from('schedule_assignments')
             .insert(validatedBatch)
@@ -453,261 +403,76 @@ const createScheduleAssignments = async (scheduleId: string, startDate: Date, en
     console.error('Error creating schedule assignments:', error);
     throw error;
   }
-};
-
-// Helper function to try assigning a pattern
-function tryAssignPattern(
-  employee: any,
-  startDate: Date,
-  shifts: Shift[],
-  patternType: ShiftPatternType,
-  allDates: Date[],
-  weeklyHours: Map<string, number>,
-  coverageTracking: Map<string, DailyCoverage>
-): ShiftPattern | null {
-  // For each shift, try to create a pattern starting on this date
-  for (const shift of shifts) {
-    // Check if we can assign this shift for the required consecutive days
-    const consecutiveDays = patternType === ShiftPatternType.FourTen ? 4 : 3;
-    let canAssignPattern = true;
-    const patternDates: Date[] = [];
-    
-    // Get consecutive dates starting from startDate
-    for (let i = 0; i < consecutiveDays; i++) {
-      const date = new Date(startDate);
-      date.setDate(date.getDate() + i);
-      
-      // Check if date is within schedule period
-      if (!allDates.some(d => d.getTime() === date.getTime())) {
-        canAssignPattern = false;
-        break;
-      }
-      
-      // Check coverage for this date and shift
-      const dateStr = date.toISOString().split('T')[0];
-      const coverage = coverageTracking.get(dateStr);
-      if (!coverage) {
-        canAssignPattern = false;
-        break;
-      }
-      
-      // Check if adding this shift would exceed requirements
-      const blockType = getBlockTypeForShift(shift);
-      if (!blockType) {
-        canAssignPattern = false;
-        break;
-      }
-      
-      const currentCoverage = coverage[blockType];
-      const requiredTotal = getRequiredTotal(blockType);
-      
-      if (currentCoverage.total >= requiredTotal) {
-        canAssignPattern = false;
-        break;
-      }
-    }
-    
-    // If we can assign the pattern, create it
-    if (canAssignPattern) {
-      return {
-        type: patternType,
-        shifts: new Array(consecutiveDays).fill(shift.id),
-        startDate: startDate
-      };
-    }
-  }
-  
-  return null;
 }
 
-// Helper function to create assignments for a pattern
-function createPatternAssignments(
-  pattern: ShiftPattern,
-  employee: Employee,
-  scheduleId: string,
-  assignments: AssignmentInsert[],
-  weeklyHours: Map<string, number>,
-  shifts: Shift[]
-) {
-  const date = new Date(pattern.startDate);
-  const shift = shifts.find(s => s.id === pattern.shifts[0]);
-  if (!shift) return;
-
-  for (let i = 0; i < pattern.shifts.length; i++) {
-    const dateStr = new Date(date.getTime() + i * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const shift = shifts.find(s => s.id === pattern.shifts[i]);
-    if (!shift) continue;
-
-    const assignment: AssignmentInsert = {
-      schedule_id: scheduleId,
-      employee_id: employee.id,
-      shift_id: pattern.shifts[i],
-      date: dateStr,
-      is_supervisor_shift: employee.position === 'supervisor' || 
-                          employee.position === 'management' || 
-                          employee.position === 'shift_supervisor'
-    };
-
-    assignments.push(assignment);
-
-    // Update weekly hours
-    const currentHours = weeklyHours.get(employee.id) || 0;
-    weeklyHours.set(employee.id, currentHours + calculateShiftHours(shift.start_time, shift.end_time));
-  }
-
-  // If it's a 3x12 pattern, add the 4-hour shift
-  if (pattern.type === ShiftPatternType.ThreeTwelvePlusFour && pattern.shifts.length > 3) {
-    const date = new Date(pattern.startDate);
-    date.setDate(date.getDate() + 3);
-    const dateStr = date.toISOString().split('T')[0];
-    
-    // Get the 4-hour shift data
-    const shift = shifts.find(s => s.id === pattern.shifts[3]);
-    if (!shift) return;
-    
-    // Create the 4-hour assignment
-    const assignment: AssignmentInsert = {
-      schedule_id: scheduleId,
-      employee_id: employee.id,
-      shift_id: pattern.shifts[3],
-      date: dateStr,
-      is_supervisor_shift: employee.position === 'supervisor' || 
-                          employee.position === 'management' || 
-                          employee.position === 'shift_supervisor'
-    };
-    
-    assignments.push(assignment);
-    
-    // Update weekly hours
-    const currentHours = weeklyHours.get(employee.id) || 0;
-    weeklyHours.set(employee.id, currentHours + 4);
-  }
-}
-
-// Helper function to find a suitable 4-hour shift
-function findSuitableFourHourShift(
-  fourHourShifts: any[],
-  pattern: ShiftPattern,
-  coverageTracking: Map<string, DailyCoverage>,
-  date: Date
-): any {
-  const dateStr = date.toISOString().split('T')[0];
-  const coverage = coverageTracking.get(dateStr);
-  if (!coverage) return null;
-  
-  // Try to find a 4-hour shift that helps meet coverage requirements
-  return fourHourShifts.find(shift => {
-    const blockType = getBlockTypeForShift(shift);
-    if (!blockType) return false;
-    
-    const currentCoverage = coverage[blockType];
-    const requiredTotal = getRequiredTotal(blockType);
-    
-    return currentCoverage.total < requiredTotal;
-  });
-}
-
-// Helper function to update coverage for a shift
-function updateCoverageForShift(
-  coverage: DailyCoverage,
-  shift: Shift,
-  isSupervisor: boolean,
-  isDispatcher: boolean
-): void {
-  const blockType = getBlockTypeForShift(shift);
-  if (blockType) {
-    coverage[blockType].total++;
-    if (isSupervisor) coverage[blockType].supervisors++;
-    if (isDispatcher) coverage[blockType].dispatchers++;
-  }
-}
-
-// Add helper function to determine block type
-function getBlockTypeForShift(shift: Shift): BlockType | null {
-  const timeBlocks = {
-    early: { start: '05:00', end: '09:00' },
-    day: { start: '09:00', end: '21:00' },
-    night: { start: '21:00', end: '01:00' },
-    overnight: { start: '01:00', end: '05:00' }
+interface ScheduleFormProps {
+  scheduleId?: string;
+  initialData?: {
+    start_date: string;
+    end_date: string;
+    status: string;
+    name?: string;
   };
-  
-  for (const [blockType, block] of Object.entries(timeBlocks)) {
-    if (isTimeInRange(shift.start_time, block.start, block.end)) {
-      return blockType as BlockType;
-    }
-  }
-  return null;
-}
-
-// Helper function to determine if a shift falls within a time block
-function isShiftInTimeBlock(shift: Shift, blockType: BlockType): boolean {
-  const timeBlocks = {
-    early: { start: '05:00', end: '09:00' },
-    day: { start: '09:00', end: '21:00' },
-    night: { start: '21:00', end: '01:00' },
-    overnight: { start: '01:00', end: '05:00' }
-  };
-  
-  const block = timeBlocks[blockType];
-  return isTimeInRange(shift.start_time, block.start, block.end);
+  onSave: () => void;
+  onCancel: () => void;
 }
 
 export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel }: ScheduleFormProps) {
-  const [name, setName] = useState(initialData?.name || '')
-  const [startDate, setStartDate] = useState(initialData?.start_date || '')
-  const [endDate, setEndDate] = useState(initialData?.end_date || '')
-  const [status] = useState(initialData?.status || 'draft')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [hasEditedName, setHasEditedName] = useState(false)
+  const [name, setName] = useState(initialData?.name || '');
+  const [startDate, setStartDate] = useState(initialData?.start_date || '');
+  const [endDate, setEndDate] = useState(initialData?.end_date || '');
+  const [status] = useState(initialData?.status || 'draft');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [hasEditedName, setHasEditedName] = useState(false);
 
   const formatDateRange = (start: string, end: string) => {
     // Ensure dates are interpreted in local timezone by appending T00:00:00
-    const startDateObj = new Date(`${start}T00:00:00`)
-    const endDateObj = new Date(`${end}T00:00:00`)
-    return `${startDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-  }
+    const startDateObj = new Date(`${start}T00:00:00`);
+    const endDateObj = new Date(`${end}T00:00:00`);
+    return `${startDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+  };
 
   const calculateEndDate = (start: string) => {
-    if (!start) return ''
+    if (!start) return '';
     // Ensure date is interpreted in local timezone
-    const endDate = new Date(`${start}T00:00:00`)
-    endDate.setDate(endDate.getDate() + 13) // 14 days total (start date + 13)
-    return endDate.toISOString().split('T')[0]
-  }
+    const endDate = new Date(`${start}T00:00:00`);
+    endDate.setDate(endDate.getDate() + 13); // 14 days total (start date + 13)
+    return endDate.toISOString().split('T')[0];
+  };
 
   // Update end date and name when start date changes
   useEffect(() => {
     if (startDate) {
-      const newEndDate = calculateEndDate(startDate)
-      setEndDate(newEndDate)
+      const newEndDate = calculateEndDate(startDate);
+      setEndDate(newEndDate);
       
       // Only auto-update name if it hasn't been manually edited
       if (!hasEditedName) {
-        setName(formatDateRange(startDate, newEndDate))
+        setName(formatDateRange(startDate, newEndDate));
       }
     }
-  }, [startDate, hasEditedName])
+  }, [startDate, hasEditedName]);
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setName(e.target.value)
-    setHasEditedName(true)
-  }
+    setName(e.target.value);
+    setHasEditedName(true);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
 
     try {
       if (!name.trim()) {
-        throw new Error('Schedule name is required')
+        throw new Error('Schedule name is required');
       }
 
       // Get current user's session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError) throw sessionError
-      if (!session) throw new Error('No active session')
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw sessionError;
+      if (!session) throw new Error('No active session');
 
       const scheduleData = {
         name: name.trim(),
@@ -716,9 +481,9 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
         status: 'draft',
         version: 1,
         is_active: true
-      }
+      };
 
-      let schedule
+      let schedule;
       if (scheduleId) {
         // Update existing schedule via API route
         const response = await fetch(`/api/schedules/${scheduleId}`, {
@@ -728,15 +493,15 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
             'Authorization': `Bearer ${session.access_token}`
           },
           body: JSON.stringify(scheduleData)
-        })
+        });
 
         if (!response.ok) {
-          const data = await response.json()
-          throw new Error(data.error || 'Failed to update schedule')
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to update schedule');
         }
 
-        const result = await response.json()
-        schedule = result.schedule
+        const result = await response.json();
+        schedule = result.schedule;
       } else {
         // Create new schedule via API route
         const response = await fetch('/api/schedules', {
@@ -746,34 +511,34 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
             'Authorization': `Bearer ${session.access_token}`
           },
           body: JSON.stringify(scheduleData)
-        })
+        });
 
         if (!response.ok) {
-          const data = await response.json()
-          throw new Error(data.error || 'Failed to create schedule')
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to create schedule');
         }
 
-        const result = await response.json()
-        schedule = result.schedule
+        const result = await response.json();
+        schedule = result.schedule;
 
-        console.log('Created schedule:', schedule)
+        console.log('Created schedule:', schedule);
 
         // Create schedule assignments
         await createScheduleAssignments(
           schedule.id,
           new Date(startDate),
           new Date(endDate)
-        )
+        );
       }
 
-      onSave()
+      onSave();
     } catch (error) {
-      console.error('Error saving schedule:', error)
-      setError(error instanceof Error ? error.message : 'Failed to save schedule')
+      console.error('Error saving schedule:', error);
+      setError(error instanceof Error ? error.message : 'Failed to save schedule');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -843,5 +608,5 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
         </button>
       </div>
     </form>
-  )
+  );
 } 
