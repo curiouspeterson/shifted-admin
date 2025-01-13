@@ -83,10 +83,24 @@ export interface EmployeeSchedulingRule {
 
 export interface TimeBasedRequirement {
   id: string;
+  schedule_id: string;
   day_of_week: number;
   start_time: string;
   end_time: string;
   min_employees: number;
   max_employees: number | null;
   min_supervisors: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface RequirementStatus {
+  date: string;
+  timeBlock: {
+    start: string;
+    end: string;
+  };
+  required: number;
+  actual: number;
+  type: 'total' | 'supervisor';
 } 

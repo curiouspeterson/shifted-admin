@@ -3,18 +3,27 @@
 import React from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
 import { TimeBasedRequirement } from '@/lib/types/scheduling';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 interface StaffingRequirementsProps {
-  requirements: TimeBasedRequirement[];
-  onUpdate: (requirement: TimeBasedRequirement) => Promise<void>;
-  isEditable?: boolean;
+  scheduleId: string;
+  date: string;
+  assignments: any[];
+  timeRequirements: TimeBasedRequirement[];
+  requirementStatuses: {
+    date: string;
+    timeBlock: {
+      start: string;
+      end: string;
+    };
+    required: number;
+    actual: number;
+    type: 'total' | 'supervisor';
+  }[];
+  isLoading?: boolean;
+  error?: string | null;
 }
 
-const DAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const TIME_BLOCKS = [
   { start: '05:00:00', end: '09:00:00', label: 'Early Morning (5 AM - 9 AM)' },
   { start: '09:00:00', end: '21:00:00', label: 'Day (9 AM - 9 PM)' },
@@ -23,27 +32,61 @@ const TIME_BLOCKS = [
 ];
 
 export function StaffingRequirements({
-  requirements,
-  onUpdate,
-  isEditable = false
+  scheduleId,
+  date,
+  assignments,
+  timeRequirements,
+  requirementStatuses,
+  isLoading = false,
+  error = null
 }: StaffingRequirementsProps) {
-  const [loading, setLoading] = React.useState<string | null>(null);
+  const dayOfWeek = new Date(date).getDay();
 
-  const getRequirement = (dayIndex: number, start: string, end: string) => {
-    return requirements.find(r => 
-      r.day_of_week === dayIndex && 
-      r.start_time === start && 
-      r.end_time === end
+  if (error) {
+    return (
+      <Card className="w-full">
+        <CardHeader>
+          <h2 className="text-lg font-semibold">Staffing Requirements</h2>
+        </CardHeader>
+        <CardContent>
+          <div className="text-red-600">{error}</div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <Card className="w-full">
+        <CardHeader>
+          <h2 className="text-lg font-semibold">Staffing Requirements</h2>
+        </CardHeader>
+        <CardContent>
+          <div className="animate-pulse space-y-4">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-20 bg-gray-200 rounded-lg" />
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const getRequirementStatus = (start: string, end: string) => {
+    return requirementStatuses.find(
+      status => 
+        status.date === date &&
+        status.timeBlock.start === start &&
+        status.timeBlock.end === end
     );
   };
 
-  const handleUpdate = async (requirement: TimeBasedRequirement) => {
-    try {
-      setLoading(requirement.id);
-      await onUpdate(requirement);
-    } finally {
-      setLoading(null);
-    }
+  const getRequirement = (start: string, end: string) => {
+    return timeRequirements.find(r => 
+      r.day_of_week === dayOfWeek && 
+      r.start_time === start && 
+      r.end_time === end
+    );
   };
 
   return (
@@ -51,97 +94,56 @@ export function StaffingRequirements({
       <CardHeader>
         <h2 className="text-lg font-semibold">Staffing Requirements</h2>
         <p className="text-sm text-muted-foreground">
-          Set minimum staffing levels for each time block and day
+          Current staffing levels for each time block
         </p>
       </CardHeader>
       <CardContent>
-        <Tabs defaultValue="0" className="w-full">
-          <TabsList className="grid grid-cols-7 w-full">
-            {DAYS.map((day, index) => (
-              <TabsTrigger key={day} value={index.toString()}>
-                {day}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-          {DAYS.map((day, dayIndex) => (
-            <TabsContent key={day} value={dayIndex.toString()}>
-              <div className="space-y-6">
-                {TIME_BLOCKS.map(block => {
-                  const req = getRequirement(dayIndex, block.start, block.end);
-                  if (!req) return null;
+        <div className="space-y-6">
+          {TIME_BLOCKS.map(block => {
+            const req = getRequirement(block.start, block.end);
+            const status = getRequirementStatus(block.start, block.end);
+            if (!req || !status) return null;
 
-                  return (
-                    <div key={`${dayIndex}-${block.start}`} className="p-4 border rounded-lg">
-                      <h3 className="font-medium mb-4">{block.label}</h3>
-                      <div className="grid grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <Label>Minimum Staff</Label>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              value={req.min_employees}
-                              onChange={isEditable ? (e) => {
-                                const value = parseInt(e.target.value);
-                                if (isNaN(value)) return;
-                                handleUpdate({
-                                  ...req,
-                                  min_employees: value
-                                });
-                              } : undefined}
-                              disabled={!isEditable || loading === req.id}
-                              min={1}
-                              className="w-24"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Maximum Staff</Label>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              value={req.max_employees || ''}
-                              onChange={isEditable ? (e) => {
-                                const value = e.target.value ? parseInt(e.target.value) : null;
-                                handleUpdate({
-                                  ...req,
-                                  max_employees: value
-                                });
-                              } : undefined}
-                              disabled={!isEditable || loading === req.id}
-                              min={req.min_employees}
-                              className="w-24"
-                            />
-                          </div>
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Minimum Supervisors</Label>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              value={req.min_supervisors}
-                              onChange={isEditable ? (e) => {
-                                const value = parseInt(e.target.value);
-                                if (isNaN(value)) return;
-                                handleUpdate({
-                                  ...req,
-                                  min_supervisors: value
-                                });
-                              } : undefined}
-                              disabled={!isEditable || loading === req.id}
-                              min={1}
-                              className="w-24"
-                            />
-                          </div>
-                        </div>
+            const isMet = status.actual >= status.required;
+
+            return (
+              <div key={block.start} className="p-4 border rounded-lg">
+                <h3 className="font-medium mb-4">{block.label}</h3>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label>Required Staff</Label>
+                    <div className="flex items-center gap-2">
+                      <div className={`text-lg font-medium ${isMet ? 'text-green-600' : 'text-red-600'}`}>
+                        {status.actual} / {status.required}
                       </div>
                     </div>
-                  );
-                })}
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Maximum Staff</Label>
+                    <div className="flex items-center gap-2">
+                      <div className="text-lg font-medium">
+                        {req.max_employees || '∞'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Required Supervisors</Label>
+                    <div className="flex items-center gap-2">
+                      <div className={`text-lg font-medium ${
+                        status.type === 'supervisor' && !isMet ? 'text-red-600' : 'text-green-600'
+                      }`}>
+                        {status.type === 'supervisor' ? `${status.actual} / ${status.required}` : 'Met'}
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
-            </TabsContent>
-          ))}
-        </Tabs>
+            );
+          })}
+        </div>
       </CardContent>
     </Card>
   );
-} 
+}
+
+export default StaffingRequirements; 

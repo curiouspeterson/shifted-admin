@@ -1,11 +1,11 @@
 'use client'
 
-import type { Schedule } from '@/app/types/scheduling';
+import { useState, useEffect } from 'react';
+import type { Schedule, TimeBasedRequirement } from '@/app/lib/types/scheduling';
 import type { GroupedAssignments, RequirementStatus } from '@/app/lib/utils/schedule.types';
-import type { TimeBasedRequirement } from '@/app/types/scheduling';
 import ScheduleHeader from './components/ScheduleHeader';
 import ScheduleTimeline from './components/ScheduleTimeline';
-import StaffingRequirements from './components/StaffingRequirements';
+import { StaffingRequirements } from './components/StaffingRequirements';
 
 interface ScheduleDetailsClientProps {
   schedule: Schedule;
@@ -22,10 +22,17 @@ export default function ScheduleDetailsClient({
   timeRequirements,
   requirementStatuses
 }: ScheduleDetailsClientProps) {
-  if (error) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(error);
+
+  useEffect(() => {
+    setLocalError(error);
+  }, [error]);
+
+  if (localError) {
     return (
       <div className="text-red-500">
-        {error}
+        {localError}
       </div>
     );
   }
@@ -34,25 +41,31 @@ export default function ScheduleDetailsClient({
     <div className="space-y-8">
       <ScheduleHeader schedule={schedule} />
       
-      {Object.entries(assignments).map(([date, shifts]) => (
-        <div key={date} className="space-y-6">
-          <h3 className="text-lg font-medium leading-6 text-gray-900">
-            {new Date(date).toLocaleDateString()}
-          </h3>
-          
-          <StaffingRequirements
-            date={date}
-            assignments={Object.values(shifts).flat()}
-            timeRequirements={timeRequirements}
-            requirementStatuses={requirementStatuses}
-          />
-          
-          <ScheduleTimeline
-            date={date}
-            shifts={shifts}
-          />
-        </div>
-      ))}
+      {Object.entries(assignments).map(([date, shifts]) => {
+        const allAssignments = Object.values(shifts as Record<string, any[]>).flat();
+        return (
+          <div key={date} className="space-y-6">
+            <h3 className="text-lg font-medium leading-6 text-gray-900">
+              {new Date(date).toLocaleDateString()}
+            </h3>
+            
+            <StaffingRequirements
+              scheduleId={schedule.id}
+              date={date}
+              assignments={allAssignments}
+              timeRequirements={timeRequirements}
+              requirementStatuses={requirementStatuses}
+              isLoading={isLoading}
+              error={localError}
+            />
+            
+            <ScheduleTimeline
+              date={date}
+              shifts={shifts}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 } 
