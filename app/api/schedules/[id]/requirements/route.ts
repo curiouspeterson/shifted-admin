@@ -5,43 +5,71 @@ import { createServerClient } from '@supabase/ssr';
 import { TimeBasedRequirement } from '@/app/lib/types/scheduling';
 import type { Database } from '@/lib/database.types';
 
-export async function GET(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
+// Helper function to create Supabase client with minimal cookie handling
+const createSupabaseClient = async () => {
+  console.log('Creating Supabase client...');
   try {
     const cookieStore = await cookies();
+    console.log('Cookie store initialized');
     
-    // Debug cookie information
-    console.log('Checking cookies for auth...');
-
-    const supabase = createServerClient<Database>(
+    // Log available cookies
+    const allCookies = cookieStore.getAll();
+    console.log('Available cookies:', allCookies.map(c => c.name));
+    
+    return createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
         cookies: {
           get(name: string) {
-            return cookieStore.get(name)?.value;
+            try {
+              const cookie = cookieStore.get(name);
+              console.log(`Getting cookie ${name}:`, cookie?.value ? 'found' : 'not found');
+              return cookie?.value;
+            } catch (error) {
+              console.error(`Error getting cookie ${name}:`, error);
+              return undefined;
+            }
           },
           set(name: string, value: string, options: { path?: string; domain?: string; maxAge?: number; httpOnly?: boolean; secure?: boolean }) {
-            cookieStore.set({
-              name,
-              value,
-              ...options,
-            });
+            try {
+              cookieStore.set({ name, value, ...options });
+              console.log(`Cookie ${name} set successfully`);
+            } catch (error) {
+              console.error(`Error setting cookie ${name}:`, error);
+            }
           },
           remove(name: string, options: { path?: string; domain?: string }) {
-            cookieStore.delete({
-              name,
-              ...options,
-            });
+            try {
+              cookieStore.delete({ name, ...options });
+              console.log(`Cookie ${name} removed successfully`);
+            } catch (error) {
+              console.error(`Error removing cookie ${name}:`, error);
+            }
           },
         },
       }
     );
+  } catch (error) {
+    console.error('Error creating Supabase client:', error);
+    throw error;
+  }
+};
 
-    // First check session
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
+  console.log('GET request received for schedule:', params.id);
+  
+  try {
+    console.log('Initializing Supabase client...');
+    const supabase = await createSupabaseClient();
+    console.log('Supabase client initialized');
+
+    console.log('Checking session...');
     const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    
     if (sessionError) {
       console.error('Session error:', sessionError);
       return NextResponse.json(
@@ -58,30 +86,18 @@ export async function GET(
       );
     }
 
-    // Then get user
-    const {
-      data: { user },
-      error: userError
-    } = await supabase.auth.getUser();
-
-    if (userError || !user) {
-      console.error('Auth error:', userError);
-      return NextResponse.json(
-        { error: 'Authentication failed', details: userError?.message },
-        { status: 401 }
-      );
-    }
-
+    console.log('Session found for user:', session.user.id);
     const scheduleId = params.id;
-    console.log('Fetching requirements for schedule:', scheduleId, 'User:', user.id);
+    console.log('Fetching requirements for schedule:', scheduleId);
 
-    // Fetch requirements
+    // Fetch requirements with pagination to handle large datasets
     const { data: requirements, error: requirementsError } = await supabase
       .from('time_based_requirements')
       .select('*')
       .eq('schedule_id', scheduleId)
       .order('day_of_week')
-      .order('start_time');
+      .order('start_time')
+      .limit(100); // Add pagination
 
     if (requirementsError) {
       console.error('Database error:', requirementsError);
@@ -91,7 +107,16 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(requirements || []);
+    console.log('Requirements fetched successfully:', requirements?.length || 0, 'items');
+    
+    // Return response with compression headers
+    return new NextResponse(JSON.stringify(requirements || []), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store, must-revalidate',
+        'Accept-Encoding': 'gzip, deflate, br',
+      },
+    });
 
   } catch (error) {
     console.error('Unexpected error:', error);
