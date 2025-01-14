@@ -1,22 +1,23 @@
-import Test from './test'
-import TestMinimal from './test-minimal'
+import { createClient } from '@/app/lib/supabase/server';
+import { redirect } from 'next/navigation';
 
-export default function Home() {
-  return (
-    <div>
-      <h1 className="text-4xl font-bold mb-8">
-        Test Page
-      </h1>
-      <div className="space-y-8">
-        <section>
-          <h2 className="text-2xl font-semibold mb-4">NextUI Test</h2>
-          <Test />
-        </section>
-        <section>
-          <h2 className="text-2xl font-semibold mb-4">Basic Tailwind Test</h2>
-          <TestMinimal />
-        </section>
-      </div>
-    </div>
-  )
+export default async function Home() {
+  const supabase = createClient();
+  
+  // Check if user is authenticated
+  const { data: { session }, error: authError } = await supabase.auth.getSession();
+  if (authError) {
+    console.error('Auth error:', authError);
+    redirect('/sign-in');
+  }
+  
+  // Redirect based on authentication status
+  if (session) {
+    redirect('/dashboard');
+  } else {
+    redirect('/sign-in');
+  }
+  
+  // This won't be reached, but is needed for TypeScript
+  return null;
 }

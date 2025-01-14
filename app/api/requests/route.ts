@@ -1,46 +1,15 @@
-import { createClient } from '@supabase/supabase-js'
+import { createClient } from '@/app/lib/supabase/server'
 import { NextResponse } from 'next/server'
-
-interface TimeOffRequest {
-  employee_id: string
-  start_date: string
-  end_date: string
-  request_type: 'vacation' | 'sick' | 'personal' | 'other'
-  reason: string | null
-  status: 'pending' | 'approved' | 'denied'
-  created_at: string
-  updated_at: string
-}
 
 export async function GET(req: Request) {
   try {
-    // Create a Supabase client with the service role key for admin access
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    )
+    const supabase = createClient()
 
-    // Verify the session from the Authorization header
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return new NextResponse(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401 }
-      )
-    }
-
-    const token = authHeader.split(' ')[1]
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    
-    if (authError || !user) {
-      return new NextResponse(
-        JSON.stringify({ error: 'Unauthorized' }),
+    // Verify authentication
+    const { data: { session }, error: authError } = await supabase.auth.getSession()
+    if (authError || !session) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
         { status: 401 }
       )
     }
@@ -49,43 +18,60 @@ export async function GET(req: Request) {
     const { data: employee, error: employeeError } = await supabase
       .from('employees')
       .select('id, position')
-      .eq('user_id', user.id)
-      .single()
+      .eq('user_id', session.user.id)
+      .maybeSingle()
 
-    if (employeeError) throw employeeError
-    if (!employee) throw new Error('Employee not found')
+    if (employeeError) {
+      console.error('Employee fetch error:', employeeError)
+      return NextResponse.json(
+        { error: 'Failed to fetch employee details' },
+        { status: 500 }
+      )
+    }
 
-    // Build the query based on user's role
-    let query = supabase
+    if (!employee) {
+      return NextResponse.json(
+        { error: 'No employee record found' },
+        { status: 404 }
+      )
+    }
+
+    // Determine if user is a manager
+    const isManager = ['shift_supervisor', 'management'].includes(employee.position)
+
+    // Fetch requests based on user role
+    const requestsQuery = supabase
       .from('time_off_requests')
       .select(`
         *,
         employee:employees!time_off_requests_employee_id_fkey (
+          id,
           first_name,
           last_name
         )
       `)
       .order('created_at', { ascending: false })
 
-    // If not a supervisor/manager, only show their own requests
-    if (!['shift_supervisor', 'management'].includes(employee.position)) {
-      query = query.eq('employee_id', employee.id)
+    // If not a manager, only show their own requests
+    if (!isManager) {
+      requestsQuery.eq('employee_id', employee.id)
     }
 
-    // Execute the query
-    const { data: requests, error } = await query
+    const { data: requests, error: requestsError } = await requestsQuery
 
-    if (error) {
-      console.error('Database error:', error)
-      throw error
+    if (requestsError) {
+      console.error('Requests fetch error:', requestsError)
+      return NextResponse.json(
+        { error: 'Failed to fetch requests' },
+        { status: 500 }
+      )
     }
 
     return NextResponse.json({ requests })
-
-  } catch (err) {
-    console.error('Error in GET /api/requests:', err)
-    return new NextResponse(
-      JSON.stringify({ error: err instanceof Error ? err.message : 'Failed to fetch requests' }),
+  } catch (error) {
+    console.error('Error in requests route:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Internal server error' },
       { status: 500 }
     )
   }
@@ -93,33 +79,13 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    // Create a Supabase client with the service role key for admin access
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    )
+    const supabase = createClient()
 
-    // Verify the session from the Authorization header
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return new NextResponse(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401 }
-      )
-    }
-
-    const token = authHeader.split(' ')[1]
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    
-    if (authError || !user) {
-      return new NextResponse(
-        JSON.stringify({ error: 'Unauthorized' }),
+    // Verify authentication
+    const { data: { session }, error: authError } = await supabase.auth.getSession()
+    if (authError || !session) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
         { status: 401 }
       )
     }
@@ -128,17 +94,29 @@ export async function POST(req: Request) {
     const { data: employee, error: employeeError } = await supabase
       .from('employees')
       .select('id')
-      .eq('user_id', user.id)
-      .single()
+      .eq('user_id', session.user.id)
+      .maybeSingle()
 
-    if (employeeError) throw employeeError
-    if (!employee) throw new Error('Employee not found')
+    if (employeeError) {
+      console.error('Employee fetch error:', employeeError)
+      return NextResponse.json(
+        { error: 'Failed to fetch employee details' },
+        { status: 500 }
+      )
+    }
 
-    // Get the request data from the body
-    const formData = await req.json() as Partial<TimeOffRequest>
+    if (!employee) {
+      return NextResponse.json(
+        { error: 'No employee record found' },
+        { status: 404 }
+      )
+    }
+
+    // Get request data from body
+    const formData = await req.json()
 
     // Create the request
-    const { data: timeOffRequest, error } = await supabase
+    const { data: request, error: createError } = await supabase
       .from('time_off_requests')
       .insert([{
         employee_id: employee.id,
@@ -146,24 +124,24 @@ export async function POST(req: Request) {
         end_date: formData.end_date,
         request_type: formData.request_type,
         reason: formData.reason || null,
-        status: 'pending',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
+        status: 'pending'
       }])
       .select()
       .single()
 
-    if (error) {
-      console.error('Database error:', error)
-      throw error
+    if (createError) {
+      console.error('Create request error:', createError)
+      return NextResponse.json(
+        { error: 'Failed to create request' },
+        { status: 500 }
+      )
     }
 
-    return NextResponse.json({ request: timeOffRequest })
-
-  } catch (err) {
-    console.error('Error in POST /api/requests:', err)
-    return new NextResponse(
-      JSON.stringify({ error: err instanceof Error ? err.message : 'Failed to create request' }),
+    return NextResponse.json({ request })
+  } catch (error) {
+    console.error('Error in POST /api/requests:', error)
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Failed to create request' },
       { status: 500 }
     )
   }

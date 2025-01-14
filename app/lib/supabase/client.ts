@@ -1,11 +1,14 @@
-import { createBrowserClient } from '@supabase/ssr'
-import type { Database } from '@/lib/database.types'
+'use client'
 
-const createClient = () => {
+import { createBrowserClient } from '@supabase/ssr'
+import { Database } from './database.types'
+
+export const createClient = () => {
   return createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   )
 }
 
-export { createClient } 
+// Create a singleton instance for client-side usage
+export const supabase = createClient() 

@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase/client'
-import { Modal, ModalContent, ModalHeader, ModalBody, Button, useDisclosure } from "@nextui-org/react"
+import useSWR from 'swr'
+import { Modal, ModalContent, ModalHeader, ModalBody, useDisclosure } from "@nextui-org/react"
 import LoadingSpinner from '@/app/components/LoadingSpinner'
 import RequestForm from '@/app/components/RequestForm'
 import ErrorBoundary from '@/app/components/ErrorBoundary'
@@ -25,133 +24,29 @@ interface TimeOffRequest {
   }
 }
 
-const MAX_RETRIES = 3
-const RETRY_DELAY = 1000 // 1 second
+const fetcher = async (url: string) => {
+  const res = await fetch(url)
+  if (!res.ok) {
+    const error = await res.json()
+    throw new Error(error.error || 'Failed to fetch data')
+  }
+  return res.json()
+}
 
 export default function RequestsPage() {
   const router = useRouter()
-  const [requests, setRequests] = useState<TimeOffRequest[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [isManager, setIsManager] = useState(false)
-  const {isOpen, onOpen, onClose} = useDisclosure()
-  const [retryCount, setRetryCount] = useState(0)
-
-  useEffect(() => {
-    fetchRequests()
-  }, [])
-
-  const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-
-  const fetchRequests = async (retry = true) => {
-    try {
-      // Get and validate session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError) {
-        console.error('Session error:', sessionError)
-        throw sessionError
-      }
-      if (!session) {
-        router.push('/sign-in')
-        return
-      }
-
-      console.log('Fetching employee details for user:', session.user.id)
-
-      // Get employee details to check if user is a supervisor/manager
-      const { data: employee, error: employeeError } = await supabase
-        .from('employees')
-        .select('id, position')
-        .eq('user_id', session.user.id)
-        .maybeSingle()
-
-      if (employeeError) {
-        console.error('Employee fetch error:', employeeError)
-        
-        // Retry logic for database errors
-        if (retry && retryCount < MAX_RETRIES) {
-          console.log(`Retrying fetch (attempt ${retryCount + 1}/${MAX_RETRIES})...`)
-          setRetryCount(prev => prev + 1)
-          await sleep(RETRY_DELAY * (retryCount + 1))
-          return fetchRequests(true)
-        }
-
-        setError('Failed to fetch employee details. Please try again.')
-        setLoading(false)
-        return
-      }
-
-      if (!employee) {
-        console.error('No employee record found for user:', session.user.id)
-        setError('No employee record found. Please contact your administrator to set up your employee profile.')
-        setLoading(false)
-        return
-      }
-
-      // Reset retry count on successful fetch
-      setRetryCount(0)
-
-      console.log('Employee details:', employee)
-      setIsManager(['shift_supervisor', 'management'].includes(employee.position))
-
-      // Fetch requests using API route
-      console.log('Fetching requests...')
-      const response = await fetch('/api/requests', {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        console.error('Request fetch error:', errorData)
-        
-        // Retry logic for API errors
-        if (retry && retryCount < MAX_RETRIES) {
-          console.log(`Retrying fetch (attempt ${retryCount + 1}/${MAX_RETRIES})...`)
-          setRetryCount(prev => prev + 1)
-          await sleep(RETRY_DELAY * (retryCount + 1))
-          return fetchRequests(true)
-        }
-
-        throw new Error(errorData.error || 'Failed to fetch requests')
-      }
-
-      const { requests: requestsData } = await response.json()
-      console.log('Requests fetched:', requestsData?.length || 0)
-      setRequests(requestsData || [])
-      setLoading(false)
-      
-      // Reset retry count on successful fetch
-      setRetryCount(0)
-    } catch (err) {
-      console.error('Error in fetchRequests:', err)
-      
-      // Retry logic for unexpected errors
-      if (retry && retryCount < MAX_RETRIES) {
-        console.log(`Retrying fetch (attempt ${retryCount + 1}/${MAX_RETRIES})...`)
-        setRetryCount(prev => prev + 1)
-        await sleep(RETRY_DELAY * (retryCount + 1))
-        return fetchRequests(true)
-      }
-
-      setError(err instanceof Error ? err.message : 'Failed to fetch requests')
-      setLoading(false)
-    }
-  }
+  const { isOpen, onOpen, onClose } = useDisclosure()
+  
+  const { data, error, mutate } = useSWR<{ requests: TimeOffRequest[] }>('/api/requests', fetcher, {
+    revalidateOnFocus: false,
+  })
 
   const handleStatusUpdate = async (requestId: string, newStatus: 'approved' | 'denied') => {
     try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError) throw sessionError
-      if (!session) throw new Error('No active session')
-
-      // Update request status via API route
       const response = await fetch(`/api/requests/${requestId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
         },
         body: JSON.stringify({ status: newStatus })
       })
@@ -162,10 +57,10 @@ export default function RequestsPage() {
       }
 
       // Refresh the requests list
-      await fetchRequests()
+      mutate()
     } catch (err) {
       console.error('Error updating request:', err)
-      setError(err instanceof Error ? err.message : 'Failed to update request')
+      // Handle error appropriately
     }
   }
 
@@ -180,13 +75,28 @@ export default function RequestsPage() {
     }
   }
 
-  if (loading) {
+  if (!data && !error) {
     return (
       <div className="flex justify-center items-center h-64">
         <LoadingSpinner />
       </div>
     )
   }
+
+  if (error) {
+    if (error.message === 'Unauthorized') {
+      router.push('/sign-in')
+      return null
+    }
+    return (
+      <div className="mx-4 my-2 rounded-md bg-red-50 p-4">
+        <div className="text-sm text-red-700">{error.message}</div>
+      </div>
+    )
+  }
+
+  const requests = data?.requests || []
+  const isManager = requests.some(request => request.employee && request.employee_id !== request.employee.id)
 
   return (
     <ErrorBoundary>
@@ -200,12 +110,6 @@ export default function RequestsPage() {
             New Request
           </button>
         </div>
-
-        {error && (
-          <div className="mx-4 my-2 rounded-md bg-red-50 p-4">
-            <div className="text-sm text-red-700">{error}</div>
-          </div>
-        )}
 
         <div className="flex flex-col">
           <div className="-my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
@@ -253,18 +157,18 @@ export default function RequestsPage() {
                           {new Date(request.start_date).toLocaleDateString()} - {new Date(request.end_date).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium capitalize ${getStatusBadgeColor(request.status)}`}>
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusBadgeColor(request.status)}`}>
                             {request.status}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-500">
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {request.reason || '-'}
                         </td>
                         {isManager && request.status === 'pending' && (
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                             <button
                               onClick={() => handleStatusUpdate(request.id, 'approved')}
-                              className="text-green-600 hover:text-green-900 mr-4"
+                              className="text-green-600 hover:text-green-900"
                             >
                               Approve
                             </button>
@@ -304,8 +208,8 @@ export default function RequestsPage() {
             <ModalBody>
               <RequestForm
                 onSave={() => {
+                  mutate()
                   onClose()
-                  fetchRequests()
                 }}
                 onCancel={onClose}
               />

@@ -1,14 +1,18 @@
 'use client'
 
-import { createClient } from '@/app/lib/supabase/server'
 import { NextUIProvider } from "@nextui-org/react"
 import { ThemeProvider } from "next-themes"
+import { AppProvider } from "./lib/context/app-context"
+
+interface ProvidersProps {
+  children: React.ReactNode
+  employee?: any
+}
 
 export default function Providers({
   children,
-}: {
-  children: React.ReactNode
-}) {
+  employee
+}: ProvidersProps) {
   return (
     <NextUIProvider>
       <ThemeProvider
@@ -16,7 +20,9 @@ export default function Providers({
         defaultTheme="system"
         enableSystem
       >
-        {children}
+        <AppProvider employee={employee}>
+          {children}
+        </AppProvider>
       </ThemeProvider>
     </NextUIProvider>
   )

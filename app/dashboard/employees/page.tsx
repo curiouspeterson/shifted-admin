@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { supabase } from '@/lib/supabase/client'
-import { Modal, ModalContent, ModalHeader, ModalBody, Button, useDisclosure } from "@nextui-org/react"
+import useSWR from 'swr'
+import { Modal, ModalContent, ModalHeader, ModalBody, useDisclosure } from "@nextui-org/react"
 import EmployeeForm from '@/app/components/EmployeeForm'
 import LoadingSpinner from '@/app/components/LoadingSpinner'
 
@@ -20,48 +20,23 @@ interface Employee {
   is_active: boolean | null
 }
 
+const fetcher = async (url: string) => {
+  const res = await fetch(url)
+  if (!res.ok) {
+    const error = await res.json()
+    throw new Error(error.error || 'Failed to fetch data')
+  }
+  return res.json()
+}
+
 export default function EmployeesPage() {
   const router = useRouter()
-  const [employees, setEmployees] = useState<Employee[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const { isOpen, onOpen, onClose } = useDisclosure()
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null)
-
-  useEffect(() => {
-    fetchEmployees()
-  }, [])
-
-  const fetchEmployees = async () => {
-    try {
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError) throw sessionError
-      if (!session) {
-        router.push('/sign-in')
-        return
-      }
-
-      // Fetch employees using API route
-      const response = await fetch('/api/employees', {
-        headers: {
-          'Authorization': `Bearer ${session.access_token}`
-        }
-      })
-
-      if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || 'Failed to fetch employees')
-      }
-
-      const { employees: employeesData } = await response.json()
-      setEmployees(employeesData || [])
-      setLoading(false)
-    } catch (err) {
-      console.error('Error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to fetch employees')
-      setLoading(false)
-    }
-  }
+  
+  const { data, error, mutate } = useSWR<{ employees: Employee[] }>('/api/employees', fetcher, {
+    revalidateOnFocus: false,
+  })
 
   const handleEdit = (employee: Employee) => {
     setEditingEmployee(employee)
@@ -74,18 +49,32 @@ export default function EmployeesPage() {
   }
 
   const handleSave = async () => {
-    await fetchEmployees()
+    await mutate()
     onClose()
     setEditingEmployee(null)
   }
 
-  if (loading) {
+  if (!data && !error) {
     return (
       <div className="flex justify-center items-center h-64">
         <LoadingSpinner />
       </div>
     )
   }
+
+  if (error) {
+    if (error.message === 'Unauthorized') {
+      router.push('/sign-in')
+      return null
+    }
+    return (
+      <div className="mx-4 my-2 rounded-md bg-red-50 p-4">
+        <div className="text-sm text-red-700">{error.message}</div>
+      </div>
+    )
+  }
+
+  const employees = data?.employees || []
 
   return (
     <div className="bg-white shadow rounded-lg">
@@ -98,12 +87,6 @@ export default function EmployeesPage() {
           Add Employee
         </button>
       </div>
-
-      {error && (
-        <div className="mx-4 my-2 rounded-md bg-red-50 p-4">
-          <div className="text-sm text-red-700">{error}</div>
-        </div>
-      )}
 
       <div className="flex flex-col">
         <div className="-my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">

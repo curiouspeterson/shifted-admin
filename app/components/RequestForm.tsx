@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import { supabase } from '@/lib/supabase/client'
 
 interface RequestFormProps {
   onSave: () => void
@@ -24,17 +23,11 @@ export default function RequestForm({ onSave, onCancel }: RequestFormProps) {
     setError(null)
 
     try {
-      // Get current user's session
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
-      if (sessionError) throw sessionError
-      if (!session) throw new Error('No active session')
-
       // Create the request via API route
       const response = await fetch('/api/requests', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify(formData)
       })
