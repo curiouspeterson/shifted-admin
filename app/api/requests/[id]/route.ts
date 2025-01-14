@@ -1,103 +1,62 @@
-import { createClient } from '@supabase/supabase-js'
+import { createRouteHandler } from '@/app/lib/api/handler'
+import { AppError } from '@/app/lib/errors'
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import type { Database } from '@/app/lib/supabase/database.types'
 
-interface TimeOffRequest {
-  id: string
-  employee_id: string
-  start_date: string
-  end_date: string
-  request_type: 'vacation' | 'sick' | 'personal' | 'other'
-  reason: string | null
-  status: 'pending' | 'approved' | 'denied'
-  approved_by: string | null
-  created_at: string
-  updated_at: string
-}
+type TimeOffRequest = Database['public']['Tables']['time_off_requests']['Row']
+type TimeOffRequestUpdate = Database['public']['Tables']['time_off_requests']['Update']
 
-export async function PUT(
-  req: Request,
-  { params }: { params: { id: string } }
-) {
-  try {
-    // Create a Supabase client with the service role key for admin access
-    const supabase = createClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    )
+// Validation schemas
+const timeOffRequestSchema = z.object({
+  id: z.string(),
+  employee_id: z.string(),
+  start_date: z.string(),
+  end_date: z.string(),
+  status: z.string(),
+  reason: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string()
+})
 
-    // Verify the session from the Authorization header
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return new NextResponse(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401 }
-      )
+const timeOffRequestUpdateSchema = z.object({
+  status: z.enum(['pending', 'approved', 'denied'])
+})
+
+export const PUT = createRouteHandler(
+  async (req, { supabase, session, params }) => {
+    if (!params?.id) {
+      throw new AppError('Request ID is required', 400)
     }
 
-    const token = authHeader.split(' ')[1]
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token)
-    
-    if (authError || !user) {
-      return new NextResponse(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401 }
-      )
+    const body = await req.json()
+    const validatedData = timeOffRequestUpdateSchema.parse(body)
+
+    const now = new Date().toISOString()
+    const updateData: TimeOffRequestUpdate = {
+      ...validatedData,
+      updated_at: now
     }
 
-    // Get employee details to check if user is a supervisor/manager
-    const { data: employee, error: employeeError } = await supabase
-      .from('employees')
-      .select('id, position')
-      .eq('user_id', user.id)
-      .single()
-
-    if (employeeError) throw employeeError
-    if (!employee) throw new Error('Employee not found')
-
-    // Only supervisors and managers can update request status
-    if (!['shift_supervisor', 'management'].includes(employee.position)) {
-      return new NextResponse(
-        JSON.stringify({ error: 'Unauthorized - Only supervisors can update request status' }),
-        { status: 403 }
-      )
-    }
-
-    // Get the request ID from the URL
-    const requestId = params.id
-
-    // Get the update data from the body
-    const updateData = await req.json() as Partial<TimeOffRequest>
-
-    // Update the request
-    const { data: timeOffRequest, error } = await supabase
+    const { data: request, error } = await supabase
       .from('time_off_requests')
-      .update({
-        status: updateData.status,
-        approved_by: employee.id,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', requestId)
+      .update(updateData)
+      .eq('id', params.id)
       .select()
       .single()
 
     if (error) {
-      console.error('Database error:', error)
-      throw error
+      throw new AppError('Failed to update request', 500)
     }
 
-    return NextResponse.json({ request: timeOffRequest })
+    if (!request) {
+      throw new AppError('Request not found', 404)
+    }
 
-  } catch (err) {
-    console.error('Error in PUT /api/requests/[id]:', err)
-    return new NextResponse(
-      JSON.stringify({ error: err instanceof Error ? err.message : 'Failed to update request' }),
-      { status: 500 }
-    )
-  }
-} 
+    // Validate response data
+    const validatedRequest = timeOffRequestSchema.parse(request)
+
+    return NextResponse.json({ request: validatedRequest })
+  },
+  { requireSupervisor: true }
+) 

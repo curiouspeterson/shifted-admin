@@ -1,340 +1,94 @@
+import { createRouteHandler } from '@/app/lib/api/handler'
+import { AppError } from '@/app/lib/errors'
 import { NextResponse } from 'next/server'
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
-import { cookies } from 'next/headers'
-import { Database } from '@/lib/database.types'
-import { supabaseAdmin } from '@/lib/supabase/admin'
-import { scheduleResponseSchema } from '@/app/lib/schemas/schedule'
-import { APIError, handleError } from '@/app/lib/utils/errors'
+import { z } from 'zod'
+import type { Database } from '@/app/lib/supabase/database.types'
 
-export async function PUT(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-          set(name: string, value: string, options: CookieOptions) {
-            cookieStore.set({ name, value, ...options });
-          },
-          remove(name: string, options: CookieOptions) {
-            cookieStore.set({ name, value: '', ...options });
-          },
-        },
-      }
-    );
+type Schedule = Database['public']['Tables']['schedules']['Row']
+type ScheduleUpdate = Database['public']['Tables']['schedules']['Update']
 
-    // Verify session
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) throw sessionError;
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+// Validation schemas
+const scheduleSchema = z.object({
+  id: z.string(),
+  start_date: z.string(),
+  end_date: z.string(),
+  status: z.string(),
+  is_published: z.boolean(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  created_by: z.string(),
+  published_at: z.string().nullable(),
+  published_by: z.string().nullable()
+})
+
+const scheduleUpdateSchema = z.object({
+  start_date: z.string().optional(),
+  end_date: z.string().optional(),
+  status: z.string().optional(),
+  is_published: z.boolean().optional()
+})
+
+export const GET = createRouteHandler(
+  async (req, { supabase, params }) => {
+    if (!params?.id) {
+      throw new AppError('Schedule ID is required', 400)
     }
 
-    // Get employee details to check permissions
-    const { data: employee, error: employeeError } = await supabase
-      .from('employees')
-      .select('position')
-      .eq('user_id', session.user.id)
-      .single();
-
-    if (employeeError) {
-      console.error('Error fetching employee:', employeeError);
-      return NextResponse.json(
-        { error: 'Failed to verify permissions' },
-        { status: 500 }
-      );
-    }
-
-    if (!employee) {
-      return NextResponse.json(
-        { error: 'Employee record not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if employee is a supervisor or manager
-    if (!['supervisor', 'management'].includes(employee.position)) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Insufficient permissions' },
-        { status: 403 }
-      );
-    }
-
-    // Get request body
-    const body = await request.json();
-    const { name, start_date, end_date } = body;
-
-    if (!name || !start_date || !end_date) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
-
-    // Update schedule
-    const { error: updateError } = await supabase
+    const { data: schedule, error } = await supabase
       .from('schedules')
-      .update({ 
-        name,
-        start_date,
-        end_date,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', params.id);
-
-    if (updateError) {
-      console.error('Error updating schedule:', updateError);
-      return NextResponse.json(
-        { error: 'Failed to update schedule' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error in PUT /api/schedules/[id]:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function PATCH(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-          set(name: string, value: string, options: CookieOptions) {
-            cookieStore.set({ name, value, ...options });
-          },
-          remove(name: string, options: CookieOptions) {
-            cookieStore.set({ name, value: '', ...options });
-          },
-        },
-      }
-    );
-
-    // Verify session
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) throw sessionError;
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Get employee details to check permissions
-    const { data: employee, error: employeeError } = await supabase
-      .from('employees')
-      .select('position')
-      .eq('user_id', session.user.id)
-      .single();
-
-    if (employeeError) {
-      console.error('Error fetching employee:', employeeError);
-      return NextResponse.json(
-        { error: 'Failed to verify permissions' },
-        { status: 500 }
-      );
-    }
-
-    if (!employee) {
-      return NextResponse.json(
-        { error: 'Employee record not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if employee is a supervisor or manager
-    if (!['supervisor', 'management'].includes(employee.position)) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Insufficient permissions' },
-        { status: 403 }
-      );
-    }
-
-    // Get request body
-    const body = await request.json();
-    const { status } = body;
-
-    if (!status || !['published', 'draft'].includes(status)) {
-      return NextResponse.json(
-        { error: 'Invalid status' },
-        { status: 400 }
-      );
-    }
-
-    // Update schedule status
-    const { error: updateError } = await supabase
-      .from('schedules')
-      .update({ 
-        status,
-        published_at: status === 'published' ? new Date().toISOString() : null,
-        published_by: status === 'published' ? session.user.id : null
-      })
-      .eq('id', params.id);
-
-    if (updateError) {
-      console.error('Error updating schedule:', updateError);
-      return NextResponse.json(
-        { error: 'Failed to update schedule status' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error in PATCH /api/schedules/[id]:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function DELETE(
-  request: Request,
-  { params }: { params: { id: string } }
-) {
-  try {
-    const cookieStore = await cookies();
-    const supabase = createServerClient<Database>(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) {
-            return cookieStore.get(name)?.value;
-          },
-          set(name: string, value: string, options: CookieOptions) {
-            cookieStore.set({ name, value, ...options });
-          },
-          remove(name: string, options: CookieOptions) {
-            cookieStore.set({ name, value: '', ...options });
-          },
-        },
-      }
-    );
-
-    // Verify session
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-    if (sessionError) throw sessionError;
-    if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
-
-    // Get employee details to check permissions
-    const { data: employee, error: employeeError } = await supabase
-      .from('employees')
-      .select('position')
-      .eq('user_id', session.user.id)
-      .single();
-
-    if (employeeError) {
-      console.error('Error fetching employee:', employeeError);
-      return NextResponse.json(
-        { error: 'Failed to verify permissions' },
-        { status: 500 }
-      );
-    }
-
-    if (!employee) {
-      return NextResponse.json(
-        { error: 'Employee record not found' },
-        { status: 404 }
-      );
-    }
-
-    // Check if employee is a supervisor or manager
-    if (!['supervisor', 'management'].includes(employee.position)) {
-      return NextResponse.json(
-        { error: 'Unauthorized - Insufficient permissions' },
-        { status: 403 }
-      );
-    }
-
-    // Delete schedule
-    const { error: deleteError } = await supabase
-      .from('schedules')
-      .delete()
-      .eq('id', params.id);
-
-    if (deleteError) {
-      console.error('Error deleting schedule:', deleteError);
-      return NextResponse.json(
-        { error: 'Failed to delete schedule' },
-        { status: 500 }
-      );
-    }
-
-    return NextResponse.json({ success: true });
-  } catch (error) {
-    console.error('Error in DELETE /api/schedules/[id]:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
-  }
-}
-
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  try {
-    const resolvedParams = await params;
-    const { data: schedule, error } = await supabaseAdmin
-      .from('schedules')
-      .select('*')
-      .eq('id', resolvedParams.id)
-      .single();
+      .select()
+      .eq('id', params.id)
+      .single()
 
     if (error) {
-      throw new APIError(error.message, error.code === 'PGRST116' ? 404 : 500);
+      throw new AppError('Failed to fetch schedule', 500)
+    }
+
+    if (!schedule) {
+      throw new AppError('Schedule not found', 404)
     }
 
     // Validate response data
-    const validatedResponse = scheduleResponseSchema.parse({
-      data: schedule,
-      error: null,
-    });
+    const validatedSchedule = scheduleSchema.parse(schedule)
 
-    return NextResponse.json(validatedResponse);
-  } catch (error) {
-    console.error('Error fetching schedule:', error);
-    
-    const { message, status } = handleError(error);
-    
-    // Validate error response
-    const validatedResponse = scheduleResponseSchema.parse({
-      data: null,
-      error: message,
-    });
-
-    return NextResponse.json(validatedResponse, { status });
+    return NextResponse.json({ schedule: validatedSchedule })
   }
-} 
+)
+
+export const PUT = createRouteHandler(
+  async (req, { supabase, session, params }) => {
+    if (!params?.id) {
+      throw new AppError('Schedule ID is required', 400)
+    }
+
+    const body = await req.json()
+    const validatedData = scheduleUpdateSchema.parse(body)
+
+    const now = new Date().toISOString()
+    const updateData: ScheduleUpdate = {
+      ...validatedData,
+      updated_at: now
+    }
+
+    const { data: schedule, error } = await supabase
+      .from('schedules')
+      .update(updateData)
+      .eq('id', params.id)
+      .select()
+      .single()
+
+    if (error) {
+      throw new AppError('Failed to update schedule', 500)
+    }
+
+    if (!schedule) {
+      throw new AppError('Schedule not found', 404)
+    }
+
+    // Validate response data
+    const validatedSchedule = scheduleSchema.parse(schedule)
+
+    return NextResponse.json({ schedule: validatedSchedule })
+  },
+  { requireSupervisor: true }
+) 

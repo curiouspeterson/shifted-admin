@@ -1,10 +1,15 @@
-import { createClient } from '@/app/lib/supabase/server'
+import { createRouteHandler } from '@/app/lib/api/handler'
+import { AppError } from '@/app/lib/errors'
 import { NextResponse } from 'next/server'
 
-export async function POST(req: Request) {
-  try {
-    const supabase = createClient()
+export const POST = createRouteHandler(
+  async (req, { supabase }) => {
     const { email, password } = await req.json()
+
+    // Validate input
+    if (!email || !password) {
+      throw new AppError('Email and password are required', 400)
+    }
 
     // Sign in user
     const { data: { session }, error: signInError } = await supabase.auth.signInWithPassword({
@@ -13,26 +18,28 @@ export async function POST(req: Request) {
     })
 
     if (signInError) {
-      console.error('Sign in error:', signInError)
-      return NextResponse.json(
-        { error: signInError.message },
-        { status: 400 }
-      )
+      throw new AppError(signInError.message, 400)
     }
 
     if (!session) {
-      return NextResponse.json(
-        { error: 'Failed to sign in' },
-        { status: 500 }
-      )
+      throw new AppError('Failed to sign in', 500)
     }
 
-    return NextResponse.json({ session })
-  } catch (error) {
-    console.error('Error in POST /api/auth/sign-in:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to sign in' },
-      { status: 500 }
-    )
-  }
-} 
+    // Get employee details
+    const { data: employee, error: employeeError } = await supabase
+      .from('employees')
+      .select('id, first_name, last_name, position')
+      .eq('user_id', session.user.id)
+      .single()
+
+    if (employeeError) {
+      throw new AppError('Failed to fetch employee details', 500)
+    }
+
+    return NextResponse.json({ 
+      session,
+      employee
+    })
+  },
+  { requireAuth: false }
+) 

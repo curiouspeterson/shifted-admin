@@ -1,38 +1,66 @@
-import { createClient } from '@/app/lib/supabase/server'
+import { createRouteHandler } from '@/app/lib/api/handler'
+import { AppError } from '@/app/lib/errors'
 import { NextResponse } from 'next/server'
+import { adminClient } from '@/app/lib/supabase'
 
-export async function POST(req: Request) {
-  try {
-    const supabase = createClient()
-    const { email, password } = await req.json()
+export const POST = createRouteHandler(
+  async (req, { supabase }) => {
+    const { email, password, firstName, lastName, position = 'dispatcher' } = await req.json()
 
-    // Create user
-    const { data: { user }, error: signUpError } = await supabase.auth.signUp({
+    // Validate input
+    if (!email || !password || !firstName || !lastName) {
+      throw new AppError('All fields are required', 400)
+    }
+
+    // Create user with admin client to ensure immediate creation
+    const { data: { user }, error: createError } = await adminClient.auth.admin.createUser({
       email,
       password,
+      email_confirm: true,
+      user_metadata: {
+        first_name: firstName,
+        last_name: lastName,
+        full_name: `${firstName} ${lastName}`.trim(),
+      },
     })
 
-    if (signUpError) {
-      console.error('Sign up error:', signUpError)
-      return NextResponse.json(
-        { error: signUpError.message },
-        { status: 400 }
-      )
+    if (createError) {
+      throw new AppError(createError.message, 400)
     }
 
     if (!user) {
-      return NextResponse.json(
-        { error: 'Failed to create user' },
-        { status: 500 }
-      )
+      throw new AppError('Failed to create user', 500)
     }
 
-    return NextResponse.json({ user })
-  } catch (error) {
-    console.error('Error in POST /api/auth/sign-up:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to sign up' },
-      { status: 500 }
-    )
-  }
-} 
+    // Create employee record
+    const { data: employee, error: employeeError } = await supabase
+      .from('employees')
+      .insert([{
+        user_id: user.id,
+        first_name: firstName,
+        last_name: lastName,
+        email: email,
+        position: position,
+        hourly_rate: 0, // This should be set by admin later
+        start_date: new Date().toISOString(),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }])
+      .select()
+      .single()
+
+    if (employeeError) {
+      // Delete the user since employee creation failed
+      await adminClient.auth.admin.deleteUser(user.id)
+      throw new AppError('Failed to create employee record', 500)
+    }
+
+    return NextResponse.json({ 
+      user,
+      employee
+    }, {
+      status: 201
+    })
+  },
+  { requireAuth: false }
+) 

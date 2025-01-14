@@ -1,148 +1,104 @@
-import { createClient } from '@/app/lib/supabase/server'
+import { createRouteHandler } from '@/app/lib/api/handler'
+import { AppError } from '@/app/lib/errors'
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import type { Database } from '@/app/lib/supabase/database.types'
 
-export async function GET(req: Request) {
-  try {
-    const supabase = createClient()
+type TimeOffRequest = Database['public']['Tables']['time_off_requests']['Row']
+type TimeOffRequestInsert = Database['public']['Tables']['time_off_requests']['Insert']
 
-    // Verify authentication
-    const { data: { session }, error: authError } = await supabase.auth.getSession()
-    if (authError || !session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+// Validation schemas
+const timeOffRequestSchema = z.object({
+  id: z.string(),
+  employee_id: z.string(),
+  start_date: z.string(),
+  end_date: z.string(),
+  status: z.string(),
+  reason: z.string().nullable(),
+  created_at: z.string(),
+  updated_at: z.string()
+})
 
-    // Get employee details to check if user is a supervisor/manager
-    const { data: employee, error: employeeError } = await supabase
-      .from('employees')
-      .select('id, position')
-      .eq('user_id', session.user.id)
-      .maybeSingle()
+const timeOffRequestInputSchema = z.object({
+  start_date: z.string(),
+  end_date: z.string(),
+  reason: z.string().optional()
+})
 
-    if (employeeError) {
-      console.error('Employee fetch error:', employeeError)
-      return NextResponse.json(
-        { error: 'Failed to fetch employee details' },
-        { status: 500 }
-      )
-    }
+const timeOffRequestsResponseSchema = z.object({
+  requests: z.array(timeOffRequestSchema)
+})
 
-    if (!employee) {
-      return NextResponse.json(
-        { error: 'No employee record found' },
-        { status: 404 }
-      )
-    }
-
-    // Determine if user is a manager
-    const isManager = ['shift_supervisor', 'management'].includes(employee.position)
-
-    // Fetch requests based on user role
-    const requestsQuery = supabase
-      .from('time_off_requests')
-      .select(`
-        *,
-        employee:employees!time_off_requests_employee_id_fkey (
-          id,
-          first_name,
-          last_name
-        )
-      `)
-      .order('created_at', { ascending: false })
-
-    // If not a manager, only show their own requests
-    if (!isManager) {
-      requestsQuery.eq('employee_id', employee.id)
-    }
-
-    const { data: requests, error: requestsError } = await requestsQuery
-
-    if (requestsError) {
-      console.error('Requests fetch error:', requestsError)
-      return NextResponse.json(
-        { error: 'Failed to fetch requests' },
-        { status: 500 }
-      )
-    }
-
-    return NextResponse.json({ requests })
-  } catch (error) {
-    console.error('Error in requests route:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal server error' },
-      { status: 500 }
-    )
-  }
-}
-
-export async function POST(req: Request) {
-  try {
-    const supabase = createClient()
-
-    // Verify authentication
-    const { data: { session }, error: authError } = await supabase.auth.getSession()
-    if (authError || !session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    // Get employee ID for current user
+export const GET = createRouteHandler(
+  async (req, { supabase, session }) => {
+    // Get employee details
     const { data: employee, error: employeeError } = await supabase
       .from('employees')
       .select('id')
       .eq('user_id', session.user.id)
-      .maybeSingle()
+      .single()
 
-    if (employeeError) {
-      console.error('Employee fetch error:', employeeError)
-      return NextResponse.json(
-        { error: 'Failed to fetch employee details' },
-        { status: 500 }
-      )
+    if (employeeError || !employee) {
+      throw new AppError('Employee record not found', 404)
     }
 
-    if (!employee) {
-      return NextResponse.json(
-        { error: 'No employee record found' },
-        { status: 404 }
-      )
-    }
-
-    // Get request data from body
-    const formData = await req.json()
-
-    // Create the request
-    const { data: request, error: createError } = await supabase
+    const { data: requests, error } = await supabase
       .from('time_off_requests')
-      .insert([{
-        employee_id: employee.id,
-        start_date: formData.start_date,
-        end_date: formData.end_date,
-        request_type: formData.request_type,
-        reason: formData.reason || null,
-        status: 'pending'
-      }])
+      .select('*')
+      .eq('employee_id', employee.id)
+      .order('created_at', { ascending: false })
+
+    if (error) {
+      throw new AppError('Failed to fetch requests', 500)
+    }
+
+    // Validate response data
+    const validatedResponse = timeOffRequestsResponseSchema.parse({ 
+      requests: requests || [] 
+    })
+
+    return NextResponse.json(validatedResponse)
+  }
+)
+
+export const POST = createRouteHandler(
+  async (req, { supabase, session }) => {
+    // Get employee details
+    const { data: employee, error: employeeError } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('user_id', session.user.id)
+      .single()
+
+    if (employeeError || !employee) {
+      throw new AppError('Employee record not found', 404)
+    }
+
+    const body = await req.json()
+    const validatedData = timeOffRequestInputSchema.parse(body)
+
+    const now = new Date().toISOString()
+    const newRequest: TimeOffRequestInsert = {
+      ...validatedData,
+      employee_id: employee.id,
+      status: 'pending',
+      created_at: now,
+      updated_at: now
+    }
+
+    const { data: request, error } = await supabase
+      .from('time_off_requests')
+      .insert(newRequest)
       .select()
       .single()
 
-    if (createError) {
-      console.error('Create request error:', createError)
-      return NextResponse.json(
-        { error: 'Failed to create request' },
-        { status: 500 }
-      )
+    if (error) {
+      throw new AppError('Failed to create request', 500)
     }
 
-    return NextResponse.json({ request })
-  } catch (error) {
-    console.error('Error in POST /api/requests:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to create request' },
-      { status: 500 }
-    )
+    // Validate response data
+    const validatedRequest = timeOffRequestSchema.parse(request)
+
+    return NextResponse.json({ request: validatedRequest })
   }
-} 
+) 

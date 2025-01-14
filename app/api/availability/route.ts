@@ -1,131 +1,105 @@
-import { createClient } from '@/app/lib/supabase/server'
+import { createRouteHandler } from '@/app/lib/api/handler'
+import { AppError } from '@/app/lib/errors'
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import type { Database } from '@/app/lib/supabase/database.types'
 
-export async function GET(req: Request) {
-  try {
-    const supabase = createClient()
+type Availability = Database['public']['Tables']['employee_availability']['Row']
+type AvailabilityInsert = Database['public']['Tables']['employee_availability']['Insert']
 
-    // Verify authentication
-    const { data: { session }, error: authError } = await supabase.auth.getSession()
-    if (authError || !session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
+// Validation schemas
+const availabilitySchema = z.object({
+  id: z.string(),
+  employee_id: z.string(),
+  day_of_week: z.number().min(0).max(6),
+  start_time: z.string(),
+  end_time: z.string(),
+  is_available: z.boolean(),
+  created_at: z.string(),
+  updated_at: z.string()
+})
 
-    // Get employee ID for current user
+const availabilityInputSchema = z.object({
+  day_of_week: z.number().min(0).max(6),
+  start_time: z.string(),
+  end_time: z.string(),
+  is_available: z.boolean()
+})
+
+const availabilityResponseSchema = z.object({
+  availability: z.array(availabilitySchema)
+})
+
+export const GET = createRouteHandler(
+  async (req, { supabase, session }) => {
+    // Get employee details
     const { data: employee, error: employeeError } = await supabase
       .from('employees')
       .select('id')
       .eq('user_id', session.user.id)
-      .maybeSingle()
+      .single()
 
-    if (employeeError) {
-      console.error('Employee fetch error:', employeeError)
-      return NextResponse.json(
-        { error: 'Failed to fetch employee details' },
-        { status: 500 }
-      )
+    if (employeeError || !employee) {
+      throw new AppError('Employee record not found', 404)
     }
 
-    if (!employee) {
-      return NextResponse.json(
-        { error: 'No employee record found' },
-        { status: 404 }
-      )
-    }
-
-    // Fetch availability for the employee
-    const { data: availability, error: availabilityError } = await supabase
+    const { data: availability, error } = await supabase
       .from('employee_availability')
       .select('*')
       .eq('employee_id', employee.id)
-      .order('day_of_week', { ascending: true })
+      .order('day_of_week')
 
-    if (availabilityError) {
-      console.error('Availability fetch error:', availabilityError)
-      return NextResponse.json(
-        { error: 'Failed to fetch availability' },
-        { status: 500 }
-      )
+    if (error) {
+      throw new AppError('Failed to fetch availability', 500)
     }
 
-    return NextResponse.json({ availability })
-  } catch (error) {
-    console.error('Error in availability route:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Internal server error' },
-      { status: 500 }
-    )
+    // Validate response data
+    const validatedResponse = availabilityResponseSchema.parse({ 
+      availability: availability || [] 
+    })
+
+    return NextResponse.json(validatedResponse)
   }
-}
+)
 
-export async function POST(req: Request) {
-  try {
-    const supabase = createClient()
-
-    // Verify authentication
-    const { data: { session }, error: authError } = await supabase.auth.getSession()
-    if (authError || !session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
-    }
-
-    // Get employee ID for current user
+export const POST = createRouteHandler(
+  async (req, { supabase, session }) => {
+    // Get employee details
     const { data: employee, error: employeeError } = await supabase
       .from('employees')
       .select('id')
       .eq('user_id', session.user.id)
-      .maybeSingle()
+      .single()
 
-    if (employeeError) {
-      console.error('Employee fetch error:', employeeError)
-      return NextResponse.json(
-        { error: 'Failed to fetch employee details' },
-        { status: 500 }
-      )
+    if (employeeError || !employee) {
+      throw new AppError('Employee record not found', 404)
     }
 
-    if (!employee) {
-      return NextResponse.json(
-        { error: 'No employee record found' },
-        { status: 404 }
-      )
-    }
+    const body = await req.json()
+    const validatedData = availabilityInputSchema.parse(body)
 
-    // Get request data from body
-    const formData = await req.json()
+    const now = new Date().toISOString()
+    const newAvailability: AvailabilityInsert = {
+      ...validatedData,
+      employee_id: employee.id,
+      created_at: now,
+      updated_at: now
+    }
 
     // Upsert availability for the day
-    const { data: availability, error: upsertError } = await supabase
+    const { data: availability, error } = await supabase
       .from('employee_availability')
-      .upsert({
-        employee_id: employee.id,
-        day_of_week: formData.day_of_week,
-        start_time: formData.start_time,
-        end_time: formData.end_time,
-        is_available: formData.is_available
-      })
+      .upsert(newAvailability)
       .select()
       .single()
 
-    if (upsertError) {
-      console.error('Availability upsert error:', upsertError)
-      return NextResponse.json(
-        { error: 'Failed to update availability' },
-        { status: 500 }
-      )
+    if (error) {
+      throw new AppError('Failed to update availability', 500)
     }
 
-    return NextResponse.json({ availability })
-  } catch (error) {
-    console.error('Error in POST /api/availability:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to update availability' },
-      { status: 500 }
-    )
+    // Validate response data
+    const validatedAvailability = availabilitySchema.parse(availability)
+
+    return NextResponse.json({ availability: validatedAvailability })
   }
-} 
+) 

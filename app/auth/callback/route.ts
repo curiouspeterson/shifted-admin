@@ -1,38 +1,39 @@
 import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import type { Database } from '@/app/lib/supabase/database.types'
+import { createMiddlewareCookieHandler } from '@/app/lib/supabase/cookies'
+import { handleAuthError } from '@/app/lib/errors'
 
 export async function GET(request: NextRequest) {
-  const requestUrl = new URL(request.url)
-  const code = requestUrl.searchParams.get('code')
+  try {
+    const requestUrl = new URL(request.url)
+    const code = requestUrl.searchParams.get('code')
+    const next = requestUrl.searchParams.get('next') || '/dashboard'
 
-  if (code) {
+    if (!code) {
+      return NextResponse.redirect(
+        new URL('/sign-in?error=No code provided', request.url)
+      )
+    }
+
     const response = NextResponse.next()
-    const supabase = createServerClient(
+    const supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
-        cookies: {
-          get(name: string) {
-            return request.cookies.get(name)?.value
-          },
-          set(name: string, value: string, options: any) {
-            response.cookies.set(name, value, options)
-          },
-          remove(name: string, options: any) {
-            response.cookies.delete(name)
-          },
-        },
+        cookies: createMiddlewareCookieHandler(request, response)
       }
     )
 
     const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (!error) {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
-    }
-  }
+    if (error) throw error
 
-  // Return the user to an error page with some instructions
-  return NextResponse.redirect(new URL('/sign-in?message=Email confirmation failed. Please try again.', request.url))
+    return NextResponse.redirect(new URL(next, request.url))
+  } catch (error) {
+    console.error('Error in auth callback:', error)
+    return NextResponse.redirect(
+      new URL('/sign-in?error=Failed to authenticate', request.url)
+    )
+  }
 } 

@@ -1,23 +1,46 @@
-import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { createRouteHandler } from '@/app/lib/api/handler'
+import { AppError } from '@/app/lib/errors'
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import type { Database } from '@/app/lib/supabase/database.types'
 
-export async function GET() {
-  try {
-    const { data, error } = await supabaseAdmin
+type TimeRequirement = Database['public']['Tables']['time_based_requirements']['Row']
+
+// Validation schemas
+const timeRequirementSchema = z.object({
+  id: z.string(),
+  schedule_id: z.string(),
+  start_time: z.string(),
+  end_time: z.string(),
+  min_total_staff: z.number(),
+  min_supervisors: z.number(),
+  crosses_midnight: z.boolean(),
+  is_active: z.boolean(),
+  created_at: z.string().nullable(),
+  updated_at: z.string().nullable()
+})
+
+const timeRequirementsResponseSchema = z.object({
+  requirements: z.array(timeRequirementSchema)
+})
+
+export const GET = createRouteHandler(
+  async (req, { supabase }) => {
+    const { data: requirements, error } = await supabase
       .from('time_based_requirements')
       .select('*')
-      .eq('is_active', true);
+      .eq('is_active', true)
+      .order('start_time')
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      throw new AppError('Failed to fetch time requirements', 500)
     }
 
-    return NextResponse.json({ data, error: null });
-  } catch (error) {
-    console.error('Error fetching time requirements:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    // Validate response data
+    const validatedResponse = timeRequirementsResponseSchema.parse({ 
+      requirements: requirements || [] 
+    })
+
+    return NextResponse.json(validatedResponse)
   }
-} 
+) 

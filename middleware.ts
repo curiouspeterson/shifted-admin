@@ -1,66 +1,71 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import type { Database } from '@/app/lib/supabase/database.types';
+import { createMiddlewareCookieHandler } from '@/app/lib/supabase/cookies';
+import { handleError } from '@/app/lib/errors';
 
 export async function middleware(request: NextRequest) {
-  console.log('🔍 Middleware executing for path:', request.nextUrl.pathname)
-  
-  const requestHeaders = new Headers(request.headers)
+  const requestHeaders = new Headers(request.headers);
   const res = NextResponse.next({
     request: {
       headers: requestHeaders,
     },
-  })
+  });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          res.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-        },
-        remove(name: string, options: any) {
-          res.cookies.delete(name)
-        },
-      },
+  try {
+    // Create supabase client with cookie handling
+    const supabase = createServerClient<Database>(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: createMiddlewareCookieHandler(request, res)
+      }
+    );
+
+    // Check auth status
+    const { data: { session }, error } = await supabase.auth.getSession();
+    if (error) throw error;
+
+    // Define protected and auth routes
+    const isAuthRoute = request.nextUrl.pathname.startsWith('/sign-in') || 
+                       request.nextUrl.pathname.startsWith('/sign-up');
+    const isProtectedRoute = !isAuthRoute && 
+                           !request.nextUrl.pathname.startsWith('/api') &&
+                           !request.nextUrl.pathname.startsWith('/_next') &&
+                           !request.nextUrl.pathname.startsWith('/public') &&
+                           request.nextUrl.pathname !== '/';
+
+    // Handle auth redirects
+    if (isAuthRoute && session) {
+      return NextResponse.redirect(new URL('/dashboard', request.url));
     }
-  )
 
-  const { data: { session }, error } = await supabase.auth.getSession()
+    if (isProtectedRoute && !session) {
+      const redirectUrl = new URL('/sign-in', request.url);
+      redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname);
+      return NextResponse.redirect(redirectUrl);
+    }
 
-  // Log auth state
-  if (error) {
-    console.error('❌ Error checking session:', error)
+    return res;
+  } catch (error) {
+    console.error('Middleware error:', error);
+    // For middleware, we want to continue the request even if there's an error
+    // The actual route handlers will handle auth properly
+    return res;
   }
-
-  const isAuthPage = request.nextUrl.pathname.startsWith('/sign-in')
-  const isProtectedRoute = request.nextUrl.pathname.startsWith('/dashboard')
-
-  // Redirect if on auth page with valid session
-  if (isAuthPage && session) {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
-  }
-
-  // Redirect if accessing protected route without session
-  if (isProtectedRoute && !session) {
-    const redirectUrl = new URL('/sign-in', request.url)
-    redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
-  }
-
-  return res
 }
 
+// Configure which routes use this middleware
 export const config = {
   matcher: [
-    '/((?!api|_next/static|_next/image|favicon.ico).*)',
+    /*
+     * Match all request paths except:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * - public folder
+     */
+    '/((?!_next/static|_next/image|favicon.ico|public/).*)',
   ],
-} 
+}; 

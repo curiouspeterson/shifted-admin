@@ -1,27 +1,15 @@
-import { createClient } from '@/app/lib/supabase/server'
+import { createRouteHandler } from '@/app/lib/api/handler'
+import { AppError } from '@/app/lib/errors'
 import { NextResponse } from 'next/server'
 
-export async function POST(req: Request) {
-  try {
-    const supabase = createClient()
-
-    // Sign out the user
+export const POST = createRouteHandler(
+  async (req, { supabase }) => {
     const { error } = await supabase.auth.signOut()
 
     if (error) {
-      console.error('Sign out error:', error)
-      return NextResponse.json(
-        { error: 'Failed to sign out' },
-        { status: 500 }
-      )
+      throw new AppError(error.message, 500)
     }
 
     return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error('Error in POST /api/auth/sign-out:', error)
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to sign out' },
-      { status: 500 }
-    )
   }
-} 
+) 

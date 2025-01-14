@@ -1,40 +1,40 @@
-import { cookies } from 'next/headers';
-import { createClient } from '@/app/lib/supabase/server';
-import { NextResponse } from 'next/server';
+import { createRouteHandler } from '@/app/lib/api/handler'
+import { AppError } from '@/app/lib/errors'
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
 
-export async function GET() {
-  try {
-    const supabase = await createClient();
+// Response validation schema
+const employeeSchema = z.object({
+  id: z.string(),
+  first_name: z.string(),
+  last_name: z.string(),
+  email: z.string().nullable(),
+  position: z.string(),
+  is_active: z.boolean().default(true),
+  created_at: z.string().nullable(),
+  updated_at: z.string().nullable(),
+  user_id: z.string().nullable()
+})
 
-    // Verify authentication
-    const { data: { session }, error: authError } = await supabase.auth.getSession();
-    if (authError || !session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
-    }
+const employeesResponseSchema = z.object({
+  employees: z.array(employeeSchema)
+})
 
-    // Fetch employees
+export const GET = createRouteHandler(
+  async (req, { supabase }) => {
     const { data, error } = await supabase
       .from('employees')
       .select('*')
-      .order('last_name', { ascending: true });
+      .order('last_name', { ascending: true })
 
     if (error) {
-      console.error('Database error:', error);
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
+      throw new AppError('Failed to fetch employees', 500)
     }
 
-    return NextResponse.json({ employees: data });
-  } catch (error) {
-    console.error('Failed to fetch employees:', error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to fetch employees' },
-      { status: 500 }
-    );
-  }
-}
+    // Validate response data
+    const validatedResponse = employeesResponseSchema.parse({ employees: data })
+
+    return NextResponse.json(validatedResponse)
+  },
+  { requireSupervisor: true } // Only supervisors can list all employees
+)

@@ -1,68 +1,79 @@
-import { NextResponse } from 'next/server';
-import { cookies } from 'next/headers';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import type { Database } from '@/lib/database.types';
+import { createRouteHandler } from '@/app/lib/api/handler'
+import { AppError } from '@/app/lib/errors'
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
+import type { Database } from '@/app/lib/supabase/database.types'
 
-export async function POST(request: Request) {
-  try {
-    console.log('Schedule creation started');
-    
-    // Initialize Supabase client
-    const supabase = createRouteHandlerClient<Database>({ cookies });
-    console.log('Supabase client created');
+type Schedule = Database['public']['Tables']['schedules']['Row']
+type ScheduleInsert = Database['public']['Tables']['schedules']['Insert']
 
-    // Use getUser() instead of getSession()
-    const { data: { user }, error: userError } = await supabase.auth.getUser();
+// Validation schemas
+const scheduleSchema = z.object({
+  id: z.string(),
+  start_date: z.string(),
+  end_date: z.string(),
+  status: z.string(),
+  is_published: z.boolean(),
+  created_at: z.string(),
+  updated_at: z.string(),
+  created_by: z.string(),
+  published_at: z.string().nullable(),
+  published_by: z.string().nullable()
+})
 
-    if (userError || !user) {
-      console.error('Auth error:', userError);
-      return NextResponse.json(
-        { error: 'Authentication failed' },
-        { status: 401 }
-      );
-    }
+const scheduleInputSchema = z.object({
+  start_date: z.string(),
+  end_date: z.string()
+})
 
-    const body = await request.json();
-    const { name, start_date, end_date } = body;
-    console.log('Request body:', { name, start_date, end_date });
+const schedulesResponseSchema = z.object({
+  schedules: z.array(scheduleSchema)
+})
 
-    if (!name || !start_date || !end_date) {
-      console.log('Missing required fields:', { name, start_date, end_date });
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      );
-    }
-
-    console.log('Creating schedule...');
+export const GET = createRouteHandler(
+  async (req, { supabase }) => {
     const { data, error } = await supabase
       .from('schedules')
-      .insert({
-        name,
-        start_date,
-        end_date,
-        created_by: user.id,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
       .select()
-      .single();
+      .order('created_at', { ascending: false })
 
     if (error) {
-      console.error('Error creating schedule:', error);
-      return NextResponse.json(
-        { error: 'Failed to create schedule', details: error.message },
-        { status: 500 }
-      );
+      throw new AppError('Failed to fetch schedules', 500)
     }
 
-    console.log('Schedule created successfully:', data);
-    return NextResponse.json(data);
-  } catch (error) {
-    console.error('Unexpected error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    // Validate response data
+    const validatedResponse = schedulesResponseSchema.parse({ schedules: data || [] })
+
+    return NextResponse.json(validatedResponse)
   }
-} 
+)
+
+export const POST = createRouteHandler(
+  async (req, { supabase, session }) => {
+    const body = await req.json()
+    const validatedData = scheduleInputSchema.parse(body)
+
+    const now = new Date().toISOString()
+    const newSchedule: ScheduleInsert = {
+      ...validatedData,
+      created_by: session.user.id,
+      status: 'draft',
+      is_published: false,
+      created_at: now,
+      updated_at: now
+    }
+
+    const { data: schedule, error } = await supabase
+      .from('schedules')
+      .insert(newSchedule)
+      .select()
+      .single()
+
+    if (error) {
+      throw new AppError('Failed to create schedule', 500)
+    }
+
+    return NextResponse.json({ schedule })
+  },
+  { requireSupervisor: true }
+) 
