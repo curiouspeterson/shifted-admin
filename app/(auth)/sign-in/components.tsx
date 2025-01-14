@@ -1,8 +1,32 @@
+/**
+ * Sign In Components Module
+ * Last Updated: 2024
+ * 
+ * Provides reusable components for the sign-in functionality.
+ * These components handle form submission, loading states,
+ * and user input for authentication.
+ * 
+ * Features:
+ * - Form submission handling
+ * - Loading state management
+ * - Input validation
+ * - Responsive design
+ * - Accessible form controls
+ * - Client-side only functionality
+ */
+
 'use client'
 
 import { useFormStatus } from 'react-dom'
 import { signIn } from '../actions'
 
+/**
+ * Sign In Button Component
+ * Renders a submit button with loading state
+ * Shows a spinner when form is submitting
+ * 
+ * @returns A styled button with loading indicator
+ */
 export function SignInButton() {
   const { pending } = useFormStatus()
   
@@ -21,13 +45,25 @@ export function SignInButton() {
   )
 }
 
+/**
+ * Sign In Form Component
+ * Renders a complete sign-in form with email and password fields
+ * Handles form submission through server actions
+ * 
+ * @param props.redirectedFrom - Optional URL to redirect to after successful sign-in
+ * @returns A styled form with email/password inputs and submit button
+ */
 export function SignInForm({ redirectedFrom }: { redirectedFrom?: string }) {
   return (
     <form className="mt-8 space-y-6" action={signIn}>
+      {/* Hidden redirect field */}
       {redirectedFrom && (
         <input type="hidden" name="redirectedFrom" value={redirectedFrom} />
       )}
+      
+      {/* Input Fields Container */}
       <div className="rounded-md shadow-sm -space-y-px">
+        {/* Email Input */}
         <div>
           <label htmlFor="email-address" className="sr-only">
             Email address
@@ -42,6 +78,8 @@ export function SignInForm({ redirectedFrom }: { redirectedFrom?: string }) {
             placeholder="Email address"
           />
         </div>
+        
+        {/* Password Input */}
         <div>
           <label htmlFor="password" className="sr-only">
             Password
@@ -59,6 +97,7 @@ export function SignInForm({ redirectedFrom }: { redirectedFrom?: string }) {
         </div>
       </div>
 
+      {/* Submit Button */}
       <div>
         <SignInButton />
       </div>

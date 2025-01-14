@@ -1,15 +1,39 @@
+/**
+ * Schedule Schema Module
+ * Last Updated: 2024
+ * 
+ * Defines Zod schemas for validating schedule-related data structures.
+ * Includes schemas for employees, shifts, assignments, time-based requirements,
+ * and schedules, along with response schemas for API validation.
+ * 
+ * Features:
+ * - Type-safe schema definitions
+ * - Custom validation rules
+ * - Response schema wrappers
+ * - Type inference helpers
+ */
+
 import { z } from 'zod';
 
-// Base schemas for primitive types
+/**
+ * Base Validation Schemas
+ * Common schemas for primitive types used across multiple entities
+ */
+
+// Time string validation (HH:MM format)
 const timeStringSchema = z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, {
   message: 'Time must be in 24-hour format (HH:MM)',
 });
 
+// Date string validation (YYYY-MM-DD format)
 const dateStringSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
   message: 'Date must be in YYYY-MM-DD format',
 });
 
-// Custom datetime schema that accepts both ISO and Postgres timestamp formats
+/**
+ * Custom datetime schema that accepts both ISO and Postgres timestamp formats
+ * Validates against both ISO 8601 and Postgres timestamp patterns
+ */
 const datetimeSchema = z.string().refine((value) => {
   // Accept ISO format and Postgres timestamp format
   const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?([+-]\d{2}:?\d{2}|Z)?$/;
@@ -19,7 +43,10 @@ const datetimeSchema = z.string().refine((value) => {
   message: 'Invalid datetime format',
 });
 
-// Employee schema
+/**
+ * Employee Schema
+ * Validates employee data with required fields and format constraints
+ */
 export const employeeSchema = z.object({
   id: z.string().uuid(),
   user_id: z.string().nullable(),
@@ -33,7 +60,10 @@ export const employeeSchema = z.object({
   updated_at: datetimeSchema.nullable(),
 });
 
-// Shift schema
+/**
+ * Shift Schema
+ * Validates shift template data with time constraints and flags
+ */
 export const shiftSchema = z.object({
   id: z.string().uuid(),
   name: z.string().min(1, 'Shift name is required'),
@@ -50,7 +80,10 @@ export const shiftSchema = z.object({
   updated_at: datetimeSchema.nullable(),
 });
 
-// Assignment schema with joined data
+/**
+ * Assignment Schema
+ * Validates shift assignments with employee and shift relationships
+ */
 export const assignmentSchema = z.object({
   id: z.string().uuid(),
   schedule_id: z.string().uuid().nullable(),
@@ -67,7 +100,10 @@ export const assignmentSchema = z.object({
   shift: shiftSchema.nullable(),
 });
 
-// Time-based requirement schema
+/**
+ * Time-based Requirement Schema
+ * Validates staffing requirements for specific time periods
+ */
 export const timeBasedRequirementSchema = z.object({
   id: z.string().uuid(),
   schedule_id: z.string().uuid(),
@@ -85,7 +121,10 @@ export const timeBasedRequirementSchema = z.object({
   updated_at: datetimeSchema.nullable(),
 });
 
-// Schedule schema
+/**
+ * Schedule Schema
+ * Validates schedule data with status tracking and version control
+ */
 export const scheduleSchema = z.object({
   id: z.string().uuid(),
   status: z.enum(['draft', 'published', 'archived']),
@@ -99,7 +138,10 @@ export const scheduleSchema = z.object({
   is_active: z.boolean(),
 });
 
-// Requirement status schema
+/**
+ * Requirement Status Schema
+ * Validates the status of staffing requirements
+ */
 export const requirementStatusSchema = z.object({
   timeBlock: z.object({
     startTime: timeStringSchema,
@@ -110,7 +152,10 @@ export const requirementStatusSchema = z.object({
   isSatisfied: z.boolean(),
 });
 
-// Response schemas for API validation
+/**
+ * Response Schemas
+ * Wraps entity schemas in a standard API response format
+ */
 export const scheduleResponseSchema = z.object({
   data: scheduleSchema.nullable(),
   error: z.string().nullable(),
@@ -126,7 +171,10 @@ export const timeRequirementsResponseSchema = z.object({
   error: z.string().nullable(),
 });
 
-// Infer types from schemas
+/**
+ * Type Inference
+ * Helper types inferred from the Zod schemas
+ */
 export type ScheduleSchema = z.infer<typeof scheduleSchema>;
 export type AssignmentSchema = z.infer<typeof assignmentSchema>;
 export type TimeBasedRequirementSchema = z.infer<typeof timeBasedRequirementSchema>;

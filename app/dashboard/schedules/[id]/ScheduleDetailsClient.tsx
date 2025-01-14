@@ -1,3 +1,30 @@
+/**
+ * Schedule Details Client Component
+ * Last Updated: 2024
+ * 
+ * A client-side component that displays detailed schedule information including
+ * assignments, staffing requirements, and timeline views. Handles data validation,
+ * error states, and real-time updates.
+ * 
+ * Features:
+ * - Grouped assignment display by date and shift
+ * - Interactive timeline visualization
+ * - Staffing requirements validation
+ * - Error handling and loading states
+ * - Debug logging for development
+ * 
+ * Component Structure:
+ * - ScheduleHeader: Shows schedule metadata
+ * - StaffingRequirements: Displays and validates staffing levels
+ * - ScheduleTimeline: Visual timeline of shifts and assignments
+ * 
+ * Data Flow:
+ * 1. Receives schedule, assignments, and requirements as props
+ * 2. Validates and processes assignment data
+ * 3. Groups assignments by date and shift
+ * 4. Renders appropriate view based on data state
+ */
+
 'use client'
 
 import { useState, useEffect } from 'react';
@@ -8,12 +35,24 @@ import ScheduleTimeline from './components/ScheduleTimeline';
 import { StaffingRequirements } from './components/StaffingRequirements';
 import { Card } from '@/components/ui/card';
 
+/**
+ * Interface for grouped assignments data structure
+ * Organizes assignments hierarchically by date and shift
+ */
 interface GroupedAssignments {
   [date: string]: {
     [shiftId: string]: ScheduleAssignment[];
   };
 }
 
+/**
+ * Props interface for ScheduleDetailsClient component
+ * @property schedule - The schedule object containing metadata
+ * @property assignments - Grouped assignments by date and shift
+ * @property error - Initial error state if any
+ * @property timeRequirements - Array of staffing requirements
+ * @property requirementStatuses - Array of requirement validation statuses
+ */
 interface ScheduleDetailsClientProps {
   schedule: Schedule;
   assignments: GroupedAssignments;
@@ -22,6 +61,14 @@ interface ScheduleDetailsClientProps {
   requirementStatuses: RequirementStatus[];
 }
 
+/**
+ * Schedule Details Client Component
+ * Main component for displaying schedule details and assignments
+ * 
+ * @component
+ * @param props - Component properties
+ * @returns Rendered schedule details view
+ */
 export default function ScheduleDetailsClient({
   schedule,
   assignments,
@@ -33,7 +80,10 @@ export default function ScheduleDetailsClient({
   const [isLoading, setIsLoading] = useState(false);
   const [validatedAssignments, setValidatedAssignments] = useState<GroupedAssignments | null>(null);
 
-  // Debug logging
+  /**
+   * Debug logging effect
+   * Logs component props for development debugging
+   */
   useEffect(() => {
     console.log('ScheduleDetailsClient received props:', {
       scheduleId: schedule?.id,
@@ -44,7 +94,10 @@ export default function ScheduleDetailsClient({
     });
   }, [schedule, assignments, timeRequirements, requirementStatuses, initialError]);
 
-  // Validate and process assignments when they change
+  /**
+   * Assignment validation effect
+   * Processes and validates incoming assignment data
+   */
   useEffect(() => {
     try {
       console.log('Processing assignments:', assignments);
@@ -94,11 +147,15 @@ export default function ScheduleDetailsClient({
     }
   }, [assignments]);
 
-  // Reset error when schedule changes
+  /**
+   * Error reset effect
+   * Resets error state when schedule changes
+   */
   useEffect(() => {
     setError(initialError);
   }, [initialError, schedule.id]);
 
+  // Error state view
   if (error) {
     console.log('Rendering error state:', error);
     return (
@@ -110,6 +167,7 @@ export default function ScheduleDetailsClient({
     );
   }
 
+  // Empty state view
   if (!validatedAssignments || Object.keys(validatedAssignments).length === 0) {
     console.log('Rendering empty state');
     return (
@@ -121,6 +179,7 @@ export default function ScheduleDetailsClient({
     );
   }
 
+  // Main schedule details view
   return (
     <div className="space-y-8">
       <ScheduleHeader schedule={schedule} />

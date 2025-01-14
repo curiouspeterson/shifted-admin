@@ -1,7 +1,36 @@
+/**
+ * Forms Schema Module
+ * Last Updated: 2024
+ * 
+ * Defines Zod schemas for form validation in the application.
+ * These schemas are used to validate user input in forms for creating
+ * and updating schedules and assignments. They extend the base schemas
+ * but omit server-controlled fields and add form-specific validations.
+ * 
+ * Features:
+ * - Schedule form validation
+ * - Assignment form validation
+ * - Form error handling
+ * - Type inference helpers
+ */
+
 import { z } from 'zod';
 import { scheduleSchema, assignmentSchema } from './schedule';
 
-// Schedule creation form schema
+/**
+ * Schedule Form Schema
+ * Extends the base schedule schema for form validation.
+ * Omits server-controlled fields and adds form-specific fields.
+ * 
+ * Required fields:
+ * - name: Schedule name (min 1 character)
+ * - start_date: Start date in YYYY-MM-DD format
+ * - end_date: End date in YYYY-MM-DD format
+ * - status: Schedule status (draft/published/archived)
+ * 
+ * Optional fields:
+ * - description: Schedule description
+ */
 export const scheduleFormSchema = scheduleSchema
   .omit({
     id: true,
@@ -16,7 +45,21 @@ export const scheduleFormSchema = scheduleSchema
     description: z.string().optional(),
   });
 
-// Assignment creation form schema
+/**
+ * Assignment Form Schema
+ * Extends the base assignment schema for form validation.
+ * Omits server-controlled fields and adds form-specific validations.
+ * 
+ * Required fields:
+ * - employee_id: UUID of the assigned employee
+ * - shift_id: UUID of the assigned shift
+ * - date: Assignment date in YYYY-MM-DD format
+ * 
+ * Optional fields:
+ * - is_supervisor_shift: Whether this is a supervisor shift (defaults to false)
+ * - overtime_hours: Number of overtime hours (nullable)
+ * - overtime_status: Status of overtime request (nullable)
+ */
 export const assignmentFormSchema = assignmentSchema
   .omit({
     id: true,
@@ -36,11 +79,20 @@ export const assignmentFormSchema = assignmentSchema
     overtime_status: z.enum(['none', 'pending', 'approved', 'rejected']).nullable(),
   });
 
-// Infer TypeScript types from schemas
+/**
+ * Type Inference
+ * Helper types inferred from the Zod schemas for use in form components
+ */
 export type ScheduleFormData = z.infer<typeof scheduleFormSchema>;
 export type AssignmentFormData = z.infer<typeof assignmentFormSchema>;
 
-// Form error schema
+/**
+ * Form Error Schema
+ * Defines the structure of form validation errors
+ * 
+ * @property message - Main error message
+ * @property errors - Optional record of field-specific error messages
+ */
 export const formErrorSchema = z.object({
   message: z.string(),
   errors: z.record(z.string()).optional(),

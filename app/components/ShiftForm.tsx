@@ -1,8 +1,34 @@
+/**
+ * Shift Form Component
+ * Last Updated: 2024
+ * 
+ * A form component for creating and editing shift definitions. Handles all
+ * aspects of shift configuration including time ranges, staffing requirements,
+ * and supervisor requirements. Automatically calculates shift duration and
+ * midnight crossing.
+ * 
+ * Features:
+ * - Shift creation/editing
+ * - Time range selection
+ * - Automatic duration calculation
+ * - Midnight crossing detection
+ * - Staff requirements configuration
+ * - Supervisor requirement toggle
+ * - Validation and error handling
+ */
+
 'use client'
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabaseClient'
 
+/**
+ * Shift Form Props Interface
+ * @property shiftId - ID of shift being edited (undefined for new shifts)
+ * @property initialData - Initial form data for editing
+ * @property onSave - Callback after successful save
+ * @property onCancel - Callback when form is cancelled
+ */
 interface ShiftFormProps {
   shiftId?: string
   initialData?: {
@@ -18,16 +44,37 @@ interface ShiftFormProps {
   onCancel: () => void
 }
 
+/**
+ * Shift Form Component
+ * Form for creating and editing shift definitions
+ * 
+ * @param props - Component properties
+ * @param props.shiftId - ID if editing existing shift
+ * @param props.initialData - Initial form data
+ * @param props.onSave - Success callback
+ * @param props.onCancel - Cancel callback
+ * @returns A form for shift creation/editing
+ */
 export default function ShiftForm({ shiftId, initialData, onSave, onCancel }: ShiftFormProps) {
+  // Form state management
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Shift data state
   const [name, setName] = useState(initialData?.name || '')
   const [startTime, setStartTime] = useState(initialData?.start_time?.slice(0, 5) || '')
   const [endTime, setEndTime] = useState(initialData?.end_time?.slice(0, 5) || '')
   const [minStaffCount, setMinStaffCount] = useState(initialData?.min_staff_count || 1)
   const [requiresSupervisor, setRequiresSupervisor] = useState(initialData?.requires_supervisor ?? true)
 
+  /**
+   * Calculates shift duration and determines if it crosses midnight
+   * Uses a base date to handle time calculations properly
+   * 
+   * @param start - Start time in HH:MM format
+   * @param end - End time in HH:MM format
+   * @returns Object containing duration in hours and midnight crossing flag
+   */
   const calculateDurationAndCrossesMidnight = (start: string, end: string) => {
     const startDate = new Date(`2000-01-01T${start}:00`)
     let endDate = new Date(`2000-01-01T${end}:00`)
@@ -44,14 +91,23 @@ export default function ShiftForm({ shiftId, initialData, onSave, onCancel }: Sh
     return { durationHours, crossesMidnight }
   }
 
+  /**
+   * Form Submission Handler
+   * Creates or updates shift definition with calculated duration
+   * and midnight crossing status
+   * 
+   * @param e - Form submission event
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
     try {
+      // Calculate shift properties
       const { durationHours, crossesMidnight } = calculateDurationAndCrossesMidnight(startTime, endTime)
 
+      // Prepare shift data
       const shiftData = {
         name,
         start_time: startTime,
@@ -62,6 +118,7 @@ export default function ShiftForm({ shiftId, initialData, onSave, onCancel }: Sh
         requires_supervisor: requiresSupervisor,
       }
 
+      // Update or create shift
       const { error } = shiftId
         ? await supabase
             .from('shifts')
@@ -83,12 +140,14 @@ export default function ShiftForm({ shiftId, initialData, onSave, onCancel }: Sh
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Error Display */}
       {error && (
         <div className="rounded-md bg-red-50 p-4">
           <div className="text-sm text-red-700">{error}</div>
         </div>
       )}
 
+      {/* Shift Name Field */}
       <div>
         <label htmlFor="name" className="block text-sm font-medium text-gray-700">
           Name
@@ -103,7 +162,9 @@ export default function ShiftForm({ shiftId, initialData, onSave, onCancel }: Sh
         />
       </div>
 
+      {/* Time Range Fields */}
       <div className="grid grid-cols-2 gap-4">
+        {/* Start Time Field */}
         <div>
           <label htmlFor="startTime" className="block text-sm font-medium text-gray-700">
             Start Time
@@ -118,6 +179,7 @@ export default function ShiftForm({ shiftId, initialData, onSave, onCancel }: Sh
           />
         </div>
 
+        {/* End Time Field */}
         <div>
           <label htmlFor="endTime" className="block text-sm font-medium text-gray-700">
             End Time
@@ -133,6 +195,7 @@ export default function ShiftForm({ shiftId, initialData, onSave, onCancel }: Sh
         </div>
       </div>
 
+      {/* Minimum Staff Count Field */}
       <div>
         <label htmlFor="minStaffCount" className="block text-sm font-medium text-gray-700">
           Minimum Staff Count
@@ -148,6 +211,7 @@ export default function ShiftForm({ shiftId, initialData, onSave, onCancel }: Sh
         />
       </div>
 
+      {/* Supervisor Requirement Toggle */}
       <div className="flex items-center">
         <input
           type="checkbox"
@@ -161,7 +225,9 @@ export default function ShiftForm({ shiftId, initialData, onSave, onCancel }: Sh
         </label>
       </div>
 
+      {/* Form Actions */}
       <div className="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">
+        {/* Submit Button */}
         <button
           type="submit"
           disabled={loading}
@@ -169,6 +235,8 @@ export default function ShiftForm({ shiftId, initialData, onSave, onCancel }: Sh
         >
           {loading ? 'Saving...' : 'Save'}
         </button>
+
+        {/* Cancel Button */}
         <button
           type="button"
           onClick={onCancel}

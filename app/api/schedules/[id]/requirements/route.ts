@@ -1,13 +1,39 @@
-// app/api/requirements/route.ts
+/**
+ * Schedule Requirements API Route Handler
+ * Last Updated: 2024
+ * 
+ * This file implements the API endpoints for managing time-based staffing requirements
+ * for specific schedules. Currently supports:
+ * - GET: Retrieve all requirements for a specific schedule
+ * - PUT: Update staffing levels for a specific requirement
+ * 
+ * All operations are restricted to supervisors only.
+ * The route uses dynamic path parameters to identify the target schedule.
+ * Requirements define minimum staffing levels and supervisor counts for specific time blocks.
+ */
+
 import { createRouteHandler } from '@/app/lib/api/handler'
 import { AppError } from '@/app/lib/errors'
 import { NextResponse } from 'next/server'
 import { z } from 'zod'
 import type { Database } from '@/lib/database.types'
 
+/**
+ * Type Definition
+ * Using database type to ensure type safety with Supabase
+ */
 type TimeRequirement = Database['public']['Tables']['time_based_requirements']['Row']
 
-// Validation schemas
+/**
+ * Validation Schemas
+ * Define the shape and constraints for time requirement data
+ */
+
+/**
+ * Complete Time Requirement Schema
+ * Used for validating database records and API responses
+ * Includes all fields that define a time-based requirement
+ */
 const timeRequirementSchema = z.object({
   id: z.string(),
   schedule_id: z.string(),
@@ -21,15 +47,31 @@ const timeRequirementSchema = z.object({
   updated_at: z.string().nullable()
 })
 
+/**
+ * API Response Schema
+ * Wraps time requirement data in a response object
+ */
 const timeRequirementsResponseSchema = z.object({
   requirements: z.array(timeRequirementSchema)
 })
 
+/**
+ * Update Schema
+ * Defines the fields that can be updated for a requirement
+ * Only allows modifying staffing level requirements
+ */
 const updateRequirementSchema = z.object({
   min_total_staff: z.number(),
   min_supervisors: z.number()
 })
 
+/**
+ * GET /api/schedules/[id]/requirements
+ * Retrieves all time-based requirements for a specific schedule
+ * Restricted to supervisors only
+ * Returns: Array of requirement objects ordered by start time
+ * Throws: 400 if schedule ID missing, 500 if fetch fails
+ */
 export const GET = createRouteHandler(
   async (req, { supabase, params }) => {
     if (!params?.id) {
@@ -56,6 +98,14 @@ export const GET = createRouteHandler(
   { requireSupervisor: true }
 )
 
+/**
+ * PUT /api/schedules/[id]/requirements
+ * Updates staffing levels for a specific requirement
+ * Restricted to supervisors only
+ * Body: Requirement ID and updated staffing levels
+ * Returns: The updated requirement record
+ * Throws: 400 if IDs missing, 404 if not found, 500 if update fails
+ */
 export const PUT = createRouteHandler(
   async (req, { supabase, params }) => {
     if (!params?.id) {

@@ -1,11 +1,37 @@
+/**
+ * Sign Up Page Component
+ * Last Updated: 2024
+ * 
+ * A client-side page component that provides a user registration form.
+ * Handles new user account creation with email/password credentials
+ * and provides feedback on the registration process.
+ * 
+ * Features:
+ * - Email/password form with confirmation
+ * - Password matching validation
+ * - Loading state management
+ * - Error handling and display
+ * - Responsive design
+ * - Navigation to sign-in on success
+ * - Link to sign-in page
+ */
+
 'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
+/**
+ * Sign Up Page Component
+ * Renders a form for new user registration with email and password
+ * 
+ * @returns A responsive sign-up page with form and error handling
+ */
 export default function SignUpPage() {
   const router = useRouter()
+  
+  // State management for form data and UI states
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState({
@@ -14,11 +40,19 @@ export default function SignUpPage() {
     confirmPassword: ''
   })
 
+  /**
+   * Form Submission Handler
+   * Processes the sign-up attempt and handles the response
+   * Includes password matching validation before submission
+   * 
+   * @param e - Form submission event
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
+    // Validate password matching
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match')
       setLoading(false)
@@ -26,6 +60,7 @@ export default function SignUpPage() {
     }
 
     try {
+      // Attempt account creation with API
       const response = await fetch('/api/auth/sign-up', {
         method: 'POST',
         headers: {
@@ -37,11 +72,13 @@ export default function SignUpPage() {
         })
       })
 
+      // Handle unsuccessful registration
       if (!response.ok) {
         const data = await response.json()
         throw new Error(data.error || 'Failed to sign up')
       }
 
+      // Redirect to sign-in on success
       router.push('/sign-in')
     } catch (err) {
       console.error('Error:', err)
@@ -53,6 +90,7 @@ export default function SignUpPage() {
 
   return (
     <div className="flex min-h-screen flex-col justify-center py-12 sm:px-6 lg:px-8">
+      {/* Header Section */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900">
           Create your account
@@ -65,15 +103,18 @@ export default function SignUpPage() {
         </p>
       </div>
 
+      {/* Form Container */}
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white px-4 py-8 shadow sm:rounded-lg sm:px-10">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Error Display */}
             {error && (
               <div className="rounded-md bg-red-50 p-4">
                 <div className="text-sm text-red-700">{error}</div>
               </div>
             )}
 
+            {/* Email Input Field */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                 Email address
@@ -92,6 +133,7 @@ export default function SignUpPage() {
               </div>
             </div>
 
+            {/* Password Input Field */}
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                 Password
@@ -110,6 +152,7 @@ export default function SignUpPage() {
               </div>
             </div>
 
+            {/* Password Confirmation Field */}
             <div>
               <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
                 Confirm Password
@@ -128,6 +171,7 @@ export default function SignUpPage() {
               </div>
             </div>
 
+            {/* Submit Button */}
             <div>
               <button
                 type="submit"

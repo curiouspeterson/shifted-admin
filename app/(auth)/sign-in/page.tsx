@@ -1,11 +1,36 @@
+/**
+ * Sign In Page Component
+ * Last Updated: 2024
+ * 
+ * A client-side page component that provides a user authentication form.
+ * Handles user sign-in with email/password credentials and provides
+ * feedback on the authentication process.
+ * 
+ * Features:
+ * - Email/password form
+ * - Loading state management
+ * - Error handling and display
+ * - Responsive design
+ * - Navigation to dashboard on success
+ * - Link to sign-up page
+ */
+
 'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 
+/**
+ * Sign In Page Component
+ * Renders a form for user authentication with email and password
+ * 
+ * @returns A responsive sign-in page with form and error handling
+ */
 export default function SignInPage() {
   const router = useRouter()
+  
+  // State management for form data and UI states
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState({
@@ -13,12 +38,19 @@ export default function SignInPage() {
     password: ''
   })
 
+  /**
+   * Form Submission Handler
+   * Processes the sign-in attempt and handles the response
+   * 
+   * @param e - Form submission event
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError(null)
 
     try {
+      // Attempt authentication with API
       const response = await fetch('/api/auth/sign-in', {
         method: 'POST',
         headers: {
@@ -27,11 +59,13 @@ export default function SignInPage() {
         body: JSON.stringify(formData)
       })
 
+      // Handle unsuccessful authentication
       if (!response.ok) {
         const data = await response.json()
         throw new Error(data.error || 'Failed to sign in')
       }
 
+      // Redirect to dashboard on success
       router.push('/dashboard')
     } catch (err) {
       console.error('Error:', err)
@@ -43,6 +77,7 @@ export default function SignInPage() {
 
   return (
     <div className="flex min-h-screen flex-col justify-center py-12 sm:px-6 lg:px-8">
+      {/* Header Section */}
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-gray-900">
           Sign in to your account
@@ -55,15 +90,18 @@ export default function SignInPage() {
         </p>
       </div>
 
+      {/* Form Container */}
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white px-4 py-8 shadow sm:rounded-lg sm:px-10">
           <form onSubmit={handleSubmit} className="space-y-6">
+            {/* Error Display */}
             {error && (
               <div className="rounded-md bg-red-50 p-4">
                 <div className="text-sm text-red-700">{error}</div>
               </div>
             )}
 
+            {/* Email Input Field */}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                 Email address
@@ -82,6 +120,7 @@ export default function SignInPage() {
               </div>
             </div>
 
+            {/* Password Input Field */}
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700">
                 Password
@@ -100,6 +139,7 @@ export default function SignInPage() {
               </div>
             </div>
 
+            {/* Submit Button */}
             <div>
               <button
                 type="submit"

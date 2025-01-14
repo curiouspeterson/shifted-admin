@@ -1,3 +1,11 @@
+/**
+ * Type definitions for the database schema and related utilities.
+ * This file is auto-generated from the Supabase database schema.
+ */
+
+/**
+ * Represents valid JSON values that can be stored in the database
+ */
 export type Json =
   | string
   | number
@@ -6,6 +14,10 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+/**
+ * Complete database schema definition including all schemas, tables, views,
+ * functions, enums and composite types
+ */
 export type Database = {
   graphql_public: {
     Tables: {
@@ -34,6 +46,9 @@ export type Database = {
   }
   public: {
     Tables: {
+      /**
+       * Audit logs for tracking system actions and changes
+       */
       audit_logs: {
         Row: {
           action_type: string
@@ -78,6 +93,9 @@ export type Database = {
           },
         ]
       }
+      /**
+       * Employee records and their basic information
+       */
       employees: {
         Row: {
           created_at: string | null
@@ -120,6 +138,9 @@ export type Database = {
         }
         Relationships: []
       }
+      /**
+       * Historical records of employee overtime
+       */
       overtime_history: {
         Row: {
           created_at: string | null
@@ -165,6 +186,9 @@ export type Database = {
           },
         ]
       }
+      /**
+       * Individual shift assignments linking employees to schedules
+       */
       schedule_assignments: {
         Row: {
           created_at: string | null
@@ -226,6 +250,9 @@ export type Database = {
           },
         ]
       }
+      /**
+       * Schedule periods with metadata
+       */
       schedules: {
         Row: {
           created_at: string | null
@@ -280,6 +307,9 @@ export type Database = {
           },
         ]
       }
+      /**
+       * Records of shift swap requests between employees
+       */
       shift_swaps: {
         Row: {
           id: string
@@ -328,6 +358,9 @@ export type Database = {
           }
         ]
       }
+      /**
+       * Staffing requirements for specific time periods
+       */
       time_based_requirements: {
         Row: {
           id: string
@@ -364,6 +397,9 @@ export type Database = {
         }
         Relationships: []
       }
+      /**
+       * Employee-specific scheduling rules and preferences
+       */
       employee_scheduling_rules: {
         Row: {
           id: string
@@ -405,6 +441,9 @@ export type Database = {
           }
         ]
       }
+      /**
+       * Shift definitions with timing and staffing requirements
+       */
       shifts: {
         Row: {
           created_at: string | null
@@ -441,6 +480,9 @@ export type Database = {
         }
         Relationships: []
       }
+      /**
+       * Employee availability preferences for different days and times
+       */
       employee_availability: {
         Row: {
           id: string
@@ -498,8 +540,16 @@ export type Database = {
   }
 }
 
+/**
+ * Helper type for accessing the public schema
+ */
 type PublicSchema = Database[Extract<keyof Database, "public">]
 
+/**
+ * Helper type for retrieving table row types
+ * @template PublicTableNameOrOptions - Table name or schema options
+ * @template TableName - Table name when using schema option
+ */
 export type Tables<
   PublicTableNameOrOptions extends
     | keyof (PublicSchema["Tables"] & PublicSchema["Views"])
@@ -525,6 +575,11 @@ export type Tables<
       : never
     : never
 
+/**
+ * Helper type for retrieving table insert types
+ * @template PublicTableNameOrOptions - Table name or schema options
+ * @template TableName - Table name when using schema option
+ */
 export type TablesInsert<
   PublicTableNameOrOptions extends
     | keyof PublicSchema["Tables"]
@@ -546,6 +601,11 @@ export type TablesInsert<
       : never
     : never
 
+/**
+ * Helper type for retrieving table update types
+ * @template PublicTableNameOrOptions - Table name or schema options
+ * @template TableName - Table name when using schema option
+ */
 export type TablesUpdate<
   PublicTableNameOrOptions extends
     | keyof PublicSchema["Tables"]
@@ -567,6 +627,11 @@ export type TablesUpdate<
       : never
     : never
 
+/**
+ * Helper type for retrieving enum types
+ * @template PublicEnumNameOrOptions - Enum name or schema options
+ * @template EnumName - Enum name when using schema option
+ */
 export type Enums<
   PublicEnumNameOrOptions extends
     | keyof PublicSchema["Enums"]
@@ -580,6 +645,11 @@ export type Enums<
     ? PublicSchema["Enums"][PublicEnumNameOrOptions]
     : never
 
+/**
+ * Helper type for retrieving composite types
+ * @template PublicCompositeTypeNameOrOptions - Composite type name or schema options
+ * @template CompositeTypeName - Composite type name when using schema option
+ */
 export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof PublicSchema["CompositeTypes"]

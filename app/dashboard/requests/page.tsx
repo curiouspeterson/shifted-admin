@@ -1,3 +1,21 @@
+/**
+ * Time Off Requests Page Component
+ * Last Updated: 2024
+ * 
+ * A client-side page component that manages time-off requests.
+ * Provides functionality to view, create, and manage time-off requests
+ * with different features for employees and managers.
+ * 
+ * Features:
+ * - Request list display
+ * - Create new request modal
+ * - Manager-specific actions (approve/deny)
+ * - Real-time data updates with SWR
+ * - Loading and error states
+ * - Responsive table layout
+ * - Status indicators
+ */
+
 'use client'
 
 import { useRouter } from 'next/navigation'
@@ -7,6 +25,22 @@ import LoadingSpinner from '@/app/components/LoadingSpinner'
 import RequestForm from '@/app/components/RequestForm'
 import ErrorBoundary from '@/app/components/ErrorBoundary'
 
+/**
+ * Time Off Request Interface
+ * Defines the structure of time-off request data
+ * 
+ * @property id - Unique identifier for the request
+ * @property employee_id - ID of the requesting employee
+ * @property start_date - Start date of time off
+ * @property end_date - End date of time off
+ * @property request_type - Type of time off request
+ * @property status - Current status of the request
+ * @property reason - Optional reason for the request
+ * @property approved_by - ID of approving manager
+ * @property created_at - Record creation timestamp
+ * @property updated_at - Last update timestamp
+ * @property employee - Optional employee details
+ */
 interface TimeOffRequest {
   id: string
   employee_id: string
@@ -24,6 +58,14 @@ interface TimeOffRequest {
   }
 }
 
+/**
+ * Data Fetcher Function
+ * Handles API requests for time-off request data with error handling
+ * 
+ * @param url - API endpoint URL
+ * @returns Parsed JSON response
+ * @throws Error with API error message
+ */
 const fetcher = async (url: string) => {
   const res = await fetch(url)
   if (!res.ok) {
@@ -33,16 +75,31 @@ const fetcher = async (url: string) => {
   return res.json()
 }
 
+/**
+ * Time Off Requests Page Component
+ * Main component for managing time-off requests
+ * 
+ * @returns A responsive page with request management features
+ */
 export default function RequestsPage() {
   const router = useRouter()
   const { isOpen, onOpen, onClose } = useDisclosure()
   
+  // Data fetching with SWR for real-time updates
   const { data, error, mutate } = useSWR<{ requests: TimeOffRequest[] }>('/api/requests', fetcher, {
     revalidateOnFocus: false,
   })
 
+  /**
+   * Status Update Handler
+   * Updates the status of a time-off request (manager only)
+   * 
+   * @param requestId - ID of the request to update
+   * @param newStatus - New status to set (approved/denied)
+   */
   const handleStatusUpdate = async (requestId: string, newStatus: 'approved' | 'denied') => {
     try {
+      // Attempt to update request status
       const response = await fetch(`/api/requests/${requestId}`, {
         method: 'PUT',
         headers: {
@@ -51,12 +108,13 @@ export default function RequestsPage() {
         body: JSON.stringify({ status: newStatus })
       })
 
+      // Handle unsuccessful update
       if (!response.ok) {
         const errorData = await response.json()
         throw new Error(errorData.error || 'Failed to update request')
       }
 
-      // Refresh the requests list
+      // Refresh data after successful update
       mutate()
     } catch (err) {
       console.error('Error updating request:', err)
@@ -64,6 +122,13 @@ export default function RequestsPage() {
     }
   }
 
+  /**
+   * Status Badge Color Helper
+   * Returns the appropriate color classes for status badges
+   * 
+   * @param status - Request status
+   * @returns Tailwind CSS classes for badge styling
+   */
   const getStatusBadgeColor = (status: string) => {
     switch (status) {
       case 'approved':
@@ -75,6 +140,7 @@ export default function RequestsPage() {
     }
   }
 
+  // Loading state
   if (!data && !error) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -83,6 +149,7 @@ export default function RequestsPage() {
     )
   }
 
+  // Error handling
   if (error) {
     if (error.message === 'Unauthorized') {
       router.push('/sign-in')
@@ -96,11 +163,13 @@ export default function RequestsPage() {
   }
 
   const requests = data?.requests || []
-  const isManager = requests.some(request => request.employee && request.employee_id !== request.employee.id)
+  // Determine if user is a manager based on request data
+  const isManager = requests.some(request => request.employee && request.employee_id !== request.id)
 
   return (
     <ErrorBoundary>
       <div className="bg-white shadow rounded-lg">
+        {/* Header Section */}
         <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
           <h1 className="text-2xl font-semibold text-gray-900">Time Off Requests</h1>
           <button
@@ -111,11 +180,13 @@ export default function RequestsPage() {
           </button>
         </div>
 
+        {/* Requests Table */}
         <div className="flex flex-col">
           <div className="-my-2 overflow-x-auto sm:-mx-6 lg:-mx-8">
             <div className="py-2 align-middle inline-block min-w-full sm:px-6 lg:px-8">
               <div className="overflow-hidden border-t border-gray-200">
                 <table className="min-w-full divide-y divide-gray-200">
+                  {/* Table Header */}
                   <thead className="bg-gray-50">
                     <tr>
                       {isManager && (
@@ -142,6 +213,7 @@ export default function RequestsPage() {
                       )}
                     </tr>
                   </thead>
+                  {/* Table Body */}
                   <tbody className="bg-white divide-y divide-gray-200">
                     {requests.map((request) => (
                       <tr key={request.id}>
@@ -164,6 +236,7 @@ export default function RequestsPage() {
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                           {request.reason || '-'}
                         </td>
+                        {/* Manager Actions */}
                         {isManager && request.status === 'pending' && (
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2">
                             <button
@@ -182,6 +255,7 @@ export default function RequestsPage() {
                         )}
                       </tr>
                     ))}
+                    {/* Empty State */}
                     {requests.length === 0 && (
                       <tr>
                         <td colSpan={isManager ? 6 : 5} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
@@ -196,6 +270,7 @@ export default function RequestsPage() {
           </div>
         </div>
 
+        {/* New Request Modal */}
         <Modal 
           isOpen={isOpen} 
           onClose={onClose}

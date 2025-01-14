@@ -1,10 +1,38 @@
+/**
+ * Staffing Requirements Component
+ * Last Updated: 2024
+ * 
+ * A client-side component that displays staffing requirements and current staffing levels
+ * for different time blocks throughout the day. Shows requirements for both regular staff
+ * and supervisors, with visual indicators for met/unmet requirements.
+ * 
+ * Features:
+ * - Time block breakdown (Early Morning, Day, Night, Overnight)
+ * - Required vs. actual staff counts
+ * - Maximum staff limits
+ * - Supervisor requirements tracking
+ * - Loading states with skeleton UI
+ * - Error handling and display
+ * - Visual status indicators
+ */
+
 'use client';
 
 import React, { useEffect } from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { TimeBasedRequirement } from '@/lib/types/scheduling';
+import { TimeBasedRequirement } from '@/app/lib/types/scheduling';
 
+/**
+ * Props for the StaffingRequirements component
+ * @property scheduleId - ID of the schedule being viewed
+ * @property date - The date for which to show requirements
+ * @property assignments - List of staff assignments for the date
+ * @property timeRequirements - List of time-based staffing requirements
+ * @property requirementStatuses - Current status of staffing requirements
+ * @property isLoading - Optional loading state indicator
+ * @property error - Optional error message
+ */
 interface StaffingRequirementsProps {
   scheduleId: string;
   date: string;
@@ -24,6 +52,10 @@ interface StaffingRequirementsProps {
   error?: string | null;
 }
 
+/**
+ * Predefined time blocks for staffing requirements
+ * Each block includes start time, end time, and a human-readable label
+ */
 const TIME_BLOCKS = [
   { start: '05:00:00', end: '09:00:00', label: 'Early Morning (5 AM - 9 AM)' },
   { start: '09:00:00', end: '21:00:00', label: 'Day (9 AM - 9 PM)' },
@@ -31,6 +63,11 @@ const TIME_BLOCKS = [
   { start: '01:00:00', end: '05:00:00', label: 'Overnight (1 AM - 5 AM)' }
 ];
 
+/**
+ * StaffingRequirements Component
+ * Displays a card showing staffing requirements and current staffing levels
+ * for different time blocks throughout the day.
+ */
 export function StaffingRequirements({
   scheduleId,
   date,
@@ -42,7 +79,7 @@ export function StaffingRequirements({
 }: StaffingRequirementsProps) {
   const dayOfWeek = new Date(date).getDay();
 
-  // Debug logging
+  // Debug logging for component props
   useEffect(() => {
     console.log('StaffingRequirements props:', {
       scheduleId,
@@ -56,6 +93,7 @@ export function StaffingRequirements({
     });
   }, [scheduleId, date, assignments, timeRequirements, requirementStatuses, isLoading, error]);
 
+  // Error state display
   if (error) {
     console.log('StaffingRequirements error:', error);
     return (
@@ -70,6 +108,7 @@ export function StaffingRequirements({
     );
   }
 
+  // Loading state with skeleton UI
   if (isLoading) {
     console.log('StaffingRequirements loading');
     return (
@@ -88,6 +127,12 @@ export function StaffingRequirements({
     );
   }
 
+  /**
+   * Finds the requirement status for a specific time block
+   * @param start - Start time of the block
+   * @param end - End time of the block
+   * @returns The requirement status object if found
+   */
   const getRequirementStatus = (start: string, end: string) => {
     const status = requirementStatuses.find(
       status => 
@@ -99,6 +144,12 @@ export function StaffingRequirements({
     return status;
   };
 
+  /**
+   * Finds the requirement definition for a specific time block
+   * @param start - Start time of the block
+   * @param end - End time of the block
+   * @returns The requirement object if found
+   */
   const getRequirement = (start: string, end: string) => {
     const requirement = timeRequirements.find(r => 
       r.day_of_week === dayOfWeek && 
@@ -109,6 +160,7 @@ export function StaffingRequirements({
     return requirement;
   };
 
+  // Render the staffing requirements card with time blocks
   return (
     <Card className="w-full">
       <CardHeader>
@@ -133,6 +185,7 @@ export function StaffingRequirements({
               <div key={block.start} className="p-4 border rounded-lg">
                 <h3 className="font-medium mb-4">{block.label}</h3>
                 <div className="grid grid-cols-3 gap-4">
+                  {/* Required Staff Section */}
                   <div className="space-y-2">
                     <Label>Required Staff</Label>
                     <div className="flex items-center gap-2">
@@ -141,6 +194,7 @@ export function StaffingRequirements({
                       </div>
                     </div>
                   </div>
+                  {/* Maximum Staff Section */}
                   <div className="space-y-2">
                     <Label>Maximum Staff</Label>
                     <div className="flex items-center gap-2">
@@ -149,6 +203,7 @@ export function StaffingRequirements({
                       </div>
                     </div>
                   </div>
+                  {/* Required Supervisors Section */}
                   <div className="space-y-2">
                     <Label>Required Supervisors</Label>
                     <div className="flex items-center gap-2">

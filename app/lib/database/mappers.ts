@@ -1,20 +1,47 @@
+/**
+ * Database Mappers Module
+ * Last Updated: 2024
+ * 
+ * Provides type definitions and mapping functions for transforming database
+ * records into client-side data structures. Includes type guards for runtime
+ * type checking and mapping functions for each entity type.
+ * 
+ * Features:
+ * - Type definitions for database records
+ * - Type guards for runtime validation
+ * - Mapping functions for data transformation
+ * - Null handling and default values
+ */
+ 
 import type { Database } from '@/lib/database.types';
-import type { Employee, Assignment, Shift, TimeBasedRequirement, Schedule } from '@/app/types/scheduling';
+import type { Employee, Assignment, Shift, TimeBasedRequirement, Schedule } from '@/app/lib/types/scheduling';
 
-// Define database types
+/**
+ * Database Type Definitions
+ * Type aliases for database table row types
+ */
 export type DbEmployee = Database['public']['Tables']['employees']['Row'];
 export type DbShift = Database['public']['Tables']['shifts']['Row'];
 export type DbAssignment = Database['public']['Tables']['schedule_assignments']['Row'];
 export type DbSchedule = Database['public']['Tables']['schedules']['Row'];
 export type DbRequirement = Database['public']['Tables']['time_based_requirements']['Row'];
 
-// Define raw assignment type with joined data
+/**
+ * Raw Assignment with Joined Data
+ * Extends base assignment type with optional employee and shift data
+ */
 export type RawAssignmentWithJoins = Database['public']['Tables']['schedule_assignments']['Row'] & {
   employee: Database['public']['Tables']['employees']['Row'] | null;
   shift: Database['public']['Tables']['shifts']['Row'] | null;
 };
 
-// Type guards
+/**
+ * Type guard for database employee records
+ * Validates that an object matches the expected employee structure
+ * 
+ * @param employee - Object to validate
+ * @returns True if object matches DbEmployee structure
+ */
 export function isValidDatabaseEmployee(employee: any): employee is DbEmployee {
   return (
     employee &&
@@ -29,6 +56,13 @@ export function isValidDatabaseEmployee(employee: any): employee is DbEmployee {
   );
 }
 
+/**
+ * Type guard for database shift records
+ * Validates that an object matches the expected shift structure
+ * 
+ * @param shift - Object to validate
+ * @returns True if object matches DbShift structure
+ */
 export function isValidDatabaseShift(shift: any): shift is DbShift {
   return (
     shift &&
@@ -43,7 +77,13 @@ export function isValidDatabaseShift(shift: any): shift is DbShift {
   );
 }
 
-// Mapping functions
+/**
+ * Maps database employee record to client employee type
+ * Handles null values and provides defaults where needed
+ * 
+ * @param dbEmployee - Database employee record
+ * @returns Client-side employee object
+ */
 export function mapDatabaseEmployeeToEmployee(dbEmployee: DbEmployee): Employee {
   return {
     id: dbEmployee.id,
@@ -59,6 +99,13 @@ export function mapDatabaseEmployeeToEmployee(dbEmployee: DbEmployee): Employee 
   };
 }
 
+/**
+ * Maps database shift record to client shift type
+ * Preserves boolean flags and copies remaining properties
+ * 
+ * @param dbShift - Database shift record
+ * @returns Client-side shift object
+ */
 export function mapDatabaseShiftToShift(dbShift: DbShift): Shift {
   return {
     ...dbShift,
@@ -67,6 +114,13 @@ export function mapDatabaseShiftToShift(dbShift: DbShift): Shift {
   };
 }
 
+/**
+ * Maps database schedule record to client schedule type
+ * Handles null values and provides defaults where needed
+ * 
+ * @param dbSchedule - Database schedule record
+ * @returns Client-side schedule object
+ */
 export function mapDatabaseScheduleToClient(dbSchedule: DbSchedule): Schedule {
   return {
     ...dbSchedule,
@@ -78,6 +132,13 @@ export function mapDatabaseScheduleToClient(dbSchedule: DbSchedule): Schedule {
   };
 }
 
+/**
+ * Maps database requirement record to client requirement type
+ * Handles null values and provides defaults where needed
+ * 
+ * @param dbRequirement - Database requirement record
+ * @returns Client-side requirement object
+ */
 export function mapDatabaseRequirementToClient(dbRequirement: DbRequirement): TimeBasedRequirement {
   return {
     id: dbRequirement.id,
@@ -92,6 +153,13 @@ export function mapDatabaseRequirementToClient(dbRequirement: DbRequirement): Ti
   };
 }
 
+/**
+ * Maps raw assignment record with joins to client assignment type
+ * Validates and transforms employee and shift data
+ * 
+ * @param rawAssignment - Raw assignment record with joined data
+ * @returns Client-side assignment object or null if validation fails
+ */
 export function mapRawAssignmentToAssignment(rawAssignment: RawAssignmentWithJoins): Assignment | null {
   if (!rawAssignment.employee || !rawAssignment.shift) {
     return null;

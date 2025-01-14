@@ -1,3 +1,22 @@
+/**
+ * Assignment Form Component
+ * Last Updated: 2024
+ * 
+ * A form component for creating and editing shift assignments. Handles the
+ * assignment of employees to shifts with validation for overlapping shifts,
+ * supervisor requirements, and scheduling constraints. Uses react-hook-form
+ * for form management and zod for schema validation.
+ * 
+ * Features:
+ * - Employee selection
+ * - Shift selection with supervisor requirements
+ * - Date selection
+ * - Overlap detection
+ * - Supervisor shift toggle
+ * - Form validation
+ * - Error handling
+ */
+
 'use client';
 
 import { useForm, Controller } from 'react-hook-form';
@@ -5,9 +24,18 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useEffect } from 'react';
 import type { AssignmentFormData } from '@/app/lib/schemas/forms';
 import { assignmentFormSchema } from '@/app/lib/schemas/forms';
-import type { Employee, Shift } from '@/app/types/scheduling';
+import type { Employee, Shift } from '@/app/lib/types/scheduling';
 import { doesTimeOverlap } from '@/app/lib/utils/schedule';
 
+/**
+ * Assignment Form Props Interface
+ * @property scheduleId - ID of the schedule being modified
+ * @property employees - List of available employees
+ * @property shifts - List of available shifts
+ * @property existingAssignments - Current assignments to check for conflicts
+ * @property onSubmit - Callback for form submission
+ * @property defaultValues - Optional initial form values
+ */
 interface AssignmentFormProps {
   scheduleId: string;
   employees: Employee[];
@@ -21,6 +49,19 @@ interface AssignmentFormProps {
   defaultValues?: Partial<AssignmentFormData>;
 }
 
+/**
+ * Assignment Form Component
+ * Form for creating and editing shift assignments
+ * 
+ * @param props - Component properties
+ * @param props.scheduleId - Schedule being modified
+ * @param props.employees - Available employees
+ * @param props.shifts - Available shifts
+ * @param props.existingAssignments - Current assignments
+ * @param props.onSubmit - Success callback
+ * @param props.defaultValues - Initial values
+ * @returns A form for shift assignment creation/editing
+ */
 export function AssignmentForm({
   scheduleId,
   employees,
@@ -29,6 +70,7 @@ export function AssignmentForm({
   onSubmit,
   defaultValues
 }: AssignmentFormProps) {
+  // Form management with react-hook-form
   const {
     register,
     handleSubmit,
@@ -48,12 +90,16 @@ export function AssignmentForm({
     },
   });
 
-  // Watch for changes to validate overlapping shifts
+  // Watch form fields for validation
   const selectedEmployeeId = watch('employee_id');
   const selectedShiftId = watch('shift_id');
   const selectedDate = watch('date');
 
-  // Validate overlapping shifts when selections change
+  /**
+   * Validate Overlapping Shifts
+   * Checks if the selected shift overlaps with any existing assignments
+   * for the selected employee on the selected date
+   */
   useEffect(() => {
     if (selectedEmployeeId && selectedShiftId && selectedDate) {
       const selectedShift = shifts.find(s => s.id === selectedShiftId);
@@ -85,6 +131,11 @@ export function AssignmentForm({
     }
   }, [selectedEmployeeId, selectedShiftId, selectedDate, shifts, existingAssignments, setError]);
 
+  /**
+   * Form Submission Handler
+   * Processes the form submission and resets form on success
+   * @param data - Form data to submit
+   */
   const onSubmitForm = async (data: AssignmentFormData) => {
     try {
       await onSubmit(data);
@@ -94,13 +145,16 @@ export function AssignmentForm({
     }
   };
 
+  // Filter employees for selection
   const activeEmployees = employees.filter(e => e.is_active);
   const supervisors = activeEmployees.filter(e => e.position === 'supervisor');
 
   return (
     <form onSubmit={handleSubmit(onSubmitForm)} className="space-y-6">
+      {/* Hidden Schedule ID Field */}
       <input type="hidden" {...register('schedule_id')} />
 
+      {/* Date Selection */}
       <div>
         <label htmlFor="date" className="block text-sm font-medium text-gray-700">
           Date
@@ -116,6 +170,7 @@ export function AssignmentForm({
         )}
       </div>
 
+      {/* Employee Selection */}
       <div>
         <label htmlFor="employee_id" className="block text-sm font-medium text-gray-700">
           Employee
@@ -137,6 +192,7 @@ export function AssignmentForm({
         )}
       </div>
 
+      {/* Shift Selection */}
       <div>
         <label htmlFor="shift_id" className="block text-sm font-medium text-gray-700">
           Shift
@@ -159,6 +215,7 @@ export function AssignmentForm({
         )}
       </div>
 
+      {/* Supervisor Shift Toggle */}
       <div className="flex items-center">
         <Controller
           name="is_supervisor_shift"
@@ -181,6 +238,7 @@ export function AssignmentForm({
         )}
       </div>
 
+      {/* Form Actions */}
       <div className="flex justify-end">
         <button
           type="submit"

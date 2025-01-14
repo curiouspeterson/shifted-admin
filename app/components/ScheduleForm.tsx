@@ -1,3 +1,21 @@
+/**
+ * Schedule Form Component
+ * Last Updated: 2024
+ * 
+ * A complex form component for creating and editing work schedules. Handles
+ * schedule creation, assignment generation, and validation. Provides an
+ * interface for setting schedule parameters and automatically generates
+ * optimal shift assignments based on staffing requirements.
+ * 
+ * Features:
+ * - Schedule creation/editing
+ * - Automatic 14-day period calculation
+ * - Smart name generation
+ * - Shift assignment generation
+ * - Validation and error handling
+ * - Loading states
+ */
+
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -15,12 +33,27 @@ import type {
   Schedule
 } from '../lib/types/scheduling';
 
-// Helper functions for time and shift calculations
+/**
+ * Time Calculation Helpers
+ */
+
+/**
+ * Converts time string to minutes since midnight
+ * @param time - Time string in HH:MM format
+ * @returns Number of minutes since midnight
+ */
 function timeToMinutes(time: string): number {
   const [hours, minutes] = time.split(':').map(Number);
   return hours * 60 + minutes;
 }
 
+/**
+ * Calculates shift duration in hours
+ * Handles shifts that cross midnight
+ * @param start - Start time in HH:MM format
+ * @param end - End time in HH:MM format
+ * @returns Shift duration in hours
+ */
 function calculateShiftHours(start: string, end: string): number {
   const startMinutes = timeToMinutes(start);
   let endMinutes = timeToMinutes(end);
@@ -33,7 +66,14 @@ function calculateShiftHours(start: string, end: string): number {
   return (endMinutes - startMinutes) / 60;
 }
 
-// Initialize daily coverage
+/**
+ * Coverage Tracking Helpers
+ */
+
+/**
+ * Initializes daily coverage tracking object
+ * Sets up tracking for each time block with zero coverage
+ */
 function initializeDailyCoverage(): DailyCoverage {
   return {
     '05:00': { total: 0, supervisors: 0 },
@@ -43,7 +83,13 @@ function initializeDailyCoverage(): DailyCoverage {
   };
 }
 
-// Helper function to check if a shift covers a time block
+/**
+ * Checks if a shift covers a specific time block
+ * Handles shifts that cross midnight
+ * @param shift - Shift to check
+ * @param block - Time block to check against
+ * @returns Whether the shift covers the time block
+ */
 function isShiftInTimeBlock(shift: Shift, block: { start: string; end: string }): boolean {
   const shiftStart = timeToMinutes(shift.start_time);
   const shiftEnd = timeToMinutes(shift.end_time);
@@ -61,7 +107,18 @@ function isShiftInTimeBlock(shift: Shift, block: { start: string; end: string })
   }
 }
 
-// Helper function to check if we can assign consecutive days
+/**
+ * Assignment Validation Helpers
+ */
+
+/**
+ * Checks if an employee can be assigned consecutive days
+ * @param employeeId - Employee to check
+ * @param startDate - Start date of the assignment
+ * @param requiredDays - Number of consecutive days needed
+ * @param existingAssignments - Current assignments to check against
+ * @returns Whether the employee can be assigned the consecutive days
+ */
 function canAssignConsecutiveDays(
   employeeId: string,
   startDate: Date,
@@ -81,7 +138,12 @@ function canAssignConsecutiveDays(
   return true;
 }
 
-// Helper function to update coverage for a shift
+/**
+ * Updates coverage tracking for a shift assignment
+ * @param coverage - Current coverage tracking object
+ * @param shift - Shift being assigned
+ * @param isSupervisor - Whether the assignment is for a supervisor
+ */
 function updateCoverageForShift(
   coverage: DailyCoverage,
   shift: Shift,
@@ -107,7 +169,12 @@ function updateCoverageForShift(
   }
 }
 
-// Helper function to get all dates in a range
+/**
+ * Date Range Helper
+ * @param startDate - Range start date
+ * @param endDate - Range end date
+ * @returns Array of dates in the range
+ */
 function getDatesInRange(startDate: Date, endDate: Date): Date[] {
   const dates = [];
   const currentDate = new Date(startDate);
@@ -118,7 +185,11 @@ function getDatesInRange(startDate: Date, endDate: Date): Date[] {
   return dates;
 }
 
-// Helper function to validate assignment
+/**
+ * Validates a shift assignment
+ * @param assignment - Assignment to validate
+ * @returns Validation result with any errors
+ */
 function validateAssignment(assignment: AssignmentInsert): { isValid: boolean; errors: string[] } {
   const errors: string[] = [];
   
@@ -141,7 +212,13 @@ function validateAssignment(assignment: AssignmentInsert): { isValid: boolean; e
   return { isValid: errors.length === 0, errors };
 }
 
-// Create schedule assignments
+/**
+ * Creates optimal shift assignments for a schedule
+ * Handles supervisor coverage, employee preferences, and staffing requirements
+ * @param scheduleId - Schedule to create assignments for
+ * @param startDate - Schedule start date
+ * @param endDate - Schedule end date
+ */
 async function createScheduleAssignments(scheduleId: string, startDate: Date, endDate: Date) {
   try {
     console.log('Creating schedule assignments...');
@@ -405,6 +482,13 @@ async function createScheduleAssignments(scheduleId: string, startDate: Date, en
   }
 }
 
+/**
+ * Schedule Form Props Interface
+ * @property scheduleId - ID of schedule being edited (undefined for new schedules)
+ * @property initialData - Initial form data for editing
+ * @property onSave - Callback after successful save
+ * @property onCancel - Callback when form is cancelled
+ */
 interface ScheduleFormProps {
   scheduleId?: string;
   initialData?: {
@@ -417,7 +501,19 @@ interface ScheduleFormProps {
   onCancel: () => void;
 }
 
+/**
+ * Schedule Form Component
+ * Form for creating and editing schedules
+ * 
+ * @param props - Component properties
+ * @param props.scheduleId - ID if editing existing schedule
+ * @param props.initialData - Initial form data
+ * @param props.onSave - Success callback
+ * @param props.onCancel - Cancel callback
+ * @returns A form for schedule creation/editing
+ */
 export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel }: ScheduleFormProps) {
+  // Form state management
   const [name, setName] = useState(initialData?.name || '');
   const [startDate, setStartDate] = useState(initialData?.start_date || '');
   const [endDate, setEndDate] = useState(initialData?.end_date || '');
@@ -426,6 +522,10 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
   const [error, setError] = useState<string | null>(null);
   const [hasEditedName, setHasEditedName] = useState(false);
 
+  /**
+   * Formats a date range into a readable string
+   * Used for auto-generating schedule names
+   */
   const formatDateRange = (start: string, end: string) => {
     // Ensure dates are interpreted in local timezone by appending T00:00:00
     const startDateObj = new Date(`${start}T00:00:00`);
@@ -433,6 +533,10 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
     return `${startDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
   };
 
+  /**
+   * Calculates end date based on start date
+   * Always sets a 14-day period
+   */
   const calculateEndDate = (start: string) => {
     if (!start) return '';
     // Ensure date is interpreted in local timezone
@@ -454,11 +558,19 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
     }
   }, [startDate, hasEditedName]);
 
+  /**
+   * Handles changes to schedule name
+   * Marks the name as manually edited
+   */
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setName(e.target.value);
     setHasEditedName(true);
   };
 
+  /**
+   * Form Submission Handler
+   * Creates or updates schedule and generates assignments
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -485,7 +597,7 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
 
       let schedule;
       if (scheduleId) {
-        // Update existing schedule via API route
+        // Update existing schedule
         const response = await fetch(`/api/schedules/${scheduleId}`, {
           method: 'PUT',
           headers: {
@@ -503,7 +615,7 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
         const result = await response.json();
         schedule = result.schedule;
       } else {
-        // Create new schedule via API route
+        // Create new schedule
         const response = await fetch('/api/schedules', {
           method: 'POST',
           headers: {
@@ -523,7 +635,7 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
 
         console.log('Created schedule:', schedule);
 
-        // Create schedule assignments
+        // Generate initial assignments for new schedule
         await createScheduleAssignments(
           schedule.id,
           new Date(startDate),
@@ -542,12 +654,14 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Error Display */}
       {error && (
         <div className="rounded-md bg-red-50 p-4">
           <div className="text-sm text-red-700">{error}</div>
         </div>
       )}
 
+      {/* Schedule Name Field */}
       <div>
         <label htmlFor="name" className="block text-sm font-medium text-gray-700">
           Schedule Name
@@ -563,6 +677,7 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
         />
       </div>
 
+      {/* Start Date Field */}
       <div>
         <label htmlFor="startDate" className="block text-sm font-medium text-gray-700">
           Start Date
@@ -577,6 +692,7 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
         />
       </div>
 
+      {/* End Date Field (Read-only) */}
       <div>
         <label htmlFor="endDate" className="block text-sm font-medium text-gray-700">
           End Date (14 days from start)
@@ -591,7 +707,9 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
         />
       </div>
 
+      {/* Form Actions */}
       <div className="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">
+        {/* Submit Button */}
         <button
           type="submit"
           disabled={loading}
@@ -599,6 +717,8 @@ export default function ScheduleForm({ scheduleId, initialData, onSave, onCancel
         >
           {loading ? 'Saving...' : 'Save'}
         </button>
+
+        {/* Cancel Button */}
         <button
           type="button"
           onClick={onCancel}

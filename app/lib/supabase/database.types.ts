@@ -1,3 +1,17 @@
+/**
+ * Database Types Definition File
+ * Last Updated: 2024
+ * 
+ * This file contains TypeScript type definitions for the Supabase database schema.
+ * It defines the structure of all database tables, their relationships, and the 
+ * types for insert and update operations. This is the source of truth for type 
+ * safety when interacting with the database.
+ */
+
+/**
+ * Generic JSON type that can represent any valid JSON value
+ * Used for fields that store arbitrary JSON data
+ */
 export type Json =
   | string
   | number
@@ -6,9 +20,21 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+/**
+ * Main Database interface defining all tables and their structures
+ * Each table has three main type definitions:
+ * - Row: The shape of the data when reading from the table
+ * - Insert: The required and optional fields when inserting new records
+ * - Update: All fields are optional when updating existing records
+ */
 export interface Database {
   public: {
     Tables: {
+      /**
+       * Employees Table
+       * Stores information about all employees in the system
+       * Links to the auth.users table via user_id for authentication
+       */
       employees: {
         Row: {
           id: string
@@ -59,6 +85,11 @@ export interface Database {
           }
         ]
       }
+      /**
+       * Schedules Table
+       * Contains scheduling periods with their status and publication state
+       * Each schedule represents a time period for which shifts are assigned
+       */
       schedules: {
         Row: {
           id: string
@@ -113,6 +144,11 @@ export interface Database {
           }
         ]
       }
+      /**
+       * Schedule Assignments Table
+       * Links employees to specific shifts within a schedule
+       * Tracks overtime and supervisor status for each assignment
+       */
       schedule_assignments: {
         Row: {
           id: string
@@ -174,6 +210,11 @@ export interface Database {
           }
         ]
       }
+      /**
+       * Time Off Requests Table
+       * Manages employee requests for time off
+       * Includes date ranges and approval status
+       */
       time_off_requests: {
         Row: {
           id: string
@@ -215,6 +256,11 @@ export interface Database {
           }
         ]
       }
+      /**
+       * Employee Availability Table
+       * Stores recurring weekly availability for each employee
+       * Used for scheduling constraints and preferences
+       */
       employee_availability: {
         Row: {
           id: string
@@ -256,6 +302,11 @@ export interface Database {
           }
         ]
       }
+      /**
+       * Time Based Requirements Table
+       * Defines staffing requirements for specific time periods
+       * Includes minimum staff counts and supervisor requirements
+       */
       time_based_requirements: {
         Row: {
           id: string
@@ -303,6 +354,11 @@ export interface Database {
           }
         ]
       }
+      /**
+       * Shifts Table
+       * Defines standard shift templates used in scheduling
+       * Includes timing, staffing requirements, and supervisor needs
+       */
       shifts: {
         Row: {
           id: string

@@ -1,17 +1,58 @@
+/**
+ * Employee Form Component
+ * Last Updated: 2024
+ * 
+ * A form component for creating new employee records. Handles all aspects
+ * of employee data collection and submission, including validation and
+ * error handling. Provides a responsive layout with proper form controls
+ * for each field.
+ * 
+ * Features:
+ * - Complete employee data collection
+ * - Form validation
+ * - Error handling and display
+ * - Loading states
+ * - Responsive grid layout
+ * - Cancel/Submit actions
+ */
+
 'use client'
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 
+/**
+ * Employee Form Props Interface
+ * @property onSave - Callback function called after successful employee creation
+ * @property onCancel - Callback function called when form is cancelled
+ */
 interface EmployeeFormProps {
   onSave: () => void
   onCancel: () => void
 }
 
+/**
+ * Employee Form Component
+ * Form for creating new employee records with validation and error handling
+ * 
+ * @param props - Component properties
+ * @param props.onSave - Success callback
+ * @param props.onCancel - Cancel callback
+ * @returns A form for employee data entry
+ */
 export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
   const router = useRouter()
+  
+  // Form state management
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  /**
+   * Form Data State
+   * Tracks all employee information fields:
+   * - Personal info (name, email, phone)
+   * - Employment details (position, rate, start date)
+   */
   const [formData, setFormData] = useState({
     first_name: '',
     last_name: '',
@@ -22,6 +63,16 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
     phone: ''
   })
 
+  /**
+   * Form Submission Handler
+   * Processes the form submission:
+   * 1. Prevents default form submission
+   * 2. Sets loading state
+   * 3. Attempts to create employee via API
+   * 4. Handles success/error cases
+   * 
+   * @param e - Form submission event
+   */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
@@ -53,13 +104,16 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Error Display */}
       {error && (
         <div className="rounded-md bg-red-50 p-4">
           <div className="text-sm text-red-700">{error}</div>
         </div>
       )}
 
+      {/* Name Fields - Grid Layout */}
       <div className="grid grid-cols-2 gap-4">
+        {/* First Name Field */}
         <div>
           <label htmlFor="first_name" className="block text-sm font-medium text-gray-700">
             First Name
@@ -75,6 +129,7 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
           />
         </div>
 
+        {/* Last Name Field */}
         <div>
           <label htmlFor="last_name" className="block text-sm font-medium text-gray-700">
             Last Name
@@ -91,6 +146,7 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
         </div>
       </div>
 
+      {/* Email Field */}
       <div>
         <label htmlFor="email" className="block text-sm font-medium text-gray-700">
           Email
@@ -106,6 +162,7 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
         />
       </div>
 
+      {/* Position Selection */}
       <div>
         <label htmlFor="position" className="block text-sm font-medium text-gray-700">
           Position
@@ -124,6 +181,7 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
         </select>
       </div>
 
+      {/* Hourly Rate Field */}
       <div>
         <label htmlFor="hourly_rate" className="block text-sm font-medium text-gray-700">
           Hourly Rate
@@ -141,6 +199,7 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
         />
       </div>
 
+      {/* Start Date Field */}
       <div>
         <label htmlFor="start_date" className="block text-sm font-medium text-gray-700">
           Start Date
@@ -156,6 +215,7 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
         />
       </div>
 
+      {/* Phone Number Field */}
       <div>
         <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
           Phone Number
@@ -171,7 +231,9 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
         />
       </div>
 
+      {/* Form Actions */}
       <div className="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">
+        {/* Submit Button */}
         <button
           type="submit"
           disabled={loading}
@@ -179,6 +241,8 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
         >
           {loading ? 'Creating...' : 'Create Employee'}
         </button>
+
+        {/* Cancel Button */}
         <button
           type="button"
           onClick={onCancel}

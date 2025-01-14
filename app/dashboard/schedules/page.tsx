@@ -1,3 +1,20 @@
+/**
+ * Schedules Page Component
+ * Last Updated: 2024
+ * 
+ * A client-side page component that manages work schedules.
+ * Provides functionality to view, create, and manage schedules
+ * with real-time updates and responsive design.
+ * 
+ * Features:
+ * - Schedule list display
+ * - Create new schedule modal
+ * - Status indicators
+ * - Loading and error states
+ * - Responsive layout
+ * - Direct schedule links
+ */
+
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -7,22 +24,43 @@ import Link from 'next/link'
 import Modal from '@/app/components/Modal'
 import ScheduleForm from '@/app/components/ScheduleForm'
 
+/**
+ * Schedule Type
+ * Extends the database schedule type with additional fields
+ * 
+ * @property name - Schedule name/identifier
+ * Plus all fields from the database schedule type
+ */
 type Schedule = Database['public']['Tables']['schedules']['Row'] & {
   name: string
 }
 
+/**
+ * Schedules Page Component
+ * Main component for managing work schedules
+ * 
+ * @returns A responsive page with schedule management features
+ */
 export default function SchedulesPage() {
+  // State management for schedules and UI
   const [schedules, setSchedules] = useState<Schedule[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
 
+  // Load schedules on component mount
   useEffect(() => {
     fetchSchedules()
   }, [])
 
+  /**
+   * Schedule Fetcher
+   * Retrieves all schedules from the database
+   * Ordered by start date (newest first)
+   */
   const fetchSchedules = async () => {
     try {
+      // Query schedules from Supabase
       const { data, error } = await supabase
         .from('schedules')
         .select('*')
@@ -39,19 +77,33 @@ export default function SchedulesPage() {
     }
   }
 
+  /**
+   * Create Schedule Handler
+   * Opens the create schedule modal
+   */
   const handleCreateSchedule = () => {
     setShowCreateModal(true)
   }
 
+  /**
+   * Modal Close Handler
+   * Closes the create schedule modal
+   */
   const handleCloseModal = () => {
     setShowCreateModal(false)
   }
 
+  /**
+   * Schedule Save Handler
+   * Processes successful schedule creation
+   * Refreshes the schedule list
+   */
   const handleScheduleSaved = () => {
     setShowCreateModal(false)
     fetchSchedules()
   }
 
+  // Loading state
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-100 py-8">
@@ -65,6 +117,7 @@ export default function SchedulesPage() {
   return (
     <div className="min-h-screen bg-gray-100 py-8">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        {/* Header Section */}
         <div className="mb-8 sm:flex sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">Schedules</h1>
@@ -82,12 +135,14 @@ export default function SchedulesPage() {
           </div>
         </div>
 
+        {/* Error Display */}
         {error && (
           <div className="rounded-md bg-red-50 p-4 mb-8">
             <div className="text-sm text-red-700">{error}</div>
           </div>
         )}
 
+        {/* Schedule List */}
         <div className="mt-8 overflow-hidden bg-white shadow sm:rounded-md">
           <ul role="list" className="divide-y divide-gray-200">
             {schedules.map((schedule) => (
@@ -98,6 +153,7 @@ export default function SchedulesPage() {
                 >
                   <div className="px-4 py-4 sm:px-6">
                     <div className="flex items-center justify-between">
+                      {/* Schedule Details */}
                       <div className="truncate">
                         <div className="flex">
                           <p className="truncate text-sm font-medium text-indigo-600">
@@ -108,6 +164,7 @@ export default function SchedulesPage() {
                           </p>
                         </div>
                       </div>
+                      {/* Status Badge */}
                       <div className="ml-2 flex flex-shrink-0">
                         <span className={`inline-flex rounded-full px-2 text-xs font-semibold leading-5 ${
                           schedule.status === 'published' 
@@ -126,6 +183,7 @@ export default function SchedulesPage() {
         </div>
       </div>
 
+      {/* Create Schedule Modal */}
       <Modal
         open={showCreateModal}
         onClose={handleCloseModal}

@@ -1,20 +1,52 @@
+/**
+ * Schedule Timeline Component
+ * Last Updated: 2024
+ * 
+ * A client-side component that provides a visual timeline representation of shifts
+ * for a specific date. Shows shift blocks positioned on a 24-hour timeline with
+ * hourly markers and shift details.
+ * 
+ * Features:
+ * - 24-hour timeline with hour markers
+ * - Visual shift blocks showing duration
+ * - Shift name and assigned staff count
+ * - Responsive layout
+ * - Time-based positioning
+ */
+
 'use client';
 
 import React from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import type { ScheduleAssignment } from '@/app/lib/types/scheduling';
+import type { Assignment } from '@/app/lib/types/scheduling';
 
+/**
+ * Props for the ScheduleTimeline component
+ * @property date - The date for which to show the timeline
+ * @property shifts - Object mapping shift IDs to arrays of assignments
+ */
 interface ScheduleTimelineProps {
   date: string;
   shifts: {
-    [shiftId: string]: ScheduleAssignment[];
+    [shiftId: string]: Assignment[];
   };
 }
 
+/**
+ * ScheduleTimeline Component
+ * Displays a visual timeline of shifts for a specific date, with
+ * shift blocks positioned according to their start and end times.
+ */
 export default function ScheduleTimeline({ date, shifts }: ScheduleTimelineProps) {
+  // Set up timeline boundaries for the given date
   const timelineStart = new Date(`${date}T00:00:00`);
   const timelineEnd = new Date(`${date}T23:59:59`);
 
+  /**
+   * Calculates the percentage position on the timeline for a given time
+   * @param time - Time in HH:MM format
+   * @returns Percentage position (0-100) on the timeline
+   */
   const getTimelinePosition = (time: string) => {
     const [hours, minutes] = time.split(':').map(Number);
     return ((hours * 60 + minutes) / (24 * 60)) * 100;
@@ -27,7 +59,7 @@ export default function ScheduleTimeline({ date, shifts }: ScheduleTimelineProps
       </CardHeader>
       <CardContent>
         <div className="relative h-[200px] border-l border-r border-gray-200">
-          {/* Time markers */}
+          {/* Hour markers for the 24-hour timeline */}
           {Array.from({ length: 24 }).map((_, hour) => (
             <div
               key={hour}
@@ -40,7 +72,7 @@ export default function ScheduleTimeline({ date, shifts }: ScheduleTimelineProps
             </div>
           ))}
 
-          {/* Shift blocks */}
+          {/* Shift blocks showing assignments */}
           {Object.entries(shifts).map(([shiftId, assignments]) => {
             if (!assignments?.[0]?.shift) return null;
             

@@ -1,3 +1,20 @@
+/**
+ * Authentication Actions Module
+ * Last Updated: 2024
+ * 
+ * Provides server-side authentication actions for user sign-in.
+ * This module handles form submission, authentication with Supabase,
+ * session management, and redirection after successful authentication.
+ * 
+ * Features:
+ * - Server-side form handling
+ * - Secure password authentication
+ * - Cookie-based session management
+ * - Error handling and validation
+ * - Automatic redirection
+ * - Cache revalidation
+ */
+
 'use server'
 
 import { revalidatePath } from 'next/cache'
@@ -5,11 +22,26 @@ import { redirect } from 'next/navigation'
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 
+/**
+ * Sign In Action
+ * Handles user authentication through form submission
+ * 
+ * Flow:
+ * 1. Validates required form fields
+ * 2. Creates Supabase client with cookie handling
+ * 3. Attempts password-based authentication
+ * 4. Verifies session creation
+ * 5. Revalidates cache and redirects on success
+ * 
+ * @param formData - Form data containing email, password, and redirect path
+ * @returns Redirects to dashboard on success or sign-in page with error on failure
+ */
 export async function signIn(formData: FormData) {
   const email = formData.get('email') as string
   const password = formData.get('password') as string
   const redirectedFrom = formData.get('redirectedFrom') as string
   
+  // Validate required fields
   if (!email || !password) {
     redirect('/sign-in?error=' + encodeURIComponent('Email and password are required'))
   }
@@ -17,6 +49,7 @@ export async function signIn(formData: FormData) {
   const cookieStore = await cookies()
   console.log('🔐 Attempting sign in for:', email)
 
+  // Initialize Supabase client with cookie handling
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -44,6 +77,7 @@ export async function signIn(formData: FormData) {
   )
 
   try {
+    // Attempt password-based authentication
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
@@ -59,7 +93,7 @@ export async function signIn(formData: FormData) {
       return redirect('/sign-in?error=' + encodeURIComponent('Failed to create session'))
     }
 
-    // Ensure the session is set in cookies
+    // Verify session was properly created
     const { data: { session }, error: sessionError } = await supabase.auth.getSession()
     if (sessionError || !session) {
       console.error('❌ Session verification failed:', sessionError)

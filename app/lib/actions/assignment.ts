@@ -1,3 +1,20 @@
+/**
+ * Assignment Actions Module
+ * Last Updated: 2024-01-11
+ * 
+ * Server actions for managing schedule assignments. Handles creation and updates
+ * of employee shift assignments with validation and conflict checking.
+ * 
+ * Features:
+ * - Server-side validation using Zod schemas
+ * - Supervisor requirement validation
+ * - Shift overlap detection
+ * - Error handling and type safety
+ * - Automatic cache revalidation
+ * 
+ * @module actions/assignment
+ */
+
 'use server';
 
 import { revalidatePath } from 'next/cache';
@@ -6,6 +23,38 @@ import { createClient } from '@/app/lib/supabase/server';
 import type { AssignmentFormData } from '../schemas/forms';
 import { assignmentFormSchema } from '../schemas/forms';
 
+/**
+ * Creates a new schedule assignment with validation checks
+ * 
+ * Performs several validation steps before creating an assignment:
+ * 1. Validates form data against schema
+ * 2. Checks if shift requires a supervisor
+ * 3. Verifies employee is a supervisor if required
+ * 4. Checks for overlapping assignments
+ * 
+ * @param data - Assignment form data to validate and create
+ * @returns Promise resolving to created assignment or error
+ * 
+ * @throws Will throw an error if:
+ * - Form data is invalid
+ * - Shift requires supervisor but employee isn't one
+ * - Assignment overlaps with existing assignments
+ * - Database operations fail
+ * 
+ * @example
+ * ```ts
+ * const result = await createAssignment({
+ *   schedule_id: "123",
+ *   employee_id: "456",
+ *   shift_id: "789",
+ *   date: "2024-01-15"
+ * });
+ * 
+ * if (result.error) {
+ *   // Handle error
+ * }
+ * ```
+ */
 export async function createAssignment(data: AssignmentFormData) {
   const cookieStore = cookies();
   const supabase = createClient(cookieStore);
@@ -128,6 +177,32 @@ export async function createAssignment(data: AssignmentFormData) {
   }
 }
 
+/**
+ * Updates an existing schedule assignment
+ * 
+ * Modifies an assignment's details and handles cache invalidation.
+ * Note: Does not perform the same validation checks as creation.
+ * 
+ * @param id - ID of the assignment to update
+ * @param data - Partial assignment data to update
+ * @returns Promise resolving to updated assignment or error
+ * 
+ * @throws Will throw an error if:
+ * - Assignment doesn't exist
+ * - Database update fails
+ * 
+ * @example
+ * ```ts
+ * const result = await updateAssignment("123", {
+ *   shift_id: "newShiftId",
+ *   overtime_hours: 2
+ * });
+ * 
+ * if (result.error) {
+ *   // Handle error
+ * }
+ * ```
+ */
 export async function updateAssignment(id: string, data: Partial<AssignmentFormData>) {
   const cookieStore = cookies();
   const supabase = createClient(cookieStore);

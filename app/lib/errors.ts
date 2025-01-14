@@ -1,6 +1,25 @@
+/**
+ * Error Handling Utilities
+ * Last Updated: 2024
+ * 
+ * This file provides a centralized error handling system for the application.
+ * It includes:
+ * - Custom error class for application-specific errors
+ * - Error handlers for different types of errors (general, auth, validation, database)
+ * - Consistent error response formatting
+ * 
+ * All error handlers return NextResponse objects with appropriate status codes
+ * and formatted error messages.
+ */
+
 import { NextResponse } from 'next/server'
 import { PostgrestError } from '@supabase/supabase-js'
 
+/**
+ * Custom Application Error Class
+ * Extends the base Error class with additional properties for HTTP status codes
+ * and error codes for more specific error handling
+ */
 export class AppError extends Error {
   constructor(
     message: string,
@@ -12,6 +31,14 @@ export class AppError extends Error {
   }
 }
 
+/**
+ * General Error Handler
+ * Handles any type of error and returns an appropriate response
+ * Supports:
+ * - AppError: Uses provided status code and message
+ * - PostgrestError: Database-specific errors
+ * - Generic errors: Converts to 500 Internal Server Error
+ */
 export function handleError(error: unknown) {
   console.error('Error:', error)
 
@@ -35,6 +62,11 @@ export function handleError(error: unknown) {
   )
 }
 
+/**
+ * Authentication Error Handler
+ * Specifically handles authentication-related errors
+ * Returns 401 Unauthorized for generic auth errors
+ */
 export function handleAuthError(error: unknown) {
   console.error('Auth error:', error)
   
@@ -51,6 +83,11 @@ export function handleAuthError(error: unknown) {
   )
 }
 
+/**
+ * Validation Error Handler
+ * Handles errors related to input validation
+ * Always returns 400 Bad Request with validation error details
+ */
 export function handleValidationError(error: unknown) {
   console.error('Validation error:', error)
   
@@ -60,6 +97,12 @@ export function handleValidationError(error: unknown) {
   )
 }
 
+/**
+ * Database Error Handler
+ * Specifically handles database-related errors
+ * Provides special handling for Postgrest errors
+ * Returns 500 Internal Server Error for database issues
+ */
 export function handleDatabaseError(error: unknown) {
   console.error('Database error:', error)
   

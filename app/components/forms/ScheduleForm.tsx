@@ -1,3 +1,20 @@
+/**
+ * Schedule Form Component
+ * Last Updated: 2024
+ * 
+ * A form component for creating and editing schedules. Handles the collection
+ * of schedule metadata including name, description, date range, and status.
+ * Uses react-hook-form for form management and zod for schema validation.
+ * 
+ * Features:
+ * - Schedule metadata collection
+ * - Date range selection
+ * - Status management
+ * - Active state toggle
+ * - Form validation
+ * - Error handling
+ */
+
 'use client';
 
 import { useForm } from 'react-hook-form';
@@ -5,12 +22,27 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import type { ScheduleFormData } from '@/app/lib/schemas/forms';
 import { scheduleFormSchema } from '@/app/lib/schemas/forms';
 
+/**
+ * Schedule Form Props Interface
+ * @property onSubmit - Callback function for form submission
+ * @property defaultValues - Optional initial form values
+ */
 interface ScheduleFormProps {
   onSubmit: (data: ScheduleFormData) => Promise<void>;
   defaultValues?: Partial<ScheduleFormData>;
 }
 
+/**
+ * Schedule Form Component
+ * Form for creating and editing schedule metadata
+ * 
+ * @param props - Component properties
+ * @param props.onSubmit - Success callback
+ * @param props.defaultValues - Initial values
+ * @returns A form for schedule metadata entry
+ */
 export function ScheduleForm({ onSubmit, defaultValues }: ScheduleFormProps) {
+  // Form management with react-hook-form
   const {
     register,
     handleSubmit,
@@ -25,6 +57,11 @@ export function ScheduleForm({ onSubmit, defaultValues }: ScheduleFormProps) {
     },
   });
 
+  /**
+   * Form Submission Handler
+   * Processes the form submission and resets form on success
+   * @param data - Form data to submit
+   */
   const onSubmitForm = async (data: ScheduleFormData) => {
     try {
       await onSubmit(data);
@@ -36,6 +73,7 @@ export function ScheduleForm({ onSubmit, defaultValues }: ScheduleFormProps) {
 
   return (
     <form onSubmit={handleSubmit(onSubmitForm)} className="space-y-6">
+      {/* Schedule Name Field */}
       <div>
         <label htmlFor="name" className="block text-sm font-medium text-gray-700">
           Schedule Name
@@ -51,6 +89,7 @@ export function ScheduleForm({ onSubmit, defaultValues }: ScheduleFormProps) {
         )}
       </div>
 
+      {/* Description Field */}
       <div>
         <label htmlFor="description" className="block text-sm font-medium text-gray-700">
           Description
@@ -66,7 +105,9 @@ export function ScheduleForm({ onSubmit, defaultValues }: ScheduleFormProps) {
         )}
       </div>
 
+      {/* Date Range Fields */}
       <div className="grid grid-cols-2 gap-4">
+        {/* Start Date Field */}
         <div>
           <label htmlFor="start_date" className="block text-sm font-medium text-gray-700">
             Start Date
@@ -82,6 +123,7 @@ export function ScheduleForm({ onSubmit, defaultValues }: ScheduleFormProps) {
           )}
         </div>
 
+        {/* End Date Field */}
         <div>
           <label htmlFor="end_date" className="block text-sm font-medium text-gray-700">
             End Date
@@ -98,6 +140,7 @@ export function ScheduleForm({ onSubmit, defaultValues }: ScheduleFormProps) {
         </div>
       </div>
 
+      {/* Status Selection */}
       <div>
         <label htmlFor="status" className="block text-sm font-medium text-gray-700">
           Status
@@ -116,6 +159,7 @@ export function ScheduleForm({ onSubmit, defaultValues }: ScheduleFormProps) {
         )}
       </div>
 
+      {/* Active State Toggle */}
       <div className="flex items-center">
         <input
           type="checkbox"
@@ -131,6 +175,7 @@ export function ScheduleForm({ onSubmit, defaultValues }: ScheduleFormProps) {
         )}
       </div>
 
+      {/* Form Actions */}
       <div className="flex justify-end">
         <button
           type="submit"

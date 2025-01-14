@@ -1,3 +1,25 @@
+/**
+ * Staffing Requirements Page
+ * Last Updated: 2024
+ * 
+ * This page component provides an interface for managing staffing requirements
+ * across different time blocks and days of the week. It allows supervisors to
+ * set and update minimum staffing levels, maximum staff counts, and supervisor
+ * requirements for each time period.
+ * 
+ * Features:
+ * - Server-side rendering of requirements data
+ * - Real-time updates with automatic revalidation
+ * - Suspense-based loading states
+ * - Error handling for database operations
+ * - Role-based access control
+ * 
+ * Component Structure:
+ * - RequirementsPage: Top-level page component with Suspense wrapper
+ * - RequirementsContent: Main content component that fetches and displays data
+ * - StaffingRequirementsEditor: Reusable editor component for requirements
+ */
+
 import { Suspense } from 'react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
@@ -5,6 +27,15 @@ import { StaffingRequirementsEditor } from '@/components/StaffingRequirementsEdi
 import { TimeBasedRequirement } from '@/lib/types/scheduling';
 import { revalidatePath } from 'next/cache';
 
+/**
+ * Updates a single time-based staffing requirement
+ * 
+ * Server action that updates the staffing levels for a specific time block.
+ * Automatically revalidates the requirements page after successful update.
+ * 
+ * @param requirement - The requirement object with updated values
+ * @throws Error if the database update fails
+ */
 async function updateRequirement(requirement: TimeBasedRequirement) {
   'use server';
   
@@ -28,6 +59,14 @@ async function updateRequirement(requirement: TimeBasedRequirement) {
   revalidatePath('/dashboard/requirements');
 }
 
+/**
+ * Main content component for the requirements page
+ * 
+ * Fetches requirements data from Supabase and renders the editor component.
+ * Uses server-side data fetching for optimal performance and SEO.
+ * 
+ * @returns JSX element containing the requirements editor interface
+ */
 async function RequirementsContent() {
   const cookieStore = cookies();
   const supabase = createServerComponentClient({ cookies: () => cookieStore });
@@ -55,6 +94,14 @@ async function RequirementsContent() {
   );
 }
 
+/**
+ * Top-level page component for staffing requirements
+ * 
+ * Wraps the main content in a Suspense boundary for loading states
+ * and provides consistent page layout with container padding.
+ * 
+ * @returns JSX element for the complete requirements page
+ */
 export default function RequirementsPage() {
   return (
     <div className="container py-6">

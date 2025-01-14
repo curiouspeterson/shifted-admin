@@ -1,20 +1,54 @@
+/**
+ * Schedule Header Component
+ * Last Updated: 2024
+ * 
+ * A client-side component that provides the header section for schedule details view.
+ * Includes controls for editing, publishing, and deleting schedules, with proper
+ * loading states and error handling.
+ * 
+ * Features:
+ * - Schedule title and description
+ * - Edit schedule link
+ * - Publish schedule button with status check
+ * - Delete schedule button with confirmation
+ * - Error display for failed operations
+ * - Loading states for async operations
+ */
+
 'use client';
 
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Schedule } from '@/app/types/scheduling';
+import type { Schedule } from '@/app/lib/types/scheduling';
 
+/**
+ * Props for the ScheduleHeader component
+ * @property schedule - The schedule object containing details to display and manage
+ */
 interface ScheduleHeaderProps {
   schedule: Schedule;
 }
 
+/**
+ * ScheduleHeader Component
+ * Renders the header section of the schedule details page with action buttons
+ * and error handling for schedule management operations.
+ * 
+ * @param schedule - The schedule object to display and manage
+ */
 export default function ScheduleHeader({ schedule }: ScheduleHeaderProps) {
   const [error, setError] = useState<string | null>(null);
   const [isApproving, setIsApproving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const router = useRouter();
 
+  /**
+   * Handles the approval/publishing of a schedule
+   * Updates the schedule status to 'published' via API call
+   * 
+   * @param scheduleId - The ID of the schedule to publish
+   */
   const handleApprove = async (scheduleId: string) => {
     try {
       setIsApproving(true);
@@ -42,6 +76,12 @@ export default function ScheduleHeader({ schedule }: ScheduleHeaderProps) {
     }
   };
 
+  /**
+   * Handles the deletion of a schedule
+   * Removes the schedule via API call and redirects to schedules list
+   * 
+   * @param scheduleId - The ID of the schedule to delete
+   */
   const handleDelete = async (scheduleId: string) => {
     try {
       setIsDeleting(true);
@@ -65,6 +105,7 @@ export default function ScheduleHeader({ schedule }: ScheduleHeaderProps) {
     }
   };
 
+  // Render the header with action buttons and error display
   return (
     <div className="px-4 sm:px-6 lg:px-8">
       <div className="sm:flex sm:items-center">
@@ -100,6 +141,7 @@ export default function ScheduleHeader({ schedule }: ScheduleHeaderProps) {
         </div>
       </div>
 
+      {/* Error display section */}
       {error && (
         <div className="mt-4 rounded-md bg-red-50 p-4">
           <div className="flex">
