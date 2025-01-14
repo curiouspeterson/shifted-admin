@@ -1,86 +1,117 @@
 /**
- * Shifts API Route Handler
+ * Shifts API Route
  * Last Updated: 2024
  * 
  * This file implements the API endpoints for managing shift definitions.
- * Currently supports:
- * - GET: Retrieve all shift templates
+ * It provides functionality to:
+ * - Get all shift templates
+ * - Create new shift templates
+ * - Update existing shift templates
  * 
- * Shifts represent standard work periods that can be assigned to employees
- * in schedules. Each shift includes timing, staffing requirements, and
- * supervisor requirements.
+ * All operations require supervisor permissions.
  */
 
-import { createRouteHandler } from '@/app/lib/api/handler'
-import { AppError } from '@/app/lib/errors'
-import { NextResponse } from 'next/server'
-import { z } from 'zod'
-import type { Database } from '@/app/lib/supabase/database.types'
+import { z } from 'zod';
+import { NextRequest } from 'next/server';
+import { createRouteHandler } from '../../lib/api/handler';
+import { ShiftsOperations } from '../../lib/api/database/shifts';
+import type { RouteContext } from '../../lib/api/types';
 
-/**
- * Type Definition
- * Using database type to ensure type safety with Supabase
- */
-type Shift = Database['public']['Tables']['shifts']['Row']
-
-/**
- * Validation Schemas
- * Define the shape and constraints for shift data
- */
-
-/**
- * Complete Shift Schema
- * Used for validating database records and API responses
- * Includes all fields that define a shift template
- */
+// Validation Schemas
 const shiftSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  start_time: z.string(),
-  end_time: z.string(),
-  duration_hours: z.number(),
-  min_staff_count: z.number(),
-  requires_supervisor: z.boolean(),
-  crosses_midnight: z.boolean(),
-  created_at: z.string().nullable()
-})
+  name: z.string().min(1).max(100),
+  start_time: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/),
+  end_time: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/),
+  duration_hours: z.number().min(0).max(24),
+  min_staff_count: z.number().min(1),
+  requires_supervisor: z.boolean().optional(),
+  crosses_midnight: z.boolean().optional(),
+  description: z.string().optional(),
+  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+});
 
-/**
- * API Response Schema
- * Wraps shift data in a response object
- */
-const shiftsResponseSchema = z.object({
-  shifts: z.array(shiftSchema)
-})
+const querySchema = z.object({
+  limit: z.string().regex(/^\d+$/).transform(Number).optional(),
+  offset: z.string().regex(/^\d+$/).transform(Number).optional(),
+  sort: z.enum(['name', 'start_time', 'end_time']).optional(),
+  order: z.enum(['asc', 'desc']).optional(),
+});
 
-/**
- * GET /api/shifts
- * Retrieves all shift templates from the database
- * Ordered by start time for consistent presentation
- * Accessible to all authenticated users
- * 
- * Returns: Array of shift objects containing:
- * - Shift timing (start/end times, duration)
- * - Staffing requirements (minimum staff, supervisor needs)
- * - Shift properties (name, midnight crossing)
- */
+// GET /api/shifts
 export const GET = createRouteHandler(
-  async (req, { supabase }) => {
-    // Fetch all shifts, ordered by start time
-    const { data: shifts, error } = await supabase
-      .from('shifts')
-      .select('*')
-      .order('start_time')
+  async (req: NextRequest, { supabase }: RouteContext) => {
+    const shifts = new ShiftsOperations(supabase);
+    const query = Object.fromEntries(req.nextUrl.searchParams);
+    const { sort, order, limit, offset } = querySchema.parse(query);
+
+    const { data, error } = await shifts.findMany({
+      orderBy: sort ? {
+        column: sort,
+        ascending: order !== 'desc',
+      } : undefined,
+      limit,
+      offset,
+    });
 
     if (error) {
-      throw new AppError('Failed to fetch shifts', 500)
+      return {
+        error: 'Failed to fetch shifts',
+        data: null,
+        metadata: { originalError: error },
+      };
     }
 
-    // Validate and return response data
-    const validatedResponse = shiftsResponseSchema.parse({ 
-      shifts: shifts || [] 
-    })
-
-    return NextResponse.json(validatedResponse)
+    return {
+      data: data || [],
+      error: null,
+      metadata: {
+        count: data?.length || 0,
+      },
+    };
+  },
+  {
+    requireAuth: true,
+    requireSupervisor: true,
+    validateQuery: querySchema,
   }
-) 
+);
+
+// POST /api/shifts
+export const POST = createRouteHandler(
+  async (req: NextRequest, { supabase }: RouteContext) => {
+    const shifts = new ShiftsOperations(supabase);
+    const body = await req.json();
+    const validatedData = shiftSchema.parse(body);
+
+    const { data, error } = await shifts.create(validatedData);
+
+    if (error) {
+      return {
+        error: 'Failed to create shift',
+        data: null,
+        metadata: { originalError: error },
+      };
+    }
+
+    if (!data) {
+      return {
+        error: 'Failed to create shift - no data returned',
+        data: null,
+        metadata: {},
+      };
+    }
+
+    return {
+      data,
+      error: null,
+      metadata: {
+        message: 'Shift created successfully',
+      },
+    };
+  },
+  {
+    requireAuth: true,
+    requireSupervisor: true,
+    validateBody: shiftSchema,
+  }
+); 

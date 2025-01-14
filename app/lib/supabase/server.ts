@@ -1,32 +1,16 @@
 /**
- * Supabase Server Client Module
+ * Supabase Server Client
  * Last Updated: 2024
  * 
- * Provides server-side Supabase client initialization and configuration.
- * This module creates a server-side client with cookie handling for
- * session management in server components and API routes.
- * 
- * Features:
- * - Type-safe database operations
- * - Server-specific client configuration
- * - Cookie-based session handling
- * - Next.js server component integration
+ * Creates a Supabase client for server-side operations.
+ * This client is used in server components and server actions.
  */
 
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { Database } from './database.types';
 
-/**
- * Create Server Client
- * Creates a new Supabase client configured for server-side usage
- * Includes cookie handling for session management
- * 
- * @returns Typed Supabase client instance with cookie support
- */
-export const createClient = () => {
-  const cookieStore = cookies();
-
+export function createClient(cookieStore: ReturnType<typeof cookies>) {
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -35,7 +19,21 @@ export const createClient = () => {
         get(name: string) {
           return cookieStore.get(name)?.value;
         },
+        set(name: string, value: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value, ...options });
+          } catch (error) {
+            // Handle cookies in edge functions
+          }
+        },
+        remove(name: string, options: CookieOptions) {
+          try {
+            cookieStore.set({ name, value: '', ...options });
+          } catch (error) {
+            // Handle cookies in edge functions
+          }
+        },
       },
     }
   );
-}; 
+} 

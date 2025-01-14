@@ -1,17 +1,11 @@
 /**
- * Database Types Definition File
+ * Supabase Database Types
  * Last Updated: 2024
  * 
- * This file contains TypeScript type definitions for the Supabase database schema.
- * It defines the structure of all database tables, their relationships, and the 
- * types for insert and update operations. This is the source of truth for type 
- * safety when interacting with the database.
+ * Type definitions for the Supabase database schema.
+ * These types are used to ensure type safety when interacting with the database.
  */
 
-/**
- * Generic JSON type that can represent any valid JSON value
- * Used for fields that store arbitrary JSON data
- */
 export type Json =
   | string
   | number
@@ -20,380 +14,160 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-/**
- * Main Database interface defining all tables and their structures
- * Each table has three main type definitions:
- * - Row: The shape of the data when reading from the table
- * - Insert: The required and optional fields when inserting new records
- * - Update: All fields are optional when updating existing records
- */
 export interface Database {
   public: {
     Tables: {
-      /**
-       * Employees Table
-       * Stores information about all employees in the system
-       * Links to the auth.users table via user_id for authentication
-       */
-      employees: {
-        Row: {
-          id: string
-          user_id: string
-          first_name: string
-          last_name: string
-          email: string
-          phone: string | null
-          position: string
-          hourly_rate: number
-          start_date: string
-          created_at: string
-          updated_at: string
-        }
-        Insert: {
-          id?: string
-          user_id: string
-          first_name: string
-          last_name: string
-          email: string
-          phone?: string | null
-          position: string
-          hourly_rate: number
-          start_date: string
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          user_id?: string
-          first_name?: string
-          last_name?: string
-          email?: string
-          phone?: string | null
-          position?: string
-          hourly_rate?: number
-          start_date?: string
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "employees_user_id_fkey"
-            columns: ["user_id"]
-            isOneToOne: true
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      /**
-       * Schedules Table
-       * Contains scheduling periods with their status and publication state
-       * Each schedule represents a time period for which shifts are assigned
-       */
       schedules: {
         Row: {
           id: string
-          start_date: string
-          end_date: string
-          status: string
-          is_published: boolean
           created_at: string
           updated_at: string
+          start_date: string
+          end_date: string
+          status: 'draft' | 'published' | 'archived'
+          is_published: boolean
           created_by: string
           published_at: string | null
           published_by: string | null
         }
         Insert: {
           id?: string
-          start_date: string
-          end_date: string
-          status?: string
-          is_published?: boolean
           created_at?: string
           updated_at?: string
+          start_date: string
+          end_date: string
+          status?: 'draft' | 'published' | 'archived'
+          is_published?: boolean
           created_by: string
           published_at?: string | null
           published_by?: string | null
         }
         Update: {
           id?: string
-          start_date?: string
-          end_date?: string
-          status?: string
-          is_published?: boolean
           created_at?: string
           updated_at?: string
+          start_date?: string
+          end_date?: string
+          status?: 'draft' | 'published' | 'archived'
+          is_published?: boolean
           created_by?: string
           published_at?: string | null
           published_by?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "schedules_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "schedules_published_by_fkey"
-            columns: ["published_by"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          }
-        ]
       }
-      /**
-       * Schedule Assignments Table
-       * Links employees to specific shifts within a schedule
-       * Tracks overtime and supervisor status for each assignment
-       */
-      schedule_assignments: {
+      employees: {
         Row: {
           id: string
-          schedule_id: string
-          employee_id: string
-          shift_id: string
-          date: string
-          is_supervisor_shift: boolean
-          overtime_hours: number | null
-          overtime_status: string | null
           created_at: string
           updated_at: string
+          user_id: string
+          first_name: string
+          last_name: string
+          email: string
+          phone: string | null
+          role: 'employee' | 'supervisor' | 'admin'
+          status: 'active' | 'inactive'
+          department: string | null
+          position: string | null
         }
         Insert: {
           id?: string
-          schedule_id: string
-          employee_id: string
-          shift_id: string
-          date: string
-          is_supervisor_shift?: boolean
-          overtime_hours?: number | null
-          overtime_status?: string | null
           created_at?: string
           updated_at?: string
+          user_id: string
+          first_name: string
+          last_name: string
+          email: string
+          phone?: string | null
+          role?: 'employee' | 'supervisor' | 'admin'
+          status?: 'active' | 'inactive'
+          department?: string | null
+          position?: string | null
         }
         Update: {
           id?: string
+          created_at?: string
+          updated_at?: string
+          user_id?: string
+          first_name?: string
+          last_name?: string
+          email?: string
+          phone?: string | null
+          role?: 'employee' | 'supervisor' | 'admin'
+          status?: 'active' | 'inactive'
+          department?: string | null
+          position?: string | null
+        }
+      }
+      assignments: {
+        Row: {
+          id: string
+          created_at: string
+          updated_at: string
+          schedule_id: string
+          employee_id: string
+          start_time: string
+          end_time: string
+          status: 'pending' | 'confirmed' | 'declined'
+          notes: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          updated_at?: string
+          schedule_id: string
+          employee_id: string
+          start_time: string
+          end_time: string
+          status?: 'pending' | 'confirmed' | 'declined'
+          notes?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          updated_at?: string
           schedule_id?: string
           employee_id?: string
-          shift_id?: string
-          date?: string
-          is_supervisor_shift?: boolean
-          overtime_hours?: number | null
-          overtime_status?: string | null
-          created_at?: string
-          updated_at?: string
+          start_time?: string
+          end_time?: string
+          status?: 'pending' | 'confirmed' | 'declined'
+          notes?: string | null
         }
-        Relationships: [
-          {
-            foreignKeyName: "schedule_assignments_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "schedule_assignments_schedule_id_fkey"
-            columns: ["schedule_id"]
-            isOneToOne: false
-            referencedRelation: "schedules"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "schedule_assignments_shift_id_fkey"
-            columns: ["shift_id"]
-            isOneToOne: false
-            referencedRelation: "shifts"
-            referencedColumns: ["id"]
-          }
-        ]
       }
-      /**
-       * Time Off Requests Table
-       * Manages employee requests for time off
-       * Includes date ranges and approval status
-       */
-      time_off_requests: {
+      time_requirements: {
         Row: {
           id: string
-          employee_id: string
-          start_date: string
-          end_date: string
-          status: string
-          reason: string | null
           created_at: string
           updated_at: string
-        }
-        Insert: {
-          id?: string
-          employee_id: string
-          start_date: string
-          end_date: string
-          status?: string
-          reason?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Update: {
-          id?: string
-          employee_id?: string
-          start_date?: string
-          end_date?: string
-          status?: string
-          reason?: string | null
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "time_off_requests_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      /**
-       * Employee Availability Table
-       * Stores recurring weekly availability for each employee
-       * Used for scheduling constraints and preferences
-       */
-      employee_availability: {
-        Row: {
-          id: string
-          employee_id: string
+          schedule_id: string
           day_of_week: number
           start_time: string
           end_time: string
-          is_available: boolean
-          created_at: string
-          updated_at: string
+          min_staff: number
+          requires_supervisor: boolean
         }
         Insert: {
           id?: string
-          employee_id: string
+          created_at?: string
+          updated_at?: string
+          schedule_id: string
           day_of_week: number
           start_time: string
           end_time: string
-          is_available?: boolean
-          created_at?: string
-          updated_at?: string
+          min_staff: number
+          requires_supervisor?: boolean
         }
         Update: {
           id?: string
-          employee_id?: string
+          created_at?: string
+          updated_at?: string
+          schedule_id?: string
           day_of_week?: number
           start_time?: string
           end_time?: string
-          is_available?: boolean
-          created_at?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "employee_availability_employee_id_fkey"
-            columns: ["employee_id"]
-            isOneToOne: false
-            referencedRelation: "employees"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      /**
-       * Time Based Requirements Table
-       * Defines staffing requirements for specific time periods
-       * Includes minimum staff counts and supervisor requirements
-       */
-      time_based_requirements: {
-        Row: {
-          id: string
-          schedule_id: string
-          start_time: string
-          end_time: string
-          min_total_staff: number
-          min_supervisors: number
-          crosses_midnight: boolean
-          is_active: boolean
-          created_at: string | null
-          updated_at: string | null
-        }
-        Insert: {
-          id?: string
-          schedule_id: string
-          start_time: string
-          end_time: string
-          min_total_staff: number
-          min_supervisors: number
-          crosses_midnight?: boolean
-          is_active?: boolean
-          created_at?: string | null
-          updated_at?: string | null
-        }
-        Update: {
-          id?: string
-          schedule_id?: string
-          start_time?: string
-          end_time?: string
-          min_total_staff?: number
-          min_supervisors?: number
-          crosses_midnight?: boolean
-          is_active?: boolean
-          created_at?: string | null
-          updated_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "time_based_requirements_schedule_id_fkey"
-            columns: ["schedule_id"]
-            isOneToOne: false
-            referencedRelation: "schedules"
-            referencedColumns: ["id"]
-          }
-        ]
-      }
-      /**
-       * Shifts Table
-       * Defines standard shift templates used in scheduling
-       * Includes timing, staffing requirements, and supervisor needs
-       */
-      shifts: {
-        Row: {
-          id: string
-          name: string
-          start_time: string
-          end_time: string
-          duration_hours: number
-          min_staff_count: number
-          requires_supervisor: boolean
-          crosses_midnight: boolean
-          created_at: string | null
-        }
-        Insert: {
-          id?: string
-          name: string
-          start_time: string
-          end_time: string
-          duration_hours: number
-          min_staff_count: number
+          min_staff?: number
           requires_supervisor?: boolean
-          crosses_midnight?: boolean
-          created_at?: string | null
         }
-        Update: {
-          id?: string
-          name?: string
-          start_time?: string
-          end_time?: string
-          duration_hours?: number
-          min_staff_count?: number
-          requires_supervisor?: boolean
-          crosses_midnight?: boolean
-          created_at?: string | null
-        }
-        Relationships: []
       }
     }
     Views: {
@@ -403,9 +177,6 @@ export interface Database {
       [_ in never]: never
     }
     Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
       [_ in never]: never
     }
   }

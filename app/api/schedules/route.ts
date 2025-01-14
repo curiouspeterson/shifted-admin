@@ -1,124 +1,128 @@
 /**
- * Schedules API Route Handler
+ * Schedules API Route
  * Last Updated: 2024
  * 
- * This file implements the API endpoints for managing schedules.
- * Supports:
- * - GET: Retrieve all schedules (accessible to all authenticated users)
- * - POST: Create a new schedule (supervisor access only)
- * 
- * Uses Zod for request/response validation and implements proper
- * error handling and type safety.
+ * This module provides API endpoints for managing schedules.
+ * It includes:
+ * - GET /api/schedules - List all schedules with optional filtering and pagination
+ * - POST /api/schedules - Create a new schedule
  */
 
-import { createRouteHandler } from '@/app/lib/api/handler'
-import { AppError } from '@/app/lib/errors'
-import { NextResponse } from 'next/server'
-import { z } from 'zod'
-import type { Database } from '@/app/lib/supabase/database.types'
+import { z } from 'zod';
+import { NextRequest } from 'next/server';
+import { createRouteHandler } from '../../lib/api/handler';
+import { SchedulesOperations } from '../../lib/api/database/schedules';
+import type { RouteContext } from '../../lib/api/types';
 
-/**
- * Type Definitions
- * Imported from the database types to ensure consistency
- */
-type Schedule = Database['public']['Tables']['schedules']['Row']
-type ScheduleInsert = Database['public']['Tables']['schedules']['Insert']
+// Query schema for GET requests
+const querySchema = z.object({
+  limit: z.string().regex(/^\d+$/).transform(Number).optional(),
+  offset: z.string().regex(/^\d+$/).transform(Number).optional(),
+  sort: z.enum(['start_date', 'end_date', 'status', 'created_at']).optional(),
+  order: z.enum(['asc', 'desc']).optional(),
+  status: z.enum(['draft', 'published', 'archived']).optional(),
+  include: z.object({
+    assignments: z.boolean().optional(),
+    requirements: z.boolean().optional(),
+  }).optional(),
+});
 
-/**
- * Schedule Validation Schemas
- * Define the shape and constraints for schedule data
- */
-const scheduleSchema = z.object({
-  id: z.string(),
-  start_date: z.string(),
-  end_date: z.string(),
-  status: z.string(),
-  is_published: z.boolean(),
-  created_at: z.string(),
-  updated_at: z.string(),
-  created_by: z.string(),
-  published_at: z.string().nullable(),
-  published_by: z.string().nullable()
-})
+// Schema for creating a new schedule
+const createScheduleSchema = z.object({
+  start_date: z.string().datetime(),
+  end_date: z.string().datetime(),
+  status: z.enum(['draft', 'published', 'archived']).default('draft'),
+  is_published: z.boolean().default(false),
+});
 
-/**
- * Input validation schema for creating new schedules
- * Only requires start and end dates; other fields are set automatically
- */
-const scheduleInputSchema = z.object({
-  start_date: z.string(),
-  end_date: z.string()
-})
-
-/**
- * API Response Schema
- * Wraps schedule data in a response object with proper typing
- */
-const schedulesResponseSchema = z.object({
-  schedules: z.array(scheduleSchema)
-})
-
-/**
- * GET /api/schedules
- * Retrieves all schedules from the database
- * Ordered by creation date (newest first)
- * Accessible to all authenticated users
- */
+// GET /api/schedules
 export const GET = createRouteHandler(
-  async (req, { supabase }) => {
-    // Query all schedules, ordered by creation date
-    const { data, error } = await supabase
-      .from('schedules')
-      .select()
-      .order('created_at', { ascending: false })
+  async (req: NextRequest, { supabase }: RouteContext) => {
+    const schedules = new SchedulesOperations(supabase);
+    const query = Object.fromEntries(req.nextUrl.searchParams);
+    const { sort, order, limit, offset, status, include } = querySchema.parse(query);
+
+    const { data, error } = await schedules.findMany({
+      orderBy: sort ? {
+        column: sort,
+        ascending: order !== 'desc',
+      } : undefined,
+      limit,
+      offset,
+      filter: status ? { status } : undefined,
+      include,
+    });
 
     if (error) {
-      throw new AppError('Failed to fetch schedules', 500)
+      return {
+        error: 'Failed to fetch schedules',
+        data: null,
+        metadata: { originalError: error },
+      };
     }
 
-    // Validate response data, providing empty array if no data
-    const validatedResponse = schedulesResponseSchema.parse({ schedules: data || [] })
-
-    return NextResponse.json(validatedResponse)
+    return {
+      data: data || [],
+      error: null,
+      metadata: {
+        count: data?.length || 0,
+      },
+    };
+  },
+  {
+    requireAuth: true,
+    requireSupervisor: true,
+    validateQuery: querySchema,
   }
-)
+);
 
-/**
- * POST /api/schedules
- * Creates a new schedule
- * Requires supervisor access
- * Body must contain start_date and end_date
- * Returns: The newly created schedule
- */
+// POST /api/schedules
 export const POST = createRouteHandler(
-  async (req, { supabase, session }) => {
-    // Parse and validate request body
-    const body = await req.json()
-    const validatedData = scheduleInputSchema.parse(body)
+  async (req: NextRequest, { supabase, session }: RouteContext) => {
+    if (!session) {
+      return {
+        error: 'Unauthorized - session required',
+        data: null,
+        metadata: {},
+      };
+    }
 
-    // Prepare new schedule data with defaults
-    const now = new Date().toISOString()
-    const newSchedule: ScheduleInsert = {
+    const schedules = new SchedulesOperations(supabase);
+    const body = await req.json();
+    const validatedData = createScheduleSchema.parse(body);
+
+    const { data, error } = await schedules.create({
       ...validatedData,
       created_by: session.user.id,
-      status: 'draft',
-      is_published: false,
-      created_at: now,
-      updated_at: now
-    }
-
-    // Insert new schedule and return the created record
-    const { data: schedule, error } = await supabase
-      .from('schedules')
-      .insert(newSchedule)
-      .select()
-      .single()
+    });
 
     if (error) {
-      throw new AppError('Failed to create schedule', 500)
+      return {
+        error: 'Failed to create schedule',
+        data: null,
+        metadata: { originalError: error },
+      };
     }
 
-    return NextResponse.json({ schedule })
+    if (!data) {
+      return {
+        error: 'Failed to create schedule - no data returned',
+        data: null,
+        metadata: {},
+      };
+    }
+
+    return {
+      data,
+      error: null,
+      metadata: {
+        message: 'Schedule created successfully',
+      },
+    };
   },
-  { requireSupervisor: true }
-) 
+  {
+    requireAuth: true,
+    requireSupervisor: true,
+    validateBody: createScheduleSchema,
+  }
+); 

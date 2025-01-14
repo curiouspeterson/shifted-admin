@@ -1,155 +1,166 @@
 /**
- * Schedule Actions Module
- * Last Updated: 2024-01-11
+ * Schedule Actions
+ * Last Updated: 2024
  * 
- * Server actions for managing schedules. Handles creation and updates of schedules
- * with validation, error handling, and cache revalidation.
- * 
- * Features:
- * - Server-side validation using Zod schemas
- * - User authorization checks
- * - Automatic versioning
- * - Error handling and type safety
- * - Automatic cache revalidation
- * 
- * @module actions/schedule
+ * Server actions for managing schedules.
+ * Includes:
+ * - Creating schedules
+ * - Updating schedules
+ * - Publishing/unpublishing schedules
+ * - Deleting schedules
+ * - Fetching schedules with filters
  */
 
 'use server';
 
+import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
-import { createClient } from '@/lib/supabase/server';
-import type { ScheduleFormData } from '../schemas/forms';
-import { scheduleFormSchema } from '../schemas/forms';
+import { createClient } from '../supabase/server';
+import { cookies } from 'next/headers';
+
+// Validation schemas
+const scheduleSchema = z.object({
+  start_date: z.string().datetime(),
+  end_date: z.string().datetime(),
+  status: z.enum(['draft', 'published', 'archived']).default('draft'),
+  is_published: z.boolean().default(false),
+});
+
+const querySchema = z.object({
+  limit: z.number().min(1).max(100).default(10),
+  offset: z.number().min(0).default(0),
+  sort: z.enum(['start_date', 'end_date', 'status', 'created_at']).optional(),
+  order: z.enum(['asc', 'desc']).optional(),
+  status: z.enum(['draft', 'published', 'archived']).optional(),
+});
+
+export type Schedule = z.infer<typeof scheduleSchema>;
+export type QueryParams = z.infer<typeof querySchema>;
 
 /**
- * Creates a new schedule with validation and authorization checks
- * 
- * Performs several steps before creating a schedule:
- * 1. Verifies user is authenticated
- * 2. Validates form data against schema
- * 3. Creates schedule with metadata (version, timestamps, etc)
- * 4. Revalidates cached data
- * 
- * @param data - Schedule form data to validate and create
- * @returns Promise resolving to created schedule or error
- * 
- * @throws Will throw an error if:
- * - User is not authenticated
- * - Form data is invalid
- * - Database operations fail
- * 
- * @example
- * ```ts
- * const result = await createSchedule({
- *   name: "Week 1 Schedule",
- *   start_date: "2024-01-01",
- *   end_date: "2024-01-07",
- *   status: "draft"
- * });
- * 
- * if (result.error) {
- *   // Handle error
- * }
- * ```
+ * Create a new schedule
  */
-export async function createSchedule(data: ScheduleFormData) {
-  const supabase = await createClient();
-  
-  // Get the current user
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  if (userError || !user) {
-    return {
-      data: null,
-      error: 'Unauthorized'
-    };
-  }
-  
-  // Validate form data
-  const validatedData = scheduleFormSchema.parse(data);
-  
-  try {
-    const { data: schedule, error } = await supabase
-      .from('schedules')
-      .insert([{
-        ...validatedData,
-        created_by: user.id,
-        version: 1,
-        created_at: new Date().toISOString(),
-      }])
-      .select()
-      .single();
+export async function createSchedule(data: Schedule) {
+  const supabase = createClient(cookies());
+  const validated = scheduleSchema.parse(data);
 
-    if (error) {
-      throw new Error(error.message);
-    }
+  const { data: schedule, error } = await supabase
+    .from('schedules')
+    .insert([validated])
+    .select()
+    .single();
 
-    revalidatePath('/dashboard/schedules');
-    return { data: schedule, error: null };
-  } catch (error) {
-    console.error('Failed to create schedule:', error);
-    return {
-      data: null,
-      error: error instanceof Error ? error.message : 'Failed to create schedule'
-    };
+  if (error) {
+    throw new Error(`Failed to create schedule: ${error.message}`);
   }
+
+  revalidatePath('/dashboard/schedules');
+  return schedule;
 }
 
 /**
- * Updates an existing schedule with validation
- * 
- * Updates schedule data and handles:
- * 1. Partial updates of schedule fields
- * 2. Automatic timestamp updates
- * 3. Cache revalidation for affected routes
- * 
- * @param id - Unique identifier of schedule to update
- * @param data - Partial schedule data to update
- * @returns Promise resolving to updated schedule or error
- * 
- * @throws Will throw an error if:
- * - Schedule ID is invalid
- * - Form data is invalid
- * - Database operations fail
- * 
- * @example
- * ```ts
- * const result = await updateSchedule("123", {
- *   status: "published",
- *   name: "Updated Schedule Name"
- * });
- * 
- * if (result.error) {
- *   // Handle error
- * }
- * ```
+ * Get schedules with filters and pagination
  */
-export async function updateSchedule(id: string, data: Partial<ScheduleFormData>) {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
-  
-  try {
-    const { data: schedule, error } = await supabase
-      .from('schedules')
-      .update({
-        ...data,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', id)
-      .select()
-      .single();
+export async function getSchedules(params: Partial<QueryParams>) {
+  const supabase = createClient(cookies());
+  const { limit, offset, sort, order, status } = querySchema.parse(params);
 
-    if (error) {
-      throw new Error(error.message);
-    }
+  let query = supabase.from('schedules').select('*');
 
-    revalidatePath(`/dashboard/schedules/${id}`);
-    return { data: schedule, error: null };
-  } catch (error) {
-    console.error('Failed to update schedule:', error);
-    return {
-      data: null,
-      error: error instanceof Error ? error.message : 'Failed to update schedule'
-    };
+  if (status) {
+    query = query.eq('status', status);
   }
+
+  if (sort) {
+    query = query.order(sort, { ascending: order === 'asc' });
+  }
+
+  query = query.range(offset, offset + limit - 1);
+
+  const { data: schedules, error } = await query;
+
+  if (error) {
+    throw new Error(`Failed to fetch schedules: ${error.message}`);
+  }
+
+  return schedules;
+}
+
+/**
+ * Get a single schedule by ID
+ */
+export async function getSchedule(id: string) {
+  const supabase = createClient(cookies());
+
+  const { data: schedule, error } = await supabase
+    .from('schedules')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to fetch schedule: ${error.message}`);
+  }
+
+  return schedule;
+}
+
+/**
+ * Update a schedule
+ */
+export async function updateSchedule(id: string, data: Partial<Schedule>) {
+  const supabase = createClient(cookies());
+  const validated = scheduleSchema.partial().parse(data);
+
+  const { data: schedule, error } = await supabase
+    .from('schedules')
+    .update(validated)
+    .eq('id', id)
+    .select()
+    .single();
+
+  if (error) {
+    throw new Error(`Failed to update schedule: ${error.message}`);
+  }
+
+  revalidatePath(`/dashboard/schedules/${id}`);
+  return schedule;
+}
+
+/**
+ * Delete a schedule
+ */
+export async function deleteSchedule(id: string) {
+  const supabase = createClient(cookies());
+
+  const { error } = await supabase
+    .from('schedules')
+    .delete()
+    .eq('id', id);
+
+  if (error) {
+    throw new Error(`Failed to delete schedule: ${error.message}`);
+  }
+
+  revalidatePath('/dashboard/schedules');
+}
+
+/**
+ * Publish a schedule
+ */
+export async function publishSchedule(id: string) {
+  return updateSchedule(id, {
+    status: 'published',
+    is_published: true,
+  });
+}
+
+/**
+ * Unpublish a schedule
+ */
+export async function unpublishSchedule(id: string) {
+  return updateSchedule(id, {
+    status: 'draft',
+    is_published: false,
+  });
 } 
