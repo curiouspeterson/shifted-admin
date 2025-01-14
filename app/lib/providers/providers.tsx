@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/client'
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { NextUIProvider } from '@nextui-org/react'
 
 const supabase = createClient()
 
@@ -24,7 +25,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     console.log('Providers mounted, checking auth...')
-    let mounted = true
+    let isActive = true
     
     const checkAuth = async () => {
       try {
@@ -36,7 +37,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
           throw sessionError
         }
 
-        if (mounted) {
+        if (isActive) {
           setIsAuthenticated(!!session)
           if (!session) {
             console.log('No session found, redirecting to sign-in...')
@@ -45,12 +46,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
         }
       } catch (error) {
         console.error('Auth error:', error)
-        if (mounted) {
+        if (isActive) {
           setError(error instanceof Error ? error : new Error('Authentication failed'))
           setIsAuthenticated(false)
         }
       } finally {
-        if (mounted) {
+        if (isActive) {
           setIsLoading(false)
         }
       }
@@ -61,7 +62,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('Auth state changed:', { event, session: !!session })
       
-      if (mounted) {
+      if (isActive) {
         setIsAuthenticated(!!session)
         
         if (event === 'SIGNED_OUT') {
@@ -75,36 +76,38 @@ export function Providers({ children }: { children: React.ReactNode }) {
     })
 
     return () => {
-      mounted = false
+      isActive = false
       subscription.unsubscribe()
     }
   }, [router])
 
-  console.log('Providers rendering with:', { isLoading, isAuthenticated, error })
-
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-100">
-        <div className="bg-white p-8 rounded-lg shadow-md">
-          <h1 className="text-red-600 text-xl font-bold mb-4">Authentication Error</h1>
-          <p className="text-gray-600">{error.message}</p>
-          <button
-            onClick={() => {
-              setError(null)
-              router.push('/sign-in')
-            }}
-            className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-          >
-            Return to Sign In
-          </button>
+      <NextUIProvider>
+        <div className="min-h-screen flex items-center justify-center bg-gray-100">
+          <div className="bg-white p-8 rounded-lg shadow-md">
+            <h1 className="text-red-600 text-xl font-bold mb-4">Authentication Error</h1>
+            <p className="text-gray-600">{error.message}</p>
+            <button
+              onClick={() => {
+                setError(null)
+                router.push('/sign-in')
+              }}
+              className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+            >
+              Return to Sign In
+            </button>
+          </div>
         </div>
-      </div>
+      </NextUIProvider>
     )
   }
 
   return (
-    <AppContext.Provider value={{ isLoading, isAuthenticated, error }}>
-      {children}
-    </AppContext.Provider>
+    <NextUIProvider>
+      <AppContext.Provider value={{ isLoading, isAuthenticated, error }}>
+        {children}
+      </AppContext.Provider>
+    </NextUIProvider>
   )
 } 
