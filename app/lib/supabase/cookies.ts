@@ -1,6 +1,6 @@
 /**
  * Cookie Handling Utilities
- * Last Updated: 2024
+ * Last Updated: 2024-03
  * 
  * This file provides cookie management utilities for both server-side
  * and middleware contexts. It implements consistent cookie handling
@@ -137,5 +137,20 @@ export function createMiddlewareCookieHandler(
     remove(name: string, options: CookieOptions) {
       response.cookies.delete(name)
     }
+  }
+}
+
+/**
+ * No-op Cookie Handler
+ * Creates a cookie handler that performs no operations
+ * Used in contexts where cookie handling is not needed (e.g., admin client)
+ * 
+ * @returns CookieHandler implementation that does nothing
+ */
+export function createNoopCookieHandler(): CookieHandler {
+  return {
+    get: () => undefined,
+    set: () => {},
+    remove: () => {}
   }
 } 

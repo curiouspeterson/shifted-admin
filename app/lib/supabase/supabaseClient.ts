@@ -1,6 +1,6 @@
 /**
  * Client-Side Supabase Configuration
- * Last Updated: 2024
+ * Last Updated: 2024-03
  * 
  * This file configures and exports a Supabase client instance for client-side usage.
  * It provides a typed client with public credentials for authenticated but restricted 
@@ -18,18 +18,11 @@
  * Usage:
  * Import the pre-configured client instance:
  * ```
- * import { supabase } from '@/lib/supabaseClient'
+ * import { supabase } from '@/lib/supabase/supabaseClient'
  * 
  * const { data, error } = await supabase
  *   .from('table')
  *   .select()
- * ```
- * 
- * Or create a new client instance:
- * ```
- * import { createClient } from '@/lib/supabaseClient'
- * 
- * const supabase = createClient()
  * ```
  * 
  * Security Notes:
@@ -41,15 +34,29 @@
 import { createBrowserClient } from '@supabase/ssr'
 import { Database } from './database.types'
 
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  throw new Error('Missing environment variable: NEXT_PUBLIC_SUPABASE_URL')
+}
+
+if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  throw new Error('Missing environment variable: NEXT_PUBLIC_SUPABASE_ANON_KEY')
+}
+
 /**
  * Creates a typed Supabase client for browser usage
  * @returns A Supabase client instance with Database type definitions
- * @throws Error if required environment variables are not set
  */
 export const createClient = () => {
   return createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    }
   )
 }
 

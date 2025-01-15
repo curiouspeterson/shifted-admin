@@ -6,7 +6,7 @@
  * including CRUD operations, error handling, and query builders.
  */
 
-import { SupabaseClient } from '@supabase/supabase-js'
+import { SupabaseClient, PostgrestError } from '@supabase/supabase-js'
 import { Database } from '@/lib/supabase/database.types'
 import { DatabaseError } from '@/lib/errors'
 
@@ -138,20 +138,22 @@ export class AssignmentsOperations {
     }
   }
 
-  async delete(id: string): Promise<DatabaseResult<Assignment>> {
+  /**
+   * Delete an assignment
+   * Returns null on successful deletion
+   */
+  async delete(id: string): Promise<DatabaseResult<null>> {
     try {
-      const { data: deleted, error } = await this.supabase
+      const { error } = await this.supabase
         .from(this.table)
         .delete()
-        .eq('id', id)
-        .select()
-        .single()
+        .eq('id', id) as { data: null; error: PostgrestError | null };
 
       if (error) {
         throw error
       }
 
-      return { data: deleted, error: null }
+      return { data: null, error: null }
     } catch (error) {
       console.error('Error deleting assignment:', error)
       return { data: null, error: new DatabaseError('Failed to delete assignment') }

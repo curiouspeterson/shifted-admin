@@ -1,13 +1,13 @@
 /**
  * Modal Component
- * Last Updated: 2024
+ * Last Updated: 2025-01-15
  * 
  * A reusable modal dialog component built on top of NextUI's Modal.
  * Provides a consistent modal experience across the application with
  * standardized styling and behavior.
  * 
  * Features:
- * - Centered placement
+ * - Centered by default
  * - Blur backdrop
  * - Consistent sizing
  * - Standardized header styling
@@ -54,12 +54,11 @@ export default function Modal({ open, onClose, title, children }: ModalProps) {
     <NextUIModal 
       isOpen={open} 
       onOpenChange={onClose}
-      placement="center"
       backdrop="blur"
       size="2xl"
     >
       <ModalContent>
-        {(onClose) => (
+        {(onClose: () => void) => (
           <>
             {/* Modal Header with standardized styling */}
             <ModalHeader className="flex flex-col gap-1 text-xl font-semibold">

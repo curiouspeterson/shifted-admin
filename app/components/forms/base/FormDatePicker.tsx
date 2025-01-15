@@ -15,26 +15,19 @@
 import * as React from 'react';
 import { format } from 'date-fns';
 import { Calendar as CalendarIcon } from 'lucide-react';
-import { useFormContext } from 'react-hook-form';
+import { type FieldValues, type Path } from 'react-hook-form';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+import { Button, type ButtonProps } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
-import {
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import { FormFieldWrapper } from './FormFieldWrapper';
 
-export interface FormDatePickerProps {
-  name: string;
+export interface FormDatePickerProps<T extends FieldValues = FieldValues> {
+  name: Path<T>;
   label?: string;
   description?: string;
   placeholder?: string;
@@ -44,7 +37,7 @@ export interface FormDatePickerProps {
   maxDate?: Date;
 }
 
-export function FormDatePicker({
+export function FormDatePicker<T extends FieldValues = FieldValues>({
   name,
   label,
   description,
@@ -53,53 +46,48 @@ export function FormDatePicker({
   disabled = false,
   minDate,
   maxDate,
-}: FormDatePickerProps) {
-  const { control } = useFormContext();
-
+}: FormDatePickerProps<T>) {
   return (
-    <FormField
-      control={control}
+    <FormFieldWrapper<T>
       name={name}
-      render={({ field }) => (
-        <FormItem className="flex flex-col">
-          {label && <FormLabel>{label}</FormLabel>}
-          <Popover>
-            <PopoverTrigger asChild>
-              <FormControl>
-                <Button
-                  variant="outline"
-                  className={cn(
-                    'w-full pl-3 text-left font-normal',
-                    !field.value && 'text-muted-foreground',
-                    className
-                  )}
-                  disabled={disabled}
-                >
-                  <CalendarIcon className="mr-2 h-4 w-4" />
-                  {field.value ? (
-                    format(field.value, 'PPP')
-                  ) : (
-                    <span>{placeholder}</span>
-                  )}
-                </Button>
-              </FormControl>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={field.value}
-                onSelect={field.onChange}
-                disabled={disabled}
-                initialFocus
-                fromDate={minDate}
-                toDate={maxDate}
-              />
-            </PopoverContent>
-          </Popover>
-          {description && <FormDescription>{description}</FormDescription>}
-          <FormMessage />
-        </FormItem>
+      label={label}
+      description={description}
+      className="flex flex-col"
+    >
+      {(field) => (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              className={cn(
+                'w-full pl-3 text-left font-normal',
+                !field.value && 'text-muted-foreground',
+                className
+              )}
+              disabled={disabled}
+            >
+              <CalendarIcon className="mr-2 h-4 w-4" />
+              {field.value ? (
+                format(field.value, 'PPP')
+              ) : (
+                <span>{placeholder}</span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <Calendar
+              mode="single"
+              selected={field.value}
+              onSelect={field.onChange}
+              disabled={disabled}
+              initialFocus
+              fromDate={minDate}
+              toDate={maxDate}
+            />
+          </PopoverContent>
+        </Popover>
       )}
-    />
+    </FormFieldWrapper>
   );
 } 

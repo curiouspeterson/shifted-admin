@@ -1,6 +1,6 @@
 /**
  * Employees Database Operations
- * Last Updated: 2024
+ * Last Updated: 2024-03
  * 
  * This module provides type-safe database operations for the employees table.
  * It includes:
@@ -9,7 +9,7 @@
  * - Query builders and filters
  */
 
-import { SupabaseClient } from '@supabase/supabase-js';
+import { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
 import type { Database } from '../../supabase/database.types';
 
 type EmployeeRow = Database['public']['Tables']['employees']['Row'];
@@ -223,13 +223,14 @@ export class EmployeesOperations {
 
   /**
    * Delete an employee
+   * Returns null on successful deletion
    */
-  async delete(id: string): Promise<DatabaseResult<void>> {
+  async delete(id: string): Promise<DatabaseResult<null>> {
     try {
       const { error } = await this.supabase
         .from(this.table)
         .delete()
-        .eq('id', id);
+        .eq('id', id) as { data: null; error: PostgrestError | null };
 
       if (error) throw error;
 

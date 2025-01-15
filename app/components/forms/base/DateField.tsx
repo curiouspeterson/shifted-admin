@@ -14,53 +14,42 @@
  */
 
 import * as React from 'react';
-import type { UseFormReturn } from 'react-hook-form';
-import {
-  FormField,
-  FormItem,
-  FormLabel,
-  FormControl,
-  FormDescription,
-  FormMessage,
-  Input,
-} from '@/components/ui';
+import { type FieldValues, type UseFormReturn, type Path } from 'react-hook-form';
+import { Input } from '@/components/ui/input';
+import { FormFieldWrapper } from './FormFieldWrapper';
 
-interface DateFieldProps {
-  form: UseFormReturn<any>;
-  name: string;
+interface DateFieldProps<T extends FieldValues = FieldValues> {
+  form: UseFormReturn<T>;
+  name: Path<T>;
   label: string;
   description?: string;
   min?: string;
   max?: string;
 }
 
-export function DateField({
+export function DateField<T extends FieldValues = FieldValues>({
   form,
   name,
   label,
   description,
   min,
   max,
-}: DateFieldProps) {
+}: DateFieldProps<T>) {
   return (
-    <FormField
-      control={form.control}
+    <FormFieldWrapper<T>
+      form={form}
       name={name}
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel>{label}</FormLabel>
-          <FormControl>
-            <Input
-              type="date"
-              min={min}
-              max={max}
-              {...field}
-            />
-          </FormControl>
-          {description && <FormDescription>{description}</FormDescription>}
-          <FormMessage />
-        </FormItem>
+      label={label}
+      description={description}
+    >
+      {(field) => (
+        <Input
+          type="date"
+          min={min}
+          max={max}
+          {...field}
+        />
       )}
-    />
+    </FormFieldWrapper>
   );
 } 

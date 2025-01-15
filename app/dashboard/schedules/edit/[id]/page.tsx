@@ -1,62 +1,40 @@
 /**
- * Edit Schedule Page Module
- * Last Updated: 2025-01-11
+ * Edit Schedule Page Component
+ * Last Updated: 2024-03
  * 
- * Server component that handles fetching and displaying schedule details for editing.
- * Fetches schedule data from Supabase and passes it to the client component.
- * 
+ * A server component that handles fetching schedule data and rendering the edit form.
  * Features:
  * - Server-side data fetching
  * - Error handling and notFound routing
+ * - Loading states with Suspense
  * - Type-safe props
- * - Separation of server/client concerns
- * 
- * Route: /dashboard/schedules/edit/[id]
  */
 
-import { supabaseAdmin } from '@/lib/supabase/admin'
-import EditScheduleClient from './EditScheduleClient'
+import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
+import { supabaseAdmin } from '@/lib/supabase/admin'
+import { ScheduleForm } from '@/components/schedule/schedule-form'
+import { LoadingSpinner } from '@/components/ui/loading-spinner'
 
 /**
- * Props interface for the EditSchedulePage component
- * 
- * @property params.id - Schedule ID from dynamic route parameter
+ * Loading component for the schedule form
  */
-interface EditSchedulePageProps {
-  params: {
-    id: string;
-  };
+function ScheduleFormLoader() {
+  return (
+    <div className="flex items-center justify-center min-h-[400px]">
+      <LoadingSpinner size="lg" />
+    </div>
+  )
 }
 
-/**
- * Edit Schedule Page Component
- * Server component that fetches schedule data and renders the edit interface
- * 
- * @component
- * @param props - Component props containing route parameters
- * @returns React server component for editing schedule
- * 
- * @throws {Error} When schedule fetch fails
- * @throws {notFound} When schedule doesn't exist
- * 
- * @example
- * ```tsx
- * // Rendered automatically by Next.js when navigating to /dashboard/schedules/edit/123
- * <EditSchedulePage params={{ id: "123" }} />
- * ```
- */
+interface EditSchedulePageProps {
+  params: {
+    id: string
+  }
+}
+
 export default async function EditSchedulePage({ params }: EditSchedulePageProps) {
   const scheduleId = params.id
-
-  // Initialize state variables
-  let initialData: {
-    start_date: string;
-    end_date: string;
-    status: string;
-    name: string;
-  } | null = null;
-  let error: string | null = null;
 
   try {
     // Fetch schedule details from Supabase
@@ -67,28 +45,36 @@ export default async function EditSchedulePage({ params }: EditSchedulePageProps
       .single()
 
     // Handle fetch errors
-    if (fetchError) throw fetchError;
-    if (!schedule) {
-      notFound();
-    };
+    if (fetchError) throw fetchError
+    if (!schedule) notFound()
 
-    // Transform database data into component props
-    initialData = {
+    // Transform database data into form data
+    const initialData = {
+      name: schedule.name,
+      description: schedule.description || '',
       start_date: schedule.start_date,
       end_date: schedule.end_date,
-      status: schedule.status,
-      name: schedule.name
-    };
-  } catch (err) {
-    console.error('Error fetching schedule:', err);
-    error = err instanceof Error ? err.message : 'Failed to load schedule';
-  }
+      is_active: schedule.is_active ?? true,
+    }
 
-  return (
-    <EditScheduleClient 
-      scheduleId={scheduleId} 
-      initialData={initialData} 
-      error={error} 
-    />
-  );
+    return (
+      <div className="container mx-auto py-8">
+        <h1 className="text-2xl font-bold mb-8">Edit Schedule</h1>
+        <Suspense fallback={<ScheduleFormLoader />}>
+          <ScheduleForm initialData={initialData} />
+        </Suspense>
+      </div>
+    )
+  } catch (error) {
+    console.error('Error loading schedule:', error)
+    return (
+      <div className="container mx-auto py-8">
+        <div className="rounded-md bg-red-50 p-4">
+          <div className="text-sm text-red-700">
+            {error instanceof Error ? error.message : 'Failed to load schedule'}
+          </div>
+        </div>
+      </div>
+    )
+  }
 } 

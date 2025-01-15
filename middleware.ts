@@ -9,14 +9,14 @@
  * - Protected route access control
  * - Efficient route matching
  * - Structured error handling
+ * - Security headers
+ * - Rate limiting
  */
 
-import { createServerClient } from '@supabase/ssr';
+import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import type { Database } from '@/app/lib/supabase/database.types';
-import { createMiddlewareCookieHandler } from '@/app/lib/supabase/cookies';
-import { AppError, AuthError } from '@/app/lib/errors';
+import { rateLimit } from './app/lib/rate-limit';
 
 // Route patterns for classification
 const ROUTE_PATTERNS = {
@@ -45,45 +45,98 @@ function classifyRoute(path: string) {
 }
 
 /**
+ * Applies security headers to the response
+ */
+function applySecurityHeaders(res: NextResponse): void {
+  // Security headers based on OWASP recommendations
+  res.headers.set('X-DNS-Prefetch-Control', 'on');
+  res.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  res.headers.set('X-Frame-Options', 'SAMEORIGIN');
+  res.headers.set('X-Content-Type-Options', 'nosniff');
+  res.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.headers.set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  res.headers.set('X-XSS-Protection', '1; mode=block');
+  
+  // Content Security Policy
+  res.headers.set('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self'",
+    "connect-src 'self' https://*.supabase.co",
+  ].join('; '));
+}
+
+/**
  * Main middleware function that runs on all matched routes
  * Handles authentication state and redirects
  */
 export async function middleware(request: NextRequest) {
-  // Set up request headers for the middleware chain
-  const requestHeaders = new Headers(request.headers);
-  const res = NextResponse.next();
-  res.headers.set('x-middleware-cache', 'no-cache');
-
   try {
-    // Initialize Supabase client with cookie handling
-    const supabase = createServerClient<Database>(
+    // Check rate limit
+    const ip = request.ip ?? request.headers.get('x-forwarded-for') ?? 'unknown';
+    const { success, limit, remaining, reset } = await rateLimit(ip);
+    
+    // Set up response with no-cache header
+    const res = NextResponse.next({
+      request: {
+        headers: new Headers(request.headers),
+      },
+    });
+    
+    // Apply rate limit headers
+    res.headers.set('X-RateLimit-Limit', limit.toString());
+    res.headers.set('X-RateLimit-Remaining', remaining.toString());
+    res.headers.set('X-RateLimit-Reset', reset.toString());
+    
+    if (!success) {
+      return new NextResponse('Too Many Requests', {
+        status: 429,
+        headers: res.headers,
+      });
+    }
+
+    // Apply security headers
+    applySecurityHeaders(res);
+    res.headers.set('x-middleware-cache', 'no-cache');
+
+    // Initialize Supabase client
+    const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
-        cookies: createMiddlewareCookieHandler(request, res)
+        cookies: {
+          get(name: string) {
+            return request.cookies.get(name)?.value;
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            res.cookies.set({ name, value, ...options });
+          },
+          remove(name: string, options: CookieOptions) {
+            res.cookies.set({ name, value: '', ...options });
+          },
+        },
       }
     );
 
     // Verify authentication status
-    const { data: { session }, error } = await supabase.auth.getSession();
-    if (error) {
-      throw new AuthError('Failed to verify authentication');
+    const { data: { session }, error: authError } = await supabase.auth.getSession();
+    if (authError) {
+      console.error('Auth error:', authError);
+      return res;
     }
 
-    // Classify the current route
+    // Classify and handle route
     const routeType = classifyRoute(request.nextUrl.pathname);
-
-    // Handle route-specific logic
     switch (routeType) {
       case 'auth':
-        // Redirect authenticated users away from auth pages
         if (session) {
           return NextResponse.redirect(new URL('/dashboard', request.url));
         }
         break;
 
       case 'protected':
-        // Redirect unauthenticated users to sign-in
         if (!session) {
           const redirectUrl = new URL('/sign-in', request.url);
           redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname);
@@ -92,9 +145,6 @@ export async function middleware(request: NextRequest) {
         break;
 
       case 'api':
-        // API routes handle their own authentication
-        break;
-
       case 'public':
       case 'static':
         // No authentication needed
@@ -103,14 +153,12 @@ export async function middleware(request: NextRequest) {
 
     return res;
   } catch (error) {
-    // Log the error but continue the request
-    // API routes will handle authentication errors properly
     console.error('Middleware error:', {
       error,
       path: request.nextUrl.pathname,
       method: request.method,
     });
-    return res;
+    return NextResponse.next();
   }
 }
 
@@ -132,7 +180,7 @@ export const config = {
     // API routes (excluding docs)
     '/api/:path*',
     
-    // Dynamic routes (excluding static files and API docs)
-    '/((?!_next/static|_next/image|favicon.ico|public|api/docs).*)'
+    // Exclude static files and API docs from middleware processing
+    '/((?!_next/static|_next/image|favicon.ico|public|api/docs).*)',
   ],
-}; 
+};

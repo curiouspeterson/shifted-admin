@@ -1,6 +1,6 @@
 /**
  * API Cache Utility
- * Last Updated: 2024-03
+ * Last Updated: 2025-01-15
  * 
  * This module provides caching functionality for API responses
  * using Redis as the cache store.
@@ -15,6 +15,18 @@ const redis = new Redis({
   url: process.env.UPSTASH_REDIS_REST_URL!,
   token: process.env.UPSTASH_REDIS_REST_TOKEN!,
 });
+
+/**
+ * Default cache configuration
+ */
+const defaultConfig: CacheConfig = {
+  ttl: 60 * 60, // 1 hour
+  prefix: 'api:',
+  includeQuery: true,
+  excludeParams: ['_t', 'timestamp'],
+  cacheControl: 'public, max-age=3600',
+  staleWhileRevalidate: true,
+};
 
 /**
  * Cache configuration options
@@ -51,21 +63,6 @@ export interface CacheConfig {
   staleWhileRevalidate?: boolean;
 }
 
-/**
- * Default cache configurations
- */
-export const defaultCacheConfig: CacheConfig = {
-  ttl: 300, // 5 minutes
-  prefix: 'api:cache',
-  includeQuery: true,
-  excludeParams: ['_t', 'token'],
-  cacheControl: 'public, max-age=300',
-  staleWhileRevalidate: true,
-};
-
-/**
- * Cache key generation options
- */
 interface CacheKeyOptions {
   method: string;
   path: string;
@@ -76,43 +73,49 @@ interface CacheKeyOptions {
 }
 
 /**
- * Generate a cache key from request
+ * Generate a cache key from request parameters
  */
-export function generateCacheKey({
+function generateCacheKey({
   method,
   path,
   query,
-  prefix = defaultCacheConfig.prefix,
-  includeQuery = defaultCacheConfig.includeQuery,
-  excludeParams = defaultCacheConfig.excludeParams,
+  prefix = defaultConfig.prefix,
+  includeQuery = defaultConfig.includeQuery,
+  excludeParams = defaultConfig.excludeParams ?? [],
 }: CacheKeyOptions): string {
   const parts = [prefix, method, path];
 
   if (includeQuery && query) {
-    const params = new URLSearchParams(query);
-    excludeParams?.forEach(param => params.delete(param));
-    if (params.toString()) {
-      parts.push(params.toString());
+    const filteredParams = new URLSearchParams();
+    query.forEach((value, key) => {
+      if (!excludeParams.includes(key)) {
+        filteredParams.append(key, value);
+      }
+    });
+    if (filteredParams.toString()) {
+      parts.push(filteredParams.toString());
     }
   }
 
   return parts.join(':');
 }
 
-/**
- * Cache wrapper for API responses
- */
-export class ApiCache {
-  constructor(private config: CacheConfig = defaultCacheConfig) {}
+class CacheService {
+  private config: CacheConfig;
+
+  constructor(config: Partial<CacheConfig> = {}) {
+    this.config = { ...defaultConfig, ...config };
+  }
 
   /**
-   * Get cached response
+   * Get a cached response
    */
   async get(req: NextRequest): Promise<ApiResponse | null> {
+    const url = new URL(req.url);
     const key = generateCacheKey({
       method: req.method,
-      path: req.nextUrl.pathname,
-      query: req.nextUrl.searchParams,
+      path: url.pathname,
+      query: url.searchParams,
       prefix: this.config.prefix,
       includeQuery: this.config.includeQuery,
       excludeParams: this.config.excludeParams,
@@ -123,13 +126,14 @@ export class ApiCache {
   }
 
   /**
-   * Set response in cache
+   * Cache a response
    */
   async set(req: NextRequest, response: ApiResponse): Promise<void> {
+    const url = new URL(req.url);
     const key = generateCacheKey({
       method: req.method,
-      path: req.nextUrl.pathname,
-      query: req.nextUrl.searchParams,
+      path: url.pathname,
+      query: url.searchParams,
       prefix: this.config.prefix,
       includeQuery: this.config.includeQuery,
       excludeParams: this.config.excludeParams,
@@ -141,7 +145,7 @@ export class ApiCache {
   }
 
   /**
-   * Invalidate cache entries by pattern
+   * Invalidate cached responses matching a pattern
    */
   async invalidate(pattern: string): Promise<void> {
     const keys = await redis.keys(`${this.config.prefix}:${pattern}`);
@@ -161,9 +165,10 @@ export class ApiCache {
     }
 
     if (this.config.staleWhileRevalidate) {
-      headers.append(
+      const value = headers.get('Cache-Control') || '';
+      headers.set(
         'Cache-Control',
-        `stale-while-revalidate=${Math.floor(this.config.ttl / 2)}`
+        value ? `${value}, stale-while-revalidate=60` : 'stale-while-revalidate=60'
       );
     }
 
@@ -171,45 +176,5 @@ export class ApiCache {
   }
 }
 
-/**
- * Create a cache instance with the given configuration
- */
-export function createCache(config?: Partial<CacheConfig>) {
-  return new ApiCache({
-    ...defaultCacheConfig,
-    ...config,
-  });
-}
-
-/**
- * Predefined cache configurations for different use cases
- */
-export const cacheConfigs = {
-  // Short-lived cache for frequently updated data (1 minute)
-  short: {
-    ttl: 60,
-    cacheControl: 'public, max-age=60',
-    staleWhileRevalidate: true,
-  },
-
-  // Medium-lived cache for semi-static data (5 minutes)
-  medium: {
-    ttl: 300,
-    cacheControl: 'public, max-age=300',
-    staleWhileRevalidate: true,
-  },
-
-  // Long-lived cache for static data (1 hour)
-  long: {
-    ttl: 3600,
-    cacheControl: 'public, max-age=3600',
-    staleWhileRevalidate: true,
-  },
-
-  // Cache for authenticated responses (private, 5 minutes)
-  private: {
-    ttl: 300,
-    cacheControl: 'private, max-age=300',
-    staleWhileRevalidate: true,
-  },
-} as const; 
+// Export singleton instance
+export const cacheService = new CacheService(); 

@@ -4,6 +4,13 @@
  * 
  * This module provides a factory function for creating API route handlers with
  * built-in validation, caching, rate limiting, and error handling.
+ * 
+ * Features:
+ * - Request validation using Zod schemas
+ * - Optional rate limiting
+ * - Optional response caching
+ * - Standardized error handling
+ * - Request timing and metadata
  */
 
 import { type NextRequest, NextResponse } from 'next/server';
@@ -57,15 +64,20 @@ type ApiResponse<T = unknown> = {
   metadata: {
     timestamp: string;
     requestId: string;
-    cached?: boolean;
-    duration?: number;
-  };
+  } & (
+    | { cached: true }
+    | { cached?: false; duration: number }
+  );
 };
 
 export function createRouteHandler<TResponse = unknown, TBody = unknown, TQuery = unknown>(
   config: RouteConfig<TBody, TQuery>,
   handler: (req: NextRequest, ctx: HandlerContext<TBody, TQuery>) => Promise<TResponse>
 ) {
+  // Initialize services only if enabled
+  const useRateLimit = config.rateLimit?.enabled ?? false;
+  const useCache = config.cache?.enabled ?? false;
+
   return async function routeHandler(
     req: NextRequest,
     context: RouteContext = {}
@@ -75,8 +87,8 @@ export function createRouteHandler<TResponse = unknown, TBody = unknown, TQuery 
 
     try {
       // Rate limiting check
-      if (config.rateLimit?.enabled) {
-        const { requests, window } = config.rateLimit;
+      if (useRateLimit) {
+        const { requests, window } = config.rateLimit!;
         const isAllowed = await rateLimiter.check(req, requests, window);
         if (!isAllowed) {
           throw new ApiError(
@@ -88,10 +100,16 @@ export function createRouteHandler<TResponse = unknown, TBody = unknown, TQuery 
       }
 
       // Cache check
-      if (config.cache?.enabled) {
+      if (useCache) {
         const cached = await cacheService.get(req);
         if (cached) {
-          return NextResponse.json(cached);
+          return NextResponse.json({
+            ...cached,
+            metadata: {
+              ...cached.metadata,
+              cached: true,
+            },
+          });
         }
       }
 
@@ -128,7 +146,7 @@ export function createRouteHandler<TResponse = unknown, TBody = unknown, TQuery 
       };
 
       // Cache response if enabled
-      if (config.cache?.enabled) {
+      if (useCache) {
         await cacheService.set(req, response);
       }
 
@@ -140,6 +158,8 @@ export function createRouteHandler<TResponse = unknown, TBody = unknown, TQuery 
         error,
         requestId,
       });
+
+      const duration = Date.now() - startTime;
 
       if (error instanceof z.ZodError) {
         return NextResponse.json(
@@ -153,7 +173,7 @@ export function createRouteHandler<TResponse = unknown, TBody = unknown, TQuery 
             metadata: {
               timestamp: new Date().toISOString(),
               requestId,
-              duration: Date.now() - startTime,
+              duration,
             },
           },
           { status: 400 }
@@ -172,7 +192,7 @@ export function createRouteHandler<TResponse = unknown, TBody = unknown, TQuery 
             metadata: {
               timestamp: new Date().toISOString(),
               requestId,
-              duration: Date.now() - startTime,
+              duration,
             },
           },
           { status: error.statusCode }
@@ -189,7 +209,7 @@ export function createRouteHandler<TResponse = unknown, TBody = unknown, TQuery 
           metadata: {
             timestamp: new Date().toISOString(),
             requestId,
-            duration: Date.now() - startTime,
+            duration,
           },
         },
         { status: 500 }

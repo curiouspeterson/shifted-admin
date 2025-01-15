@@ -1,6 +1,8 @@
-import { toast } from '@/components/ui/toast';
+import { toast } from 'sonner';
+import { errorLogger, ErrorSeverity } from '@/lib/logging/error-logger';
+import { DatabaseError } from '@/lib/errors/base';
 
-interface DBConfig {
+export interface DBConfig {
   name: string;
   version: number;
   stores: {
@@ -54,13 +56,20 @@ export class IndexedDB {
     try {
       this.db = await this.openDatabase();
     } catch (error) {
-      console.error('Failed to initialize IndexedDB:', error);
-      toast({
-        title: 'Database Error',
-        description: 'Failed to initialize offline storage.',
-        variant: 'destructive',
+      const dbError = new DatabaseError(
+        'Failed to initialize IndexedDB',
+        { error, dbName: this.config.name }
+      );
+      errorLogger.error(dbError, {
+        component: 'IndexedDB',
+        operation: 'init',
+        dbName: this.config.name,
+        version: this.config.version
       });
-      throw error;
+      toast.error('Failed to initialize offline storage', {
+        description: 'Please try again or contact support if the issue persists.',
+      });
+      throw dbError;
     }
   }
 
@@ -71,30 +80,72 @@ export class IndexedDB {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(this.config.name, this.config.version);
 
-      request.onerror = () => reject(request.error);
+      request.onerror = () => {
+        const error = new DatabaseError(
+          'Failed to open IndexedDB connection',
+          { error: request.error, dbName: this.config.name }
+        );
+        errorLogger.error(error, {
+          component: 'IndexedDB',
+          operation: 'openDatabase',
+          dbName: this.config.name,
+          version: this.config.version
+        });
+        reject(error);
+      };
+
       request.onsuccess = () => resolve(request.result);
 
-      request.onupgradeneeded = (event) => {
+      request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
         const db = (event.target as IDBOpenDBRequest).result;
+        const transaction = (event.target as IDBOpenDBRequest).transaction;
         
-        // Create or update object stores
-        for (const [storeName, storeConfig] of Object.entries(this.config.stores)) {
-          let store: IDBObjectStore;
-          
-          if (!db.objectStoreNames.contains(storeName)) {
-            store = db.createObjectStore(storeName, { keyPath: storeConfig.keyPath });
-          } else {
-            store = request.transaction!.objectStore(storeName);
-          }
+        if (!transaction) {
+          const error = new DatabaseError(
+            'Failed to get transaction during database upgrade',
+            { dbName: this.config.name, version: this.config.version }
+          );
+          errorLogger.error(error, {
+            component: 'IndexedDB',
+            operation: 'onupgradeneeded',
+            dbName: this.config.name,
+            version: this.config.version
+          });
+          throw error;
+        }
 
-          // Create or update indexes
-          if (storeConfig.indexes) {
-            for (const index of storeConfig.indexes) {
-              if (!store.indexNames.contains(index.name)) {
-                store.createIndex(index.name, index.keyPath, index.options);
+        try {
+          // Create or update object stores
+          for (const [storeName, storeConfig] of Object.entries(this.config.stores)) {
+            let store: IDBObjectStore;
+            
+            if (!db.objectStoreNames.contains(storeName)) {
+              store = db.createObjectStore(storeName, { keyPath: storeConfig.keyPath });
+            } else {
+              store = transaction.objectStore(storeName);
+            }
+
+            // Create or update indexes
+            if (storeConfig.indexes) {
+              for (const index of storeConfig.indexes) {
+                if (!store.indexNames.contains(index.name)) {
+                  store.createIndex(index.name, index.keyPath, index.options);
+                }
               }
             }
           }
+        } catch (error) {
+          const dbError = new DatabaseError(
+            'Failed to upgrade database schema',
+            { error, dbName: this.config.name, version: this.config.version }
+          );
+          errorLogger.error(dbError, {
+            component: 'IndexedDB',
+            operation: 'onupgradeneeded',
+            dbName: this.config.name,
+            version: this.config.version
+          });
+          throw dbError;
         }
       };
     });
@@ -114,42 +165,80 @@ export class IndexedDB {
 
       let request: IDBRequest;
 
-      switch (operation.type) {
-        case 'add':
-          request = store.add(operation.data!);
-          break;
-        case 'put':
-          request = store.put(operation.data!);
-          break;
-        case 'delete':
-          request = store.delete(operation.key!);
-          break;
-        case 'get':
-          if (operation.index) {
-            const index = store.index(operation.index.name);
-            request = index.get(operation.index.key);
-          } else {
-            request = store.get(operation.key!);
-          }
-          break;
-        case 'getAll':
-          if (operation.index) {
-            const index = store.index(operation.index.name);
-            request = index.getAll(operation.index.key);
-          } else {
-            request = store.getAll();
-          }
-          break;
-        case 'clear':
-          request = store.clear();
-          break;
-        default:
-          reject(new Error(`Unsupported operation type: ${operation.type}`));
-          return;
-      }
+      try {
+        switch (operation.type) {
+          case 'add':
+            request = store.add(operation.data!);
+            break;
+          case 'put':
+            request = store.put(operation.data!);
+            break;
+          case 'delete':
+            request = store.delete(operation.key!);
+            break;
+          case 'get':
+            if (operation.index) {
+              const index = store.index(operation.index.name);
+              request = index.get(operation.index.key);
+            } else {
+              request = store.get(operation.key!);
+            }
+            break;
+          case 'getAll':
+            if (operation.index) {
+              const index = store.index(operation.index.name);
+              request = index.getAll(operation.index.key);
+            } else {
+              request = store.getAll();
+            }
+            break;
+          case 'clear':
+            request = store.clear();
+            break;
+          default:
+            const error = new DatabaseError(
+              `Unsupported operation type: ${operation.type}`,
+              { operation }
+            );
+            errorLogger.error(error, {
+              component: 'IndexedDB',
+              operation: 'execute',
+              dbName: this.config.name,
+              operationType: operation.type
+            });
+            reject(error);
+            return;
+        }
 
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => {
+          const error = new DatabaseError(
+            `Failed to execute ${operation.type} operation`,
+            { error: request.error, operation }
+          );
+          errorLogger.error(error, {
+            component: 'IndexedDB',
+            operation: 'execute',
+            dbName: this.config.name,
+            operationType: operation.type,
+            store: operation.store
+          });
+          reject(error);
+        };
+      } catch (error) {
+        const dbError = new DatabaseError(
+          `Unexpected error during ${operation.type} operation`,
+          { error, operation }
+        );
+        errorLogger.error(dbError, {
+          component: 'IndexedDB',
+          operation: 'execute',
+          dbName: this.config.name,
+          operationType: operation.type,
+          store: operation.store
+        });
+        reject(dbError);
+      }
     });
   }
 
@@ -165,8 +254,26 @@ export class IndexedDB {
    */
   close(): void {
     if (this.db) {
-      this.db.close();
-      this.db = null;
+      try {
+        this.db.close();
+        errorLogger.info('Database connection closed', {
+          component: 'IndexedDB',
+          operation: 'close',
+          dbName: this.config.name
+        });
+        this.db = null;
+      } catch (error) {
+        const dbError = new DatabaseError(
+          'Failed to close database connection',
+          { error, dbName: this.config.name }
+        );
+        errorLogger.error(dbError, {
+          component: 'IndexedDB',
+          operation: 'close',
+          dbName: this.config.name
+        });
+        throw dbError;
+      }
     }
   }
 
@@ -176,8 +283,26 @@ export class IndexedDB {
   static async deleteDatabase(name: string): Promise<void> {
     return new Promise((resolve, reject) => {
       const request = indexedDB.deleteDatabase(name);
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        errorLogger.info('Database deleted successfully', {
+          component: 'IndexedDB',
+          operation: 'deleteDatabase',
+          dbName: name
+        });
+        resolve();
+      };
+      request.onerror = () => {
+        const error = new DatabaseError(
+          'Failed to delete database',
+          { error: request.error, dbName: name }
+        );
+        errorLogger.error(error, {
+          component: 'IndexedDB',
+          operation: 'deleteDatabase',
+          dbName: name
+        });
+        reject(error);
+      };
     });
   }
 
@@ -192,23 +317,63 @@ export class IndexedDB {
       await this.init();
     }
 
-    const stats: { [key: string]: { count: number; size: number } } = {};
-    let totalSize = 0;
+    try {
+      const stats: { [key: string]: { count: number; size: number } } = {};
+      let totalSize = 0;
 
-    for (const storeName of this.db!.objectStoreNames) {
-      const count = await this.execute({
-        store: storeName,
-        type: 'getAll',
-      }) as any[];
+      const storeNames = Array.from(this.db!.objectStoreNames);
+      for (const storeName of storeNames) {
+        try {
+          const count = await this.execute({
+            store: storeName,
+            type: 'getAll',
+          }) as any[];
 
-      const size = new Blob([JSON.stringify(count)]).size;
-      stats[storeName] = { count: count.length, size };
-      totalSize += size;
+          const size = new Blob([JSON.stringify(count)]).size;
+          stats[storeName] = { count: count.length, size };
+          totalSize += size;
+        } catch (error) {
+          errorLogger.warn(
+            new DatabaseError(
+              `Failed to get stats for store: ${storeName}`,
+              { error, storeName }
+            ),
+            {
+              component: 'IndexedDB',
+              operation: 'getStats',
+              dbName: this.config.name,
+              store: storeName
+            }
+          );
+          // Continue with other stores even if one fails
+          stats[storeName] = { count: 0, size: 0 };
+        }
+      }
+
+      const result = {
+        stores: stats,
+        totalSize: Math.round(totalSize / 1024), // Size in KB
+      };
+
+      errorLogger.info('Database stats collected', {
+        component: 'IndexedDB',
+        operation: 'getStats',
+        dbName: this.config.name,
+        stats: result
+      });
+
+      return result;
+    } catch (error) {
+      const dbError = new DatabaseError(
+        'Failed to collect database stats',
+        { error, dbName: this.config.name }
+      );
+      errorLogger.error(dbError, {
+        component: 'IndexedDB',
+        operation: 'getStats',
+        dbName: this.config.name
+      });
+      throw dbError;
     }
-
-    return {
-      stores: stats,
-      totalSize: Math.round(totalSize / 1024), // Size in KB
-    };
   }
 } 

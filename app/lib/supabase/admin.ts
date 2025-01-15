@@ -1,6 +1,6 @@
 /**
  * Supabase Admin Client Module
- * Last Updated: 2024
+ * Last Updated: 2024-03
  * 
  * This module provides a Supabase client with admin privileges for server-side operations.
  * It uses service_role key for full database access.
@@ -23,6 +23,7 @@ if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
 /**
  * Creates a Supabase client with admin privileges
  * Uses service_role key for unrestricted database access
+ * No session persistence or cookie handling needed for admin operations
  */
 export const supabaseAdmin = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -31,6 +32,6 @@ export const supabaseAdmin = createClient<Database>(
     auth: {
       persistSession: false,
       autoRefreshToken: false,
-    },
+    }
   }
 ); 

@@ -13,57 +13,43 @@
  */
 
 import * as React from 'react';
-import { useFormContext } from 'react-hook-form';
+import { type FieldValues, type Path } from 'react-hook-form';
 import { cn } from '@/lib/utils';
-import {
-  FormControl,
-  FormDescription,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { FormFieldWrapper } from './FormFieldWrapper';
 
-export interface FormInputProps
+export interface FormInputProps<T extends FieldValues = FieldValues>
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'name'> {
-  name: string;
+  name: Path<T>;
   label?: string;
   description?: string;
 }
 
-export function FormInput({
+export function FormInput<T extends FieldValues = FieldValues>({
   name,
   label,
   description,
   className,
   type = 'text',
   ...props
-}: FormInputProps) {
-  const { control } = useFormContext();
-
+}: FormInputProps<T>) {
   return (
-    <FormField
-      control={control}
+    <FormFieldWrapper<T>
       name={name}
-      render={({ field }) => (
-        <FormItem>
-          {label && <FormLabel>{label}</FormLabel>}
-          <FormControl>
-            <Input
-              type={type}
-              className={cn(
-                'transition-colors focus-visible:ring-2',
-                className
-              )}
-              {...field}
-              {...props}
-            />
-          </FormControl>
-          {description && <FormDescription>{description}</FormDescription>}
-          <FormMessage />
-        </FormItem>
+      label={label}
+      description={description}
+    >
+      {(field) => (
+        <Input
+          type={type}
+          className={cn(
+            'transition-colors focus-visible:ring-2',
+            className
+          )}
+          {...field}
+          {...props}
+        />
       )}
-    />
+    </FormFieldWrapper>
   );
 } 

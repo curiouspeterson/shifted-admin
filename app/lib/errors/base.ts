@@ -118,4 +118,13 @@ export class TimeoutError extends AppError {
   constructor(message: string, details?: unknown) {
     super(message, 'TIMEOUT_ERROR', 504, details);
   }
+}
+
+/**
+ * Error thrown when a service worker operation fails
+ */
+export class ServiceWorkerError extends AppError {
+  constructor(message: string, details?: unknown) {
+    super(message, 'SERVICE_WORKER_ERROR', 500, details);
+  }
 } 

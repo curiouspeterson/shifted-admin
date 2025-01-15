@@ -1,6 +1,6 @@
 /**
  * Supabase Client Configuration and Utilities
- * Last Updated: 2024
+ * Last Updated: 2024-03
  * 
  * This file provides centralized Supabase client initialization and helper functions.
  * It includes:
@@ -12,12 +12,16 @@
  * ensuring proper authentication and cookie handling in different contexts.
  */
 
-import { createBrowserClient, createServerClient } from '@supabase/ssr'
-import { createServerComponentClient } from '@supabase/auth-helpers-nextjs'
+import { createServerClient } from '@supabase/ssr'
+import { SupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import type { Database } from './database.types'
 import { createServerCookieHandler } from './cookies'
-import { AppError } from '../errors'
+import { AuthError, NotFoundError, DatabaseError } from '../errors'
+import { supabase } from './supabaseClient'
+import { supabaseAdmin } from './admin'
+
+type SupabaseClientType = ReturnType<typeof createServer>
 
 /**
  * Server-Side Supabase Client
@@ -39,25 +43,7 @@ export function createServer() {
  * Singleton instance for client-side operations
  * Uses anon key for public access
  */
-export const browserClient = createBrowserClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-)
-
-/**
- * Server Component Supabase Client
- * Specifically for use in React Server Components
- * Includes cookie handling for session management
- */
-export function createServerComponent() {
-  return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: createServerCookieHandler()
-    }
-  )
-}
+export { supabase as browserSupabase }
 
 /**
  * Admin Supabase Client
@@ -65,21 +51,7 @@ export function createServerComponent() {
  * No cookie handling or session persistence
  * CAUTION: Only use for admin-level operations
  */
-export const adminClient = createServerClient<Database>(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    cookies: {
-      get: () => undefined,
-      set: () => {},
-      remove: () => {},
-    },
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false
-    }
-  }
-)
+export { supabaseAdmin }
 
 /**
  * Authentication Verification
@@ -87,17 +59,17 @@ export const adminClient = createServerClient<Database>(
  * Throws appropriate errors for authentication failures
  * @param client - Supabase client instance
  * @returns The current session if valid
- * @throws AppError if authentication fails or no session exists
+ * @throws AuthError if authentication fails or no session exists
  */
-export async function verifyAuth(client: ReturnType<typeof createServer>) {
+export async function verifyAuth(client: SupabaseClientType) {
   const { data: { session }, error } = await client.auth.getSession()
   
   if (error) {
-    throw new AppError('Authentication failed', 401)
+    throw new AuthError('UNAUTHORIZED', 'Authentication failed', error)
   }
   
   if (!session) {
-    throw new AppError('Unauthorized', 401)
+    throw new AuthError('UNAUTHORIZED', 'No active session')
   }
   
   return session
@@ -109,9 +81,10 @@ export async function verifyAuth(client: ReturnType<typeof createServer>) {
  * @param client - Supabase client instance
  * @param userId - The user's ID to look up
  * @returns Employee details if found
- * @throws AppError if employee not found or database error occurs
+ * @throws DatabaseError if database operation fails
+ * @throws NotFoundError if employee not found
  */
-export async function getEmployeeDetails(client: ReturnType<typeof createServer>, userId: string) {
+export async function getEmployeeDetails(client: SupabaseClientType, userId: string) {
   const { data: employee, error } = await client
     .from('employees')
     .select('*')
@@ -119,11 +92,11 @@ export async function getEmployeeDetails(client: ReturnType<typeof createServer>
     .single()
     
   if (error) {
-    throw new AppError('Failed to fetch employee details', 500)
+    throw new DatabaseError('Failed to fetch employee details', error)
   }
   
   if (!employee) {
-    throw new AppError('Employee not found', 404)
+    throw new NotFoundError('Employee not found')
   }
   
   return employee
@@ -135,9 +108,10 @@ export async function getEmployeeDetails(client: ReturnType<typeof createServer>
  * @param client - Supabase client instance
  * @param userId - The user's ID to check
  * @returns boolean indicating if user is a supervisor
- * @throws AppError if check fails or employee not found
+ * @throws DatabaseError if database operation fails
+ * @throws NotFoundError if employee not found
  */
-export async function isSupervisor(client: ReturnType<typeof createServer>, userId: string) {
+export async function isSupervisor(client: SupabaseClientType, userId: string) {
   const { data: employee, error } = await client
     .from('employees')
     .select('position')
@@ -145,11 +119,11 @@ export async function isSupervisor(client: ReturnType<typeof createServer>, user
     .single()
     
   if (error) {
-    throw new AppError('Failed to check permissions', 500)
+    throw new DatabaseError('Failed to check permissions', error)
   }
   
   if (!employee) {
-    throw new AppError('Employee not found', 404)
+    throw new NotFoundError('Employee not found')
   }
   
   return ['shift_supervisor', 'management'].includes(employee.position)

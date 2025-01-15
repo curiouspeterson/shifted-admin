@@ -203,8 +203,9 @@ export class SchedulesOperations {
 
   /**
    * Delete a schedule
+   * Returns null on successful deletion
    */
-  async delete(id: string): Promise<DatabaseResult<void>> {
+  async delete(id: string): Promise<DatabaseResult<null>> {
     try {
       const { error } = await this.supabase
         .from(this.table)

@@ -3,6 +3,11 @@
  * Last Updated: 2025-01-15
  * 
  * This component provides a styled table using shadcn/ui.
+ * Features:
+ * - Responsive table layout
+ * - Styled header, body, footer, and caption
+ * - Hover and selected states for rows
+ * - Consistent spacing and alignment
  */
 
 import * as React from 'react';
@@ -14,7 +19,7 @@ const Table = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <table
     ref={ref}
-    className={cn('w-full caption-bottom text-sm', className)}
+    className={cn('w-full text-sm', className)}
     {...props}
   />
 ));
