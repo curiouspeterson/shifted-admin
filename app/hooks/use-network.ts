@@ -9,11 +9,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { toast } from '@/lib/utils/toast';
+import { toast } from 'sonner';
+import type { NetworkConnection } from '@/types/network';
 
 export interface NetworkStatus {
   isOnline: boolean;
-  effectiveType?: 'slow-2g' | '2g' | '3g' | '4g';
+  effectiveType?: '2g' | '3g' | '4g' | 'slow-2g';
   downlink?: number;
   rtt?: number;
   saveData?: boolean;
@@ -21,17 +22,19 @@ export interface NetworkStatus {
 
 export function useNetworkStatus(): NetworkStatus {
   const [status, setStatus] = useState<NetworkStatus>({
-    isOnline: true,
+    isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
   });
 
   useEffect(() => {
+    const connection = navigator?.connection;
+
     // Initial status
     setStatus({
       isOnline: navigator.onLine,
-      effectiveType: (navigator.connection as any)?.effectiveType,
-      downlink: (navigator.connection as any)?.downlink,
-      rtt: (navigator.connection as any)?.rtt,
-      saveData: (navigator.connection as any)?.saveData,
+      effectiveType: connection?.effectiveType,
+      downlink: connection?.downlink,
+      rtt: connection?.rtt,
+      saveData: connection?.saveData,
     });
 
     // Handle online status changes
@@ -49,23 +52,23 @@ export function useNetworkStatus(): NetworkStatus {
     const handleConnectionChange = () => {
       setStatus(prev => ({
         ...prev,
-        effectiveType: (navigator.connection as any)?.effectiveType,
-        downlink: (navigator.connection as any)?.downlink,
-        rtt: (navigator.connection as any)?.rtt,
-        saveData: (navigator.connection as any)?.saveData,
+        effectiveType: connection?.effectiveType,
+        downlink: connection?.downlink,
+        rtt: connection?.rtt,
+        saveData: connection?.saveData,
       }));
     };
 
     // Add event listeners
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
-    (navigator.connection as any)?.addEventListener('change', handleConnectionChange);
+    connection?.addEventListener('change', handleConnectionChange);
 
     // Cleanup
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      (navigator.connection as any)?.removeEventListener('change', handleConnectionChange);
+      connection?.removeEventListener('change', handleConnectionChange);
     };
   }, []);
 
