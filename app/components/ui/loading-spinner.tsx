@@ -1,37 +1,46 @@
 /**
  * Loading Spinner Component
- * Last Updated: 2025-01-15
+ * Last Updated: 2024-03-20
  * 
- * This component provides a loading spinner with different sizes.
+ * A reusable loading spinner component that can be used to indicate
+ * loading states throughout the application.
  */
 
-import * as React from 'react';
-import { cn } from '@/lib/utils';
+import { cn } from '@/lib/utils'
 
-interface LoadingSpinnerProps extends React.HTMLAttributes<HTMLDivElement> {
-  size?: 'sm' | 'md' | 'lg';
+interface LoadingSpinnerProps {
+  size?: 'sm' | 'md' | 'lg'
+  fullScreen?: boolean
+  className?: string
 }
 
 export function LoadingSpinner({
-  className,
   size = 'md',
-  ...props
+  fullScreen = false,
+  className,
 }: LoadingSpinnerProps) {
+  const sizeClasses = {
+    sm: 'h-6 w-6 border-2',
+    md: 'h-12 w-12 border-2',
+    lg: 'h-16 w-16 border-3',
+  }
+
+  const containerClasses = cn(
+    'flex items-center justify-center',
+    fullScreen && 'min-h-screen',
+    className
+  )
+
+  const spinnerClasses = cn(
+    'animate-spin rounded-full border-t-indigo-500 border-b-indigo-500 border-r-transparent border-l-transparent',
+    sizeClasses[size]
+  )
+
   return (
-    <div
-      className={cn('flex items-center justify-center p-4', className)}
-      {...props}
-    >
-      <div
-        className={cn(
-          'animate-spin rounded-full border-2 border-current border-t-transparent text-muted-foreground',
-          {
-            'h-4 w-4': size === 'sm',
-            'h-8 w-8': size === 'md',
-            'h-12 w-12': size === 'lg',
-          }
-        )}
-      />
+    <div className={containerClasses}>
+      <div className={spinnerClasses} />
     </div>
-  );
-} 
+  )
+}
+
+export default LoadingSpinner 

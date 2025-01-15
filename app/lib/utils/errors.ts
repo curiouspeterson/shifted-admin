@@ -199,4 +199,81 @@ export function withErrorHandling<T>(
     }
     return null;
   });
+}
+
+/**
+ * Error Formatting Utility
+ * Last Updated: 2024-03-20
+ * 
+ * Centralized error formatting following modern TypeScript practices.
+ */
+
+interface FormattedError {
+  name: string
+  message: string
+  stack?: string
+  code?: string
+  details?: unknown
+  cause?: {
+    name: string
+    message: string
+    stack?: string
+  }
+}
+
+/**
+ * Type guard for Error objects
+ */
+function isError(error: unknown): error is Error {
+  return error instanceof Error
+}
+
+/**
+ * Type guard for DOMException
+ */
+function isDOMException(error: unknown): error is DOMException {
+  return error instanceof DOMException
+}
+
+/**
+ * Format any error type into a consistent structure
+ */
+export function formatError(error: unknown): FormattedError {
+  if (isError(error)) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      cause: error.cause instanceof Error ? {
+        name: error.cause.name,
+        message: error.cause.message,
+        stack: error.cause.stack
+      } : undefined
+    }
+  }
+
+  if (isDOMException(error)) {
+    return {
+      name: error.name,
+      message: error.message,
+      code: String(error.code),
+      stack: error.stack
+    }
+  }
+
+  return {
+    name: 'UnknownError',
+    message: String(error)
+  }
+}
+
+/**
+ * Create an error with proper typing and optional cause
+ */
+export function createError(message: string, cause?: Error): Error {
+  const error = new Error(message)
+  if (cause) {
+    error.cause = cause
+  }
+  return error
 } 

@@ -1,144 +1,200 @@
 /**
- * Error Logger
- * Last Updated: 2024-03
+ * Error Logger Module
+ * Last Updated: 2024-03-20
  * 
- * Centralized error logging and monitoring.
- * Features:
- * - Structured error logging
- * - Error categorization
- * - Performance tracking
- * - Integration with monitoring services
+ * This module provides centralized error logging functionality with proper typing
+ * and structured logging capabilities. It includes support for different log levels,
+ * structured metadata, and error serialization.
  */
 
-interface ErrorMetadata {
-  timestamp: number;
-  path?: string;
-  method?: string;
-  statusCode?: number;
-  [key: string]: unknown;
+import { DatabaseError } from '../database/base/errors'
+
+/**
+ * Log level enumeration
+ */
+export enum LogLevel {
+  ERROR = 'error',
+  WARN = 'warn',
+  INFO = 'info',
+  DEBUG = 'debug'
 }
 
-interface ErrorLogEntry {
-  message: string;
-  error: Error;
-  metadata: ErrorMetadata;
-  severity: 'info' | 'warn' | 'error' | 'fatal';
+/**
+ * Base structure for log metadata
+ */
+export interface BaseLogMetadata {
+  timestamp: string
+  level: LogLevel
+  context?: string
+  duration?: number
+  message: string
+  [key: string]: unknown
 }
 
-class ErrorLogger {
-  private static instance: ErrorLogger;
-  private isProduction = process.env.NODE_ENV === 'production';
+/**
+ * Error log metadata with error-specific fields
+ */
+export interface ErrorLogMetadata extends BaseLogMetadata {
+  error: {
+    name: string
+    message: string
+    stack?: string
+    code?: string
+    details?: unknown
+    cause?: {
+      name: string
+      message: string
+      stack?: string
+    }
+  }
+}
+
+/**
+ * Type guard for DatabaseError
+ */
+function isDatabaseError(error: unknown): error is DatabaseError {
+  return error instanceof DatabaseError
+}
+
+/**
+ * Type guard for Error
+ */
+function isError(error: unknown): error is Error {
+  return error instanceof Error
+}
+
+/**
+ * Format error details for logging
+ */
+function formatError(error: unknown): ErrorLogMetadata['error'] {
+  if (isDatabaseError(error)) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      code: error.code,
+      details: error.details,
+      cause: error.cause && isError(error.cause) ? {
+        name: error.cause.name,
+        message: error.cause.message,
+        stack: error.cause.stack
+      } : undefined
+    }
+  }
+
+  if (isError(error)) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack
+    }
+  }
+
+  return {
+    name: 'UnknownError',
+    message: String(error)
+  }
+}
+
+/**
+ * Format Next.js error for logging
+ */
+export function formatNextError(error: Error & { digest?: string }): ErrorLogMetadata['error'] {
+  return {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    details: error.digest ? { digest: error.digest } : undefined,
+    cause: error.cause instanceof Error ? {
+      name: error.cause.name,
+      message: error.cause.message,
+      stack: error.cause.stack
+    } : undefined
+  }
+}
+
+/**
+ * Error Logger class
+ */
+export class ErrorLogger {
+  private static instance: ErrorLogger
+  private readonly isDevelopment: boolean
 
   private constructor() {
-    // Initialize monitoring service if in production
-    if (this.isProduction) {
-      // TODO: Initialize monitoring service (e.g., Sentry, DataDog)
-    }
+    this.isDevelopment = process.env.NODE_ENV === 'development'
   }
 
   static getInstance(): ErrorLogger {
     if (!ErrorLogger.instance) {
-      ErrorLogger.instance = new ErrorLogger();
+      ErrorLogger.instance = new ErrorLogger()
     }
-    return ErrorLogger.instance;
+    return ErrorLogger.instance
   }
 
   /**
-   * Log an error with metadata
+   * Log an error message
    */
-  error(message: string, data: { error: unknown; [key: string]: unknown }): void {
-    const errorEntry = this.createErrorEntry('error', message, data);
-    this.logError(errorEntry);
+  error(message: string, metadata: Partial<ErrorLogMetadata> = {}): void {
+    this.log(LogLevel.ERROR, message, metadata)
   }
 
   /**
-   * Log a warning with metadata
+   * Log a warning message
    */
-  warn(message: string, data: { error?: unknown; [key: string]: unknown }): void {
-    const errorEntry = this.createErrorEntry('warn', message, data);
-    this.logError(errorEntry);
+  warn(message: string, metadata: Partial<BaseLogMetadata> = {}): void {
+    this.log(LogLevel.WARN, message, metadata)
   }
 
   /**
-   * Log info with metadata
+   * Log an info message
    */
-  info(message: string, data: { [key: string]: unknown }): void {
-    const errorEntry = this.createErrorEntry('info', message, data);
-    this.logError(errorEntry);
+  info(message: string, metadata: Partial<BaseLogMetadata> = {}): void {
+    this.log(LogLevel.INFO, message, metadata)
   }
 
   /**
-   * Log a fatal error with metadata
+   * Log a debug message (only in development)
    */
-  fatal(message: string, data: { error: unknown; [key: string]: unknown }): void {
-    const errorEntry = this.createErrorEntry('fatal', message, data);
-    this.logError(errorEntry);
+  debug(message: string, metadata: Partial<BaseLogMetadata> = {}): void {
+    if (this.isDevelopment) {
+      this.log(LogLevel.DEBUG, message, metadata)
+    }
   }
 
   /**
-   * Create a structured error entry
+   * Internal logging method
    */
-  private createErrorEntry(
-    severity: ErrorLogEntry['severity'],
-    message: string,
-    data: { error?: unknown; [key: string]: unknown }
-  ): ErrorLogEntry {
-    const metadata: ErrorMetadata = {
-      timestamp: Date.now(),
-      ...data,
-    };
-
-    // Convert unknown error to Error object
-    const error = data.error instanceof Error 
-      ? data.error 
-      : new Error(data.error ? String(data.error) : 'Unknown error');
-
-    return {
+  private log(level: LogLevel, message: string, metadata: Partial<BaseLogMetadata | ErrorLogMetadata> = {}): void {
+    const timestamp = new Date().toISOString()
+    const logData: BaseLogMetadata = {
+      timestamp,
+      level,
       message,
-      error,
-      metadata,
-      severity,
-    };
-  }
-
-  /**
-   * Log the error entry based on environment
-   */
-  private logError(entry: ErrorLogEntry): void {
-    if (this.isProduction) {
-      // TODO: Send to monitoring service
-      this.logToProductionService(entry);
-    } else {
-      this.logToDevelopmentConsole(entry);
+      ...metadata
     }
-  }
 
-  /**
-   * Development logging
-   */
-  private logToDevelopmentConsole(entry: ErrorLogEntry): void {
-    const { severity, message, error, metadata } = entry;
-    const timestamp = new Date(metadata.timestamp).toISOString();
-
-    console.group(`[${severity.toUpperCase()}] ${timestamp} - ${message}`);
-    if (error.stack) {
-      console.error(error.stack);
-    } else {
-      console.error(error);
+    // Format error if present
+    if ('error' in metadata && metadata.error) {
+      (logData as ErrorLogMetadata).error = formatError(metadata.error)
     }
-    console.log('Metadata:', metadata);
-    console.groupEnd();
-  }
 
-  /**
-   * Production logging
-   */
-  private logToProductionService(entry: ErrorLogEntry): void {
-    // TODO: Implement production logging service
-    // This would typically send the error to a service like Sentry, DataDog, etc.
-    console.error(entry);
+    // Log to console with appropriate level
+    switch (level) {
+      case LogLevel.ERROR:
+        console.error(JSON.stringify(logData, null, 2))
+        break
+      case LogLevel.WARN:
+        console.warn(JSON.stringify(logData, null, 2))
+        break
+      case LogLevel.INFO:
+        console.info(JSON.stringify(logData, null, 2))
+        break
+      case LogLevel.DEBUG:
+        console.debug(JSON.stringify(logData, null, 2))
+        break
+    }
   }
 }
 
 // Export singleton instance
-export const errorLogger = ErrorLogger.getInstance(); 
+export const errorLogger = ErrorLogger.getInstance() 

@@ -1,216 +1,293 @@
 /**
  * Base Repository
- * Last Updated: 2024-03-19 21:35 PST
+ * Last Updated: 2024-03-20
  * 
- * This file provides the base repository class for database operations.
+ * This class provides a base implementation for database repositories.
+ * It includes improved error handling, logging, and transaction support.
  */
 
-import { createClient } from '@supabase/supabase-js';
-import {
-  DatabaseRecord,
-  DatabaseResult,
-  QueryFilters,
-} from './types';
-import { DatabaseError, ErrorCodes, mapDatabaseError } from './errors';
-import { logger } from './logging';
+import { SupabaseClient } from '@supabase/supabase-js'
+import { Database } from '@/lib/supabase/database.types'
+import { DatabaseError, ErrorCode, ErrorContext, mapDatabaseError } from './errors'
+import { TransactionManager } from './transaction'
+import { errorLogger } from '@/lib/logging/error-logger'
+import { performance } from '@/lib/utils/performance'
 
-export class BaseRepository<R extends DatabaseRecord> {
-  protected readonly supabase;
+export interface DatabaseResult<T> {
+  data: T | null
+  error: DatabaseError | null
+}
+
+export interface DatabaseListResult<T> {
+  data: T[]
+  error: DatabaseError | null
+}
+
+export interface BaseFilters {
+  limit?: number
+  offset?: number
+  orderBy?: {
+    column: string
+    ascending?: boolean
+  }
+}
+
+interface RetryOptions {
+  maxAttempts?: number
+  initialDelay?: number
+  maxDelay?: number
+  backoffFactor?: number
+}
+
+const DEFAULT_RETRY_OPTIONS: RetryOptions = {
+  maxAttempts: 3,
+  initialDelay: 100,
+  maxDelay: 1000,
+  backoffFactor: 2
+}
+
+export abstract class BaseRepository<T extends Record<string, any>> {
+  protected readonly tableName: string
+  protected readonly transactionManager: TransactionManager
 
   constructor(
-    protected readonly tableName: string
+    protected readonly supabase: SupabaseClient<Database>,
+    tableName: string
   ) {
-    // Initialize Supabase client
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    this.tableName = tableName
+    this.transactionManager = new TransactionManager(supabase)
+  }
 
-    if (!supabaseUrl || !supabaseKey) {
-      throw new Error('Missing Supabase configuration');
+  /**
+   * Execute operation with retry logic
+   */
+  protected async executeWithRetry<R>(
+    operation: () => Promise<R>,
+    context: Partial<ErrorContext>,
+    options: RetryOptions = DEFAULT_RETRY_OPTIONS
+  ): Promise<R> {
+    const { maxAttempts = 3, initialDelay = 100, maxDelay = 1000, backoffFactor = 2 } = options
+    let attempt = 1
+    let delay = initialDelay
+
+    while (true) {
+      const start = performance.now()
+      try {
+        const result = await operation()
+        return result
+      } catch (err) {
+        const duration = performance.now() - start
+        const error = mapDatabaseError(err, {
+          ...context,
+          attempt,
+          duration,
+          timestamp: new Date().toISOString()
+        })
+
+        if (!error.isRetryable() || attempt >= maxAttempts) {
+          throw error
+        }
+
+        // Log retry attempt
+        errorLogger.warn('Retrying database operation', {
+          tableName: this.tableName,
+          attempt,
+          maxAttempts,
+          delay,
+          error: error.toJSON()
+        })
+
+        // Wait before retrying
+        await new Promise(resolve => setTimeout(resolve, delay))
+        
+        // Increase delay for next attempt
+        delay = Math.min(delay * backoffFactor, maxDelay)
+        attempt++
+      }
     }
-
-    this.supabase = createClient(supabaseUrl, supabaseKey);
   }
 
   /**
    * Find a record by ID
    */
-  async findById(id: string): Promise<DatabaseResult<R>> {
+  async findById(id: string | number): Promise<DatabaseResult<T>> {
     try {
-      const { data, error } = await this.supabase
-        .from(this.tableName)
-        .select()
-        .eq('id', id)
-        .single();
+      const result = await this.executeWithRetry(
+        async () => {
+          const { data, error } = await this.supabase
+            .from(this.tableName)
+            .select('*')
+            .eq('id', id)
+            .single()
 
-      if (error) {
-        return { data: null, error: mapDatabaseError(error) };
-      }
+          if (error) throw error
+          if (!data) throw new Error(`Record not found: ${id}`)
 
-      if (!data) {
-        return {
-          data: null,
-          error: new DatabaseError(
-            ErrorCodes.NOT_FOUND,
-            `${this.tableName} not found with id: ${id}`
-          ),
-        };
-      }
+          return data
+        },
+        {
+          tableName: this.tableName,
+          operation: 'findById',
+          id,
+          requestId: crypto.randomUUID()
+        }
+      )
 
-      return { data, error: null };
-    } catch (error) {
-      logger.error(`Error finding ${this.tableName} by id`, { error });
-      return { data: null, error: mapDatabaseError(error) };
+      return { data: result, error: null }
+    } catch (err) {
+      const error = err instanceof DatabaseError ? err : mapDatabaseError(err)
+      return { data: null, error }
     }
   }
 
   /**
    * Find multiple records with optional filters
    */
-  async findMany(filters?: QueryFilters): Promise<DatabaseResult<R[]>> {
+  async findMany(filters: BaseFilters = {}): Promise<DatabaseListResult<T>> {
     try {
-      let query = this.supabase.from(this.tableName).select();
+      const result = await this.executeWithRetry(
+        async () => {
+          let query = this.supabase
+            .from(this.tableName)
+            .select('*')
 
-      if (filters) {
-        // Apply filters
-        Object.entries(filters).forEach(([key, value]) => {
-          if (key === 'limit') {
-            query = query.limit(value as number);
-          } else if (key === 'offset') {
-            query = query.range(value as number, (value as number) + (filters.limit || 10));
-          } else if (key === 'orderBy') {
-            query = query.order(value as string, {
-              ascending: filters.orderDirection !== 'desc',
-            });
-          } else if (value !== undefined) {
-            // Handle special operators in key (e.g., field_gte, field_lte)
-            const [field, operator] = key.split('_');
-            if (operator) {
-              switch (operator) {
-                case 'gte':
-                  query = query.gte(field, value);
-                  break;
-                case 'lte':
-                  query = query.lte(field, value);
-                  break;
-                case 'gt':
-                  query = query.gt(field, value);
-                  break;
-                case 'lt':
-                  query = query.lt(field, value);
-                  break;
-                case 'neq':
-                  query = query.neq(field, value);
-                  break;
-                case 'like':
-                  query = query.like(field, value);
-                  break;
-                case 'ilike':
-                  query = query.ilike(field, value);
-                  break;
-                default:
-                  query = query.eq(field, value);
-              }
-            } else {
-              query = query.eq(key, value);
-            }
+          if (filters.limit) {
+            query = query.limit(filters.limit)
           }
-        });
-      }
 
-      const { data, error } = await query;
+          if (filters.offset) {
+            query = query.range(
+              filters.offset,
+              filters.offset + (filters.limit || 10) - 1
+            )
+          }
 
-      if (error) {
-        return { data: [], error: mapDatabaseError(error) };
-      }
+          if (filters.orderBy) {
+            query = query.order(
+              filters.orderBy.column,
+              { ascending: filters.orderBy.ascending ?? true }
+            )
+          }
 
-      return { data: data || [], error: null };
-    } catch (error) {
-      logger.error(`Error finding ${this.tableName} records`, { error });
-      return { data: [], error: mapDatabaseError(error) };
+          const { data, error } = await query
+          if (error) throw error
+
+          return data || []
+        },
+        {
+          tableName: this.tableName,
+          operation: 'findMany',
+          requestId: crypto.randomUUID(),
+          metadata: { filters }
+        }
+      )
+
+      return { data: result, error: null }
+    } catch (err) {
+      const error = err instanceof DatabaseError ? err : mapDatabaseError(err)
+      return { data: [], error }
     }
   }
 
   /**
    * Create a new record
    */
-  async create(input: Partial<R>): Promise<DatabaseResult<R>> {
+  async create(data: Partial<T>): Promise<DatabaseResult<T>> {
     try {
-      const { data, error } = await this.supabase
-        .from(this.tableName)
-        .insert(input)
-        .select()
-        .single();
+      const result = await this.executeWithRetry(
+        async () => {
+          const { data: created, error } = await this.supabase
+            .from(this.tableName)
+            .insert(data)
+            .select()
+            .single()
 
-      if (error) {
-        return { data: null, error: mapDatabaseError(error) };
-      }
+          if (error) throw error
+          if (!created) throw new Error('Failed to create record')
 
-      return { data, error: null };
-    } catch (error) {
-      logger.error(`Error creating ${this.tableName}`, { error });
-      return { data: null, error: mapDatabaseError(error) };
+          return created
+        },
+        {
+          tableName: this.tableName,
+          operation: 'create',
+          requestId: crypto.randomUUID(),
+          metadata: { data }
+        }
+      )
+
+      return { data: result, error: null }
+    } catch (err) {
+      const error = err instanceof DatabaseError ? err : mapDatabaseError(err)
+      return { data: null, error }
     }
   }
 
   /**
    * Update an existing record
    */
-  async update(id: string, input: Partial<R>): Promise<DatabaseResult<R>> {
+  async update(id: string | number, data: Partial<T>): Promise<DatabaseResult<T>> {
     try {
-      // Check if record exists and get current version
-      const current = await this.findById(id);
-      if (current.error) {
-        return current;
-      }
+      const result = await this.executeWithRetry(
+        async () => {
+          const { data: updated, error } = await this.supabase
+            .from(this.tableName)
+            .update(data)
+            .eq('id', id)
+            .select()
+            .single()
 
-      // Handle optimistic locking
-      if ('version' in input && current.data?.version !== input.version) {
-        return {
-          data: null,
-          error: new DatabaseError(
-            ErrorCodes.CONFLICT,
-            'Record has been modified',
-            { current: current.data?.version, attempted: input.version }
-          ),
-        };
-      }
+          if (error) throw error
+          if (!updated) throw new Error(`Record not found: ${id}`)
 
-      const { data, error } = await this.supabase
-        .from(this.tableName)
-        .update(input)
-        .eq('id', id)
-        .select()
-        .single();
+          return updated
+        },
+        {
+          tableName: this.tableName,
+          operation: 'update',
+          id,
+          requestId: crypto.randomUUID(),
+          metadata: { data }
+        }
+      )
 
-      if (error) {
-        return { data: null, error: mapDatabaseError(error) };
-      }
-
-      return { data, error: null };
-    } catch (error) {
-      logger.error(`Error updating ${this.tableName}`, { error });
-      return { data: null, error: mapDatabaseError(error) };
+      return { data: result, error: null }
+    } catch (err) {
+      const error = err instanceof DatabaseError ? err : mapDatabaseError(err)
+      return { data: null, error }
     }
   }
 
   /**
    * Delete a record
    */
-  async delete(id: string): Promise<DatabaseResult<void>> {
+  async delete(id: string | number): Promise<DatabaseResult<T>> {
     try {
-      const { error } = await this.supabase
-        .from(this.tableName)
-        .delete()
-        .eq('id', id);
+      const result = await this.executeWithRetry(
+        async () => {
+          const { data: deleted, error } = await this.supabase
+            .from(this.tableName)
+            .delete()
+            .eq('id', id)
+            .select()
+            .single()
 
-      if (error) {
-        return { data: undefined, error: mapDatabaseError(error) };
-      }
+          if (error) throw error
+          if (!deleted) throw new Error(`Record not found: ${id}`)
 
-      return { data: undefined, error: null };
-    } catch (error) {
-      logger.error(`Error deleting ${this.tableName}`, { error });
-      return { data: undefined, error: mapDatabaseError(error) };
+          return deleted
+        },
+        {
+          tableName: this.tableName,
+          operation: 'delete',
+          id,
+          requestId: crypto.randomUUID()
+        }
+      )
+
+      return { data: result, error: null }
+    } catch (err) {
+      const error = err instanceof DatabaseError ? err : mapDatabaseError(err)
+      return { data: null, error }
     }
   }
 } 

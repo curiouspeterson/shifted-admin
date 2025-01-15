@@ -1,58 +1,50 @@
 /**
- * Application Providers Component
- * Last Updated: January 15, 2024
+ * Application Providers
+ * Last Updated: 2024-03-20
  * 
- * Wraps the application with necessary context providers for:
- * - Theme management (next-themes)
- * - Query management (TanStack Query)
- * - Network status
- * - Service worker registration
+ * This component wraps the application with necessary providers:
+ * - Error Boundary for error handling
+ * - Theme Provider for consistent styling
+ * - Auth Provider for authentication state
+ * - Query Provider for data fetching
  */
 
 'use client';
 
+import React from 'react';
 import { ThemeProvider } from 'next-themes';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { useState } from 'react';
-import { useNetworkStatus } from '@/hooks/use-network';
-import { useServiceWorker } from '@/hooks/use-service-worker';
+import { ErrorBoundary } from '@/components/error/ErrorBoundary';
+import { ErrorFallback } from '@/components/error/ErrorFallback';
 
-export default function Providers({ children }: { children: React.ReactNode }) {
-  // Initialize query client with settings optimized for offline-first
-  const [queryClient] = useState(() => new QueryClient({
-    defaultOptions: {
-      queries: {
-        staleTime: 1000 * 60 * 5, // 5 minutes
-        cacheTime: 1000 * 60 * 60 * 24, // 24 hours
-        retry: 3,
-        retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-        networkMode: 'offlineFirst',
-      },
-      mutations: {
-        networkMode: 'offlineFirst',
-      },
+// Create a client
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 60 * 1000, // 1 minute
+      retry: 1,
+      refetchOnWindowFocus: false,
     },
-  }));
+  },
+});
 
-  // Initialize network status monitoring
-  useNetworkStatus();
+export interface ProvidersProps {
+  children: React.ReactNode;
+}
 
-  // Initialize service worker
-  useServiceWorker({
-    onSuccess: () => console.info('Service worker registered successfully'),
-    onUpdate: () => console.info('Service worker update available'),
-  });
-
+export function Providers({ children }: ProvidersProps) {
   return (
-    <ThemeProvider
-      attribute="class"
-      defaultTheme="system"
-      enableSystem
-      disableTransitionOnChange
-    >
+    <ErrorBoundary fallback={<ErrorFallback />}>
       <QueryClientProvider client={queryClient}>
-        {children}
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+        </ThemeProvider>
       </QueryClientProvider>
-    </ThemeProvider>
+    </ErrorBoundary>
   );
 } 

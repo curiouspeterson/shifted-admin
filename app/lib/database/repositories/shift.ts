@@ -1,6 +1,6 @@
 /**
  * Shift Repository Implementation
- * Last Updated: 2024-03-19 16:35 PST
+ * Last Updated: 2024-03-20
  * 
  * This file implements the shift-specific repository operations.
  * It extends the base repository and adds custom methods for shift management.
@@ -8,9 +8,11 @@
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { BaseRepository } from '../base/repository';
-import { DatabaseResult, QueryFilters, DatabaseRecord } from '../base/types';
+import { DatabaseResult, QueryFilters } from '../base/types';
 import { Shift } from '@/lib/schemas/base/shift';
-import { createTransactionManager } from '../base/transaction';
+import { ShiftRequirements, ShiftRequirementsInput } from '@/lib/schemas/base/shift-requirements';
+import { TransactionManager } from '../base/transaction';
+import { DatabaseError, ErrorCodes } from '../base/errors';
 
 /**
  * Shift-specific query filters
@@ -23,11 +25,21 @@ export interface ShiftFilters extends QueryFilters {
 }
 
 /**
+ * Extended shift type with requirements
+ */
+export interface ShiftWithRequirements extends Shift {
+  requirements: ShiftRequirements[];
+}
+
+/**
  * Shift repository implementation
  */
 export class ShiftRepository extends BaseRepository<Shift> {
+  private readonly transactionManager: TransactionManager;
+
   constructor(supabase: SupabaseClient) {
-    super(supabase, 'shifts');
+    super('shifts');
+    this.transactionManager = new TransactionManager(supabase);
   }
 
   /**
@@ -48,14 +60,17 @@ export class ShiftRepository extends BaseRepository<Shift> {
           query = query.lte('end_time', endTime);
         }
         if (duration) {
-          query = query.eq('duration', duration);
+          // Duration filter logic here
+          query = query.or(`end_time.diff.minutes.${duration},start_time.diff.minutes.${duration}`);
         }
         if (type) {
           query = query.eq('type', type);
         }
 
         // Apply base filters
-        if (baseFilters.limit) query = query.limit(baseFilters.limit);
+        if (baseFilters.limit) {
+          query = query.limit(baseFilters.limit);
+        }
         if (baseFilters.offset) {
           query = query.range(
             baseFilters.offset,
@@ -72,14 +87,31 @@ export class ShiftRepository extends BaseRepository<Shift> {
       const { data, error } = await query;
       if (error) throw error;
 
-      return { data: data || [], error: null };
+      return { data: data as Shift[], error: null };
     } catch (error) {
-      return this.handleError<Shift[]>(error);
+      if (error instanceof Error) {
+        return {
+          data: null,
+          error: new DatabaseError(
+            ErrorCodes.UNKNOWN,
+            error.message,
+            { originalError: error }
+          )
+        };
+      }
+      return {
+        data: null,
+        error: new DatabaseError(
+          ErrorCodes.UNKNOWN,
+          'An unknown error occurred',
+          { originalError: error }
+        )
+      };
     }
   }
 
   /**
-   * Check for shift overlaps
+   * Check for overlapping shifts
    */
   async checkOverlap(
     startTime: string,
@@ -90,7 +122,7 @@ export class ShiftRepository extends BaseRepository<Shift> {
       let query = this.supabase
         .from(this.tableName)
         .select('id')
-        .or(`start_time.lte.${endTime},end_time.gte.${startTime}`);
+        .or(`and(start_time.gte.${startTime},start_time.lt.${endTime}),and(end_time.gt.${startTime},end_time.lte.${endTime})`);
 
       if (excludeId) {
         query = query.neq('id', excludeId);
@@ -101,32 +133,66 @@ export class ShiftRepository extends BaseRepository<Shift> {
 
       return { data: data.length > 0, error: null };
     } catch (error) {
-      return this.handleError<boolean>(error);
+      if (error instanceof Error) {
+        return {
+          data: null,
+          error: new DatabaseError(
+            ErrorCodes.UNKNOWN,
+            error.message,
+            { originalError: error }
+          )
+        };
+      }
+      return {
+        data: null,
+        error: new DatabaseError(
+          ErrorCodes.UNKNOWN,
+          'An unknown error occurred',
+          { originalError: error }
+        )
+      };
     }
   }
 
   /**
-   * Get shifts with staffing requirements
+   * Get shift with its requirements
    */
-  async getShiftWithRequirements(id: string): Promise<DatabaseResult<Shift & { requirements: any[] }>> {
+  async getShiftWithRequirements(id: string): Promise<DatabaseResult<ShiftWithRequirements>> {
     try {
       const { data, error } = await this.supabase
         .from(this.tableName)
         .select(`
           *,
-          requirements:shift_requirements (*)
+          requirements:shift_requirements(*)
         `)
         .eq('id', id)
         .single();
 
       if (error) throw error;
-      if (!data) {
-        throw new Error(`Shift with id ${id} not found`);
-      }
 
-      return { data, error: null };
+      return { 
+        data: data as ShiftWithRequirements,
+        error: null 
+      };
     } catch (error) {
-      return this.handleError<Shift & { requirements: any[] }>(error);
+      if (error instanceof Error) {
+        return {
+          data: null,
+          error: new DatabaseError(
+            ErrorCodes.UNKNOWN,
+            error.message,
+            { originalError: error }
+          )
+        };
+      }
+      return {
+        data: null,
+        error: new DatabaseError(
+          ErrorCodes.UNKNOWN,
+          'An unknown error occurred',
+          { originalError: error }
+        )
+      };
     }
   }
 
@@ -135,30 +201,48 @@ export class ShiftRepository extends BaseRepository<Shift> {
    */
   async updateRequirements(
     id: string,
-    requirements: { min_staff: number; supervisor_required: boolean }
-  ): Promise<DatabaseResult<Shift>> {
-    const transactionManager = createTransactionManager(this.supabase);
-
-    try {
-      return await transactionManager.transaction(async () => {
-        // Update shift requirements
-        const { error: requirementsError } = await this.supabase
+    requirements: ShiftRequirementsInput
+  ): Promise<DatabaseResult<ShiftWithRequirements>> {
+    return this.transactionManager.transaction(async (supabase: SupabaseClient) => {
+      try {
+        // Update or create requirements
+        const { data: requirementsData, error: requirementsError } = await supabase
           .from('shift_requirements')
           .upsert({
-            shift_id: id,
             ...requirements,
-          });
+            shift_id: id,
+            updated_at: new Date().toISOString(),
+          })
+          .select()
+          .single();
 
         if (requirementsError) throw requirementsError;
 
         // Get updated shift with requirements
-        const { data, error } = await this.getShiftWithRequirements(id);
-        if (error) throw error;
+        const result = await this.getShiftWithRequirements(id);
+        if (result.error) throw result.error;
 
-        return { data, error: null };
-      });
-    } catch (error) {
-      return this.handleError<Shift>(error);
-    }
+        return result;
+      } catch (error) {
+        if (error instanceof Error) {
+          return {
+            data: null,
+            error: new DatabaseError(
+              ErrorCodes.UNKNOWN,
+              error.message,
+              { originalError: error }
+            )
+          };
+        }
+        return {
+          data: null,
+          error: new DatabaseError(
+            ErrorCodes.UNKNOWN,
+            'An unknown error occurred',
+            { originalError: error }
+          )
+        };
+      }
+    });
   }
 } 

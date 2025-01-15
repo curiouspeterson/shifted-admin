@@ -1,53 +1,64 @@
 /**
  * Toast Utility
- * Last updated: January 15, 2024
+ * Last Updated: 2024-03-20
  * 
- * This module provides a centralized way to show toast notifications
- * using the sonner library. It includes pre-configured toast types
- * for common scenarios in our application.
+ * Type-safe toast notifications following modern React patterns.
  */
 
-import { toast } from 'sonner';
+import { toast as showToast } from '@/components/ui/toast'
 
-// Re-export the toast function for direct use
-export { toast };
+type ToastVariant = 'default' | 'destructive'
 
-// Custom toast functions for common scenarios
-export const showError = (message: string) => {
-  toast.error(message);
-};
+interface ToastOptions {
+  title: string
+  description?: string
+  variant?: ToastVariant
+  duration?: number
+}
 
-export const showSuccess = (message: string) => {
-  toast.success(message);
-};
+/**
+ * Show a toast notification with type safety
+ */
+export function toast(options: ToastOptions) {
+  return showToast({
+    ...options,
+    variant: options.variant || 'default',
+    duration: options.duration || 5000
+  })
+}
 
-export const showInfo = (message: string) => {
-  toast.info(message);
-};
-
-// Offline-specific toasts
-export const showOfflineToast = () => {
-  toast.error('You are currently offline');
-};
-
-export const showOnlineToast = () => {
-  toast.success('Back online');
-};
-
-// Sync-specific toasts
-export const showSyncError = (message: string) => {
-  toast.error(`Sync failed: ${message}`);
-};
-
-export const showSyncSuccess = () => {
-  toast.success('Sync completed successfully');
-};
-
-// Cache-specific toasts
-export const showCacheError = (message: string) => {
-  toast.error(`Cache error: ${message}`);
-};
-
-export const showStaleDataToast = () => {
-  toast.info('You are viewing cached data');
-}; 
+/**
+ * Predefined toast messages for consistent messaging
+ */
+export const toastMessages = {
+  offline: {
+    title: 'Offline',
+    description: 'No internet connection available',
+    variant: 'destructive' as const
+  },
+  online: {
+    title: 'Connected',
+    description: 'You are back online',
+    variant: 'default' as const
+  },
+  syncError: {
+    title: 'Sync Failed',
+    description: 'Could not sync with server',
+    variant: 'destructive' as const
+  },
+  syncSuccess: {
+    title: 'Synced',
+    description: 'Your data is up to date',
+    variant: 'default' as const
+  },
+  saveError: {
+    title: 'Error',
+    description: 'Failed to save changes',
+    variant: 'destructive' as const
+  },
+  saveSuccess: {
+    title: 'Changes Saved',
+    description: 'Your changes have been saved',
+    variant: 'default' as const
+  }
+} as const 

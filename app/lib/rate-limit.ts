@@ -1,17 +1,15 @@
 /**
  * Rate Limiting Utility
- * Last Updated: 2024-03
+ * Last Updated: 2024-03-20
  * 
- * Implements rate limiting using Supabase Redis FDW.
- * Features:
- * - Supabase Redis integration
- * - Auth-specific rate limits
- * - Performance monitoring
- * - Connection pooling
+ * Implements rate limiting using an in-memory store.
+ * Note: This is a simple implementation for development.
+ * For production, use a distributed rate limiter (e.g., Redis).
  */
 
-import { createClient } from '@supabase/supabase-js';
 import { errorLogger } from '@/lib/logging/error-logger';
+import { createRateLimitError, createError } from '@/lib/errors/middleware-errors';
+import { measurePerformance, type PerformanceMetrics } from '@/lib/utils/performance';
 
 interface RateLimitConfig {
   windowSize: number;  // in seconds
@@ -19,14 +17,14 @@ interface RateLimitConfig {
   burstSize?: number;
 }
 
-interface RateLimitResult {
+export interface RateLimitResult {
   success: boolean;
   limit: number;
   remaining: number;
   reset: number;
   analytics?: {
     routeType: string;
-    timestamp: number;
+    timestamp: string;
     identifier: string;
     performance?: {
       latency: number;
@@ -35,95 +33,161 @@ interface RateLimitResult {
   };
 }
 
-// Rate limit configurations aligned with Supabase's defaults
+// Rate limit configurations
 const RATE_LIMITS: Record<string, RateLimitConfig> = {
   // Auth endpoints
-  'auth:email': { windowSize: 3600, maxRequests: 2 },  // 2 emails per hour
-  'auth:otp': { windowSize: 3600, maxRequests: 30 },   // 30 OTPs per hour
-  'auth:verify': { windowSize: 3600, maxRequests: 360, burstSize: 30 }, // 360/hr with bursts
-  'auth:token': { windowSize: 3600, maxRequests: 1800, burstSize: 30 }, // 1800/hr with bursts
-  'auth:mfa': { windowSize: 3600, maxRequests: 15, burstSize: 5 },     // 15/hr with bursts
+  auth: { windowSize: 60, maxRequests: 30 },  // 30 requests per minute
   
   // API endpoints
-  'api': { windowSize: 60, maxRequests: 1000, burstSize: 50 },  // 1000/minute with bursts
+  api: { windowSize: 60, maxRequests: 100 },  // 100 requests per minute
   
   // Default for other routes
-  'default': { windowSize: 60, maxRequests: 2000, burstSize: 100 }, // 2000/minute with bursts
+  default: { windowSize: 60, maxRequests: 200 }, // 200 requests per minute
+  
+  // Public routes
+  public: { windowSize: 60, maxRequests: 300 }, // 300 requests per minute
+  
+  // Protected routes
+  protected: { windowSize: 60, maxRequests: 150 }, // 150 requests per minute
 };
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// In-memory store for rate limits
+const rateStore = new Map<string, { count: number; expires: number }>();
+
+// Clean up expired entries every minute
+setInterval(() => {
+  const now = Date.now() / 1000;
+  Array.from(rateStore.entries()).forEach(([key, value]) => {
+    if (value.expires <= now) {
+      rateStore.delete(key);
+    }
+  });
+}, 60 * 1000);
 
 /**
- * Rate limit implementation using Supabase Redis
+ * Format error for logging
+ */
+function formatError(error: unknown) {
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      cause: error.cause instanceof Error ? {
+        name: error.cause.name,
+        message: error.cause.message,
+        stack: error.cause.stack
+      } : undefined
+    }
+  }
+  return {
+    name: 'UnknownError',
+    message: String(error)
+  }
+}
+
+/**
+ * Check rate limit for a request
  */
 export async function rateLimit(
   identifier: string,
-  routeType: keyof typeof RATE_LIMITS = 'default'
+  routeType: keyof typeof RATE_LIMITS | string
 ): Promise<RateLimitResult> {
-  const startTime = performance.now();
+  const startTime = Date.now();
+  const config = RATE_LIMITS[routeType] || RATE_LIMITS.default;
+  const now = Math.floor(Date.now() / 1000);
+  const key = `${identifier}:${routeType}`;
   
   try {
-    const config = RATE_LIMITS[routeType] || RATE_LIMITS.default;
-    const { windowSize, maxRequests, burstSize = maxRequests } = config;
+    // Get current state
+    const current = rateStore.get(key);
+    const windowExpires = now + config.windowSize;
     
-    const now = Math.floor(Date.now() / 1000);
-    const windowKey = `ratelimit:${identifier}:${Math.floor(now / windowSize)}`;
-    
-    // Use Supabase's Redis FDW for atomic operations
-    const { data, error } = await supabase.rpc('increment_rate_limit', {
-      key: windowKey,
-      max_requests: maxRequests,
-      burst_size: burstSize,
-      window_size: windowSize
-    });
-    
-    if (error) throw error;
-    
-    const { count, expires_at } = data;
-    const remaining = Math.max(0, maxRequests - count);
-    
-    // Calculate performance metrics
-    const latency = performance.now() - startTime;
-    
-    // Track analytics
-    const analytics = {
-      routeType,
-      timestamp: now,
-      identifier,
-      performance: {
-        latency,
-        cacheHit: latency < 10, // Consider it a cache hit if latency is under 10ms
-      },
-    };
-    
-    // Log performance metrics if they exceed thresholds
-    if (latency > 100) {
-      errorLogger.warn('High rate limit latency', {
-        latency,
-        routeType,
-        identifier,
+    if (!current || current.expires <= now) {
+      // First request in window
+      rateStore.set(key, {
+        count: 1,
+        expires: windowExpires
       });
+      
+      return {
+        success: true,
+        limit: config.maxRequests,
+        remaining: config.maxRequests - 1,
+        reset: windowExpires,
+        analytics: {
+          routeType,
+          timestamp: new Date().toISOString(),
+          identifier,
+          performance: {
+            latency: Date.now() - startTime,
+            cacheHit: false
+          }
+        }
+      };
     }
     
-    return {
-      success: count <= maxRequests,
-      limit: maxRequests,
-      remaining,
-      reset: expires_at,
-      analytics,
-    };
-  } catch (error) {
-    errorLogger.error('Rate limit error:', { error, identifier, routeType });
-    // Fail open - allow request in case of rate limit errors
+    // Check if limit exceeded
+    if (current.count >= config.maxRequests) {
+      return {
+        success: false,
+        limit: config.maxRequests,
+        remaining: 0,
+        reset: current.expires,
+        analytics: {
+          routeType,
+          timestamp: new Date().toISOString(),
+          identifier,
+          performance: {
+            latency: Date.now() - startTime,
+            cacheHit: true
+          }
+        }
+      };
+    }
+    
+    // Increment counter
+    current.count++;
+    rateStore.set(key, current);
+    
     return {
       success: true,
-      limit: RATE_LIMITS.default.maxRequests,
-      remaining: 1,
-      reset: Math.floor(Date.now() / 1000) + RATE_LIMITS.default.windowSize,
+      limit: config.maxRequests,
+      remaining: config.maxRequests - current.count,
+      reset: current.expires,
+      analytics: {
+        routeType,
+        timestamp: new Date().toISOString(),
+        identifier,
+        performance: {
+          latency: Date.now() - startTime,
+          cacheHit: true
+        }
+      }
+    };
+  } catch (err) {
+    errorLogger.error('Rate limit check failed', {
+      error: formatError(err),
+      identifier,
+      routeType,
+      duration: Date.now() - startTime
+    });
+    
+    // Fail open if rate limiting fails
+    return {
+      success: true,
+      limit: config.maxRequests,
+      remaining: config.maxRequests,
+      reset: now + config.windowSize,
+      analytics: {
+        routeType,
+        timestamp: new Date().toISOString(),
+        identifier,
+        performance: {
+          latency: Date.now() - startTime,
+          cacheHit: false
+        }
+      }
     };
   }
 } 
