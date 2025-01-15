@@ -3,6 +3,47 @@
 // This file sets up Sentry SDK for Next.js
 const { withSentryConfig } = require('@sentry/nextjs');
 
+const withPWA = require('@ducanh2912/next-pwa').default({
+  dest: 'public',
+  register: true,
+  skipWaiting: true,
+  disable: process.env.NODE_ENV === 'development',
+  reloadOnOnline: true,
+  fallbacks: {
+    document: '/offline',
+  },
+  workboxOptions: {
+    runtimeCaching: [
+      {
+        urlPattern: /^https:\/\/api\./i,
+        handler: 'NetworkFirst',
+        options: {
+          cacheName: 'api-cache',
+          networkTimeoutSeconds: 10,
+          expiration: {
+            maxEntries: 50,
+            maxAgeSeconds: 60 * 60 * 24, // 24 hours
+          },
+          cacheableResponse: {
+            statuses: [0, 200],
+          },
+        },
+      },
+      {
+        urlPattern: /\/_next\/image\?url/i,
+        handler: 'StaleWhileRevalidate',
+        options: {
+          cacheName: 'image-cache',
+          expiration: {
+            maxEntries: 64,
+            maxAgeSeconds: 24 * 60 * 60, // 24 hours
+          },
+        },
+      },
+    ],
+  },
+});
+
 const nextConfig = {
   env: {
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -104,10 +145,10 @@ const sentryWebpackPluginOptions = {
 };
 
 // Make sure adding Sentry options is the last code to run before exporting
-module.exports = withSentryConfig(
+module.exports = withPWA(withSentryConfig(
   nextConfig,
   sentryWebpackPluginOptions
-); 
+)); 
 
 // Injected content via Sentry wizard below
 
