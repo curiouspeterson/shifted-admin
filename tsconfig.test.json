@@ -1,17 +1,23 @@
+/**
+ * TypeScript Test Configuration
+ * Last Updated: 2024-01-15
+ */
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": ["jest", "node"],
-    "isolatedModules": false,
+    "jsx": "react-jsx",
+    "types": ["jest", "@testing-library/jest-dom", "node"],
+    "isolatedModules": true,
     "esModuleInterop": true
   },
   "include": [
-    "app/**/*.ts",
-    "app/**/*.tsx",
+    "app/**/*.test.ts",
+    "app/**/*.test.tsx",
+    "app/**/*.spec.ts",
+    "app/**/*.spec.tsx",
     "app/**/__tests__/**/*.ts",
-    "app/**/__tests__/**/*.tsx"
-  ],
-  "exclude": [
-    "node_modules"
+    "app/**/__tests__/**/*.tsx",
+    "jest.setup.js",
+    "jest.config.js"
   ]
 } 

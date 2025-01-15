@@ -1,53 +1,55 @@
 /**
  * Jest Configuration
- * Last updated: January 15, 2024
+ * Last Updated: 2024-01-15
  */
 
-const nextJest = require('next/jest');
+const nextJest = require('next/jest')
 
 const createJestConfig = nextJest({
+  // Provide the path to your Next.js app to load next.config.js and .env files in your test environment
   dir: './',
-});
+})
 
+// Add any custom config to be passed to Jest
 const customJestConfig = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   testEnvironment: 'jest-environment-jsdom',
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/app/$1',
-    '^@/components/(.*)$': '<rootDir>/app/components/$1',
-    '^@/lib/(.*)$': '<rootDir>/app/lib/$1',
-    '^@/hooks/(.*)$': '<rootDir>/app/hooks/$1',
-    '^@/utils/(.*)$': '<rootDir>/app/lib/utils/$1',
-    '^@/types/(.*)$': '<rootDir>/app/lib/types/$1',
-    '^@/schemas/(.*)$': '<rootDir>/app/lib/schemas/$1',
-    '^@/styles/(.*)$': '<rootDir>/app/styles/$1',
-    '^@/public/(.*)$': '<rootDir>/public/$1'
   },
   testMatch: [
-    '<rootDir>/app/**/*.test.{ts,tsx}',
-    '<rootDir>/app/**/*.spec.{ts,tsx}'
+    '<rootDir>/app/**/__tests__/**/*.{js,jsx,ts,tsx}',
+    '<rootDir>/app/**/*.{spec,test}.{js,jsx,ts,tsx}'
   ],
   collectCoverageFrom: [
-    'app/**/*.{ts,tsx}',
+    'app/**/*.{js,jsx,ts,tsx}',
     '!app/**/*.d.ts',
-    '!app/**/*.stories.{ts,tsx}',
-    '!app/**/_*.{ts,tsx}',
-    '!app/**/page.tsx',
-    '!app/**/layout.tsx',
-    '!app/api/**/*'
+    '!app/**/_*.{js,jsx,ts,tsx}',
+    '!app/**/*.stories.{js,jsx,ts,tsx}',
+    '!app/api/**/*.{js,jsx,ts,tsx}',
   ],
   coverageThreshold: {
     global: {
-      branches: 70,
-      functions: 70,
-      lines: 70,
-      statements: 70
-    }
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80,
+    },
   },
-  modulePathIgnorePatterns: [
-    '<rootDir>/.next/',
-    '<rootDir>/node_modules/'
-  ]
-};
+  transform: {
+    '^.+\\.(t|j)sx?$': ['@swc/jest'],
+  },
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json', 'node'],
+  watchPlugins: [
+    'jest-watch-typeahead/filename',
+    'jest-watch-typeahead/testname',
+  ],
+  globals: {
+    'ts-jest': {
+      tsconfig: '<rootDir>/tsconfig.test.json',
+    },
+  },
+}
 
-module.exports = createJestConfig(customJestConfig); 
+// createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
+module.exports = createJestConfig(customJestConfig) 
