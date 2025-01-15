@@ -1,11 +1,17 @@
+'use client';
+
 /**
  * Skeleton Component
- * Last Updated: 2024
+ * Last Updated: 2024-03
  * 
  * A reusable skeleton component for loading states.
- * Based on shadcn/ui's skeleton component with custom styling.
+ * Features:
+ * - Animated pulse effect
+ * - Custom styling
+ * - Accessibility support
  */
 
+import * as React from 'react';
 import { cn } from '@/lib/utils';
 
 function Skeleton({

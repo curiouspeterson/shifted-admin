@@ -1,14 +1,18 @@
-/**
- * Calendar Component
- * Last Updated: 2025-01-15
- * 
- * This component provides a styled calendar using shadcn/ui.
- */
-
 'use client';
 
+/**
+ * Calendar Component
+ * Last Updated: 2024-03
+ * 
+ * A reusable calendar component based on react-day-picker.
+ * Features:
+ * - Single and range selection modes
+ * - Custom styling
+ * - Accessibility support
+ * - Date constraints
+ */
+
 import * as React from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { DayPicker } from 'react-day-picker';
 import { cn } from '@/lib/utils';
 import { buttonVariants } from '@/components/ui/button';

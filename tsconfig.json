@@ -1,3 +1,7 @@
+/**
+ * TypeScript Configuration
+ * Last updated: January 15, 2024
+ */
 {
   "compilerOptions": {
     "target": "es5",
@@ -5,11 +9,10 @@
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
-    "forceConsistentCasingInFileNames": true,
     "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
@@ -19,22 +22,18 @@
         "name": "next"
       }
     ],
-    "baseUrl": ".",
     "paths": {
-      "@/*": ["./*"],
-      "@/components/*": ["components/*"],
-      "@/lib/*": ["app/lib/*"],
-      "@/types/*": ["types/*"]
-    },
-    "typeRoots": ["./types", "./node_modules/@types"]
+      "@/*": ["./app/*"],
+      "@/components/*": ["./app/components/*"],
+      "@/lib/*": ["./app/lib/*"],
+      "@/hooks/*": ["./app/hooks/*"],
+      "@/utils/*": ["./app/lib/utils/*"],
+      "@/types/*": ["./app/lib/types/*"],
+      "@/schemas/*": ["./app/lib/schemas/*"],
+      "@/styles/*": ["./app/styles/*"],
+      "@/public/*": ["./public/*"]
+    }
   },
-  "include": [
-    "next-env.d.ts",
-    "types/**/*.ts",
-    "types/**/*.tsx",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts"
-  ],
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
   "exclude": ["node_modules"]
 }

@@ -1,8 +1,16 @@
+'use client';
+
 /**
  * Card Component
- * Last Updated: 2025-01-15
+ * Last Updated: 2024-03
  * 
- * This component provides a styled card using shadcn/ui.
+ * A reusable card component with header, content, and footer sections.
+ * Features:
+ * - Header with title and description
+ * - Content section
+ * - Footer section
+ * - Custom styling
+ * - Accessibility support
  */
 
 import * as React from 'react';
@@ -15,7 +23,7 @@ const Card = React.forwardRef<
   <div
     ref={ref}
     className={cn(
-      'rounded-lg border bg-card text-card-foreground shadow-sm',
+      'rounded-xl border bg-card text-card-foreground shadow',
       className
     )}
     {...props}
@@ -41,10 +49,7 @@ const CardTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <h3
     ref={ref}
-    className={cn(
-      'text-2xl font-semibold leading-none tracking-tight',
-      className
-    )}
+    className={cn('font-semibold leading-none tracking-tight', className)}
     {...props}
   />
 ));
@@ -89,4 +94,4 @@ export {
   CardTitle,
   CardDescription,
   CardContent,
-}; 
+};

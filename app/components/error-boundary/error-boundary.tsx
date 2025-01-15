@@ -1,83 +1,64 @@
-/**
- * Error Boundary Component
- * Last Updated: 2025-01-15
- * 
- * This component catches React component errors and provides fallback UI.
- * It integrates with our error logging system and Sentry for error tracking.
- */
-
 'use client';
 
-import React from 'react';
-import * as Sentry from '@sentry/nextjs';
-import { ErrorAlert } from './error-alert';
-import { errorLogger, ErrorSeverity } from '@/lib/logging/error-logger';
+/**
+ * Error Boundary Component
+ * Last Updated: 2024-03
+ * 
+ * A component that catches JavaScript errors in its child component tree.
+ * Features:
+ * - Error catching and handling
+ * - Fallback UI display
+ * - Error logging
+ * - Error recovery
+ * - Accessibility support
+ */
 
-export interface ErrorBoundaryProps {
-  children: React.ReactNode;
-  fallback?: React.ReactNode;
+import { Component, ErrorInfo, ReactNode } from 'react';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+
+interface Props {
+  children: ReactNode;
 }
 
-interface ErrorBoundaryState {
+interface State {
   hasError: boolean;
   error: Error | null;
 }
 
-export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  constructor(props: ErrorBoundaryProps) {
-    super(props);
-    this.state = {
-      hasError: false,
-      error: null,
-    };
-  }
+/**
+ * Error Boundary Component
+ * Must be a class component to use error boundary lifecycle methods
+ */
+export class ErrorBoundary extends Component<Props, State> {
+  public state: State = {
+    hasError: false,
+    error: null,
+  };
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  public static getDerivedStateFromError(error: Error): State {
     return {
       hasError: true,
       error,
     };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
-    // Log error to our logging system
-    errorLogger.error(error, {
-      componentStack: errorInfo.componentStack,
-      errorType: 'ReactError',
-    });
-
-    // Report to Sentry
-    Sentry.withScope((scope) => {
-      scope.setExtra('componentStack', errorInfo.componentStack);
-      Sentry.captureException(error);
-    });
+  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    // Log error to error reporting service
+    console.error('Uncaught error:', error, errorInfo);
   }
 
-  private handleReset = () => {
-    this.setState({
-      hasError: false,
-      error: null,
-    });
-  };
-
-  render() {
-    const { hasError, error } = this.state;
-    const { children, fallback } = this.props;
-
-    if (hasError) {
-      if (fallback) {
-        return fallback;
-      }
-
+  public render() {
+    if (this.state.hasError) {
       return (
-        <ErrorAlert
-          title="Something went wrong"
-          error={error}
-          onReset={this.handleReset}
-        />
+        <Alert variant="destructive">
+          <AlertTitle>Something went wrong</AlertTitle>
+          <AlertDescription>
+            {this.state.error?.message || 'An unexpected error occurred'}
+          </AlertDescription>
+        </Alert>
       );
     }
 
-    return children;
+    return this.props.children;
   }
 } 

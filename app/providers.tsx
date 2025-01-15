@@ -1,57 +1,58 @@
 /**
  * Application Providers Component
- * Last Updated: 2024
+ * Last Updated: January 15, 2024
  * 
- * Wraps the application with necessary context providers for UI theming,
- * component styling, and application state management. This component
- * serves as the root provider for all global contexts.
- * 
- * Features:
- * - NextUI component library provider
- * - Theme management with system preference detection
- * - Global application context for employee data
- * - Client-side only functionality
+ * Wraps the application with necessary context providers for:
+ * - Theme management (next-themes)
+ * - Query management (TanStack Query)
+ * - Network status
+ * - Service worker registration
  */
 
-'use client'
+'use client';
 
-import { NextUIProvider } from "@nextui-org/react"
-import { ThemeProvider } from "next-themes"
-import { AppProvider } from "./lib/context/app-context"
+import { ThemeProvider } from 'next-themes';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useNetworkStatus } from '@/hooks/use-network';
+import { useServiceWorker } from '@/hooks/use-service-worker';
 
-/**
- * Props for the Providers component
- * @property children - Child components to be wrapped by providers
- * @property employee - Optional employee data for the app context
- */
-interface ProvidersProps {
-  children: React.ReactNode
-  employee?: any
-}
+export default function Providers({ children }: { children: React.ReactNode }) {
+  // Initialize query client with settings optimized for offline-first
+  const [queryClient] = useState(() => new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: 1000 * 60 * 5, // 5 minutes
+        cacheTime: 1000 * 60 * 60 * 24, // 24 hours
+        retry: 3,
+        retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
+        networkMode: 'offlineFirst',
+      },
+      mutations: {
+        networkMode: 'offlineFirst',
+      },
+    },
+  }));
 
-/**
- * Root Providers Component
- * Wraps the application with all necessary context providers
- * Manages UI theming, styling, and global state
- * 
- * @param props - Component properties
- * @returns Provider-wrapped application content
- */
-export default function Providers({
-  children,
-  employee
-}: ProvidersProps) {
+  // Initialize network status monitoring
+  useNetworkStatus();
+
+  // Initialize service worker
+  useServiceWorker({
+    onSuccess: () => console.info('Service worker registered successfully'),
+    onUpdate: () => console.info('Service worker update available'),
+  });
+
   return (
-    <NextUIProvider>
-      <ThemeProvider
-        attribute="class"
-        defaultTheme="system"
-        enableSystem
-      >
-        <AppProvider employee={employee}>
-          {children}
-        </AppProvider>
-      </ThemeProvider>
-    </NextUIProvider>
-  )
+    <ThemeProvider
+      attribute="class"
+      defaultTheme="system"
+      enableSystem
+      disableTransitionOnChange
+    >
+      <QueryClientProvider client={queryClient}>
+        {children}
+      </QueryClientProvider>
+    </ThemeProvider>
+  );
 } 

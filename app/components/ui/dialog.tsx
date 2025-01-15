@@ -1,12 +1,18 @@
+'use client';
+
 /**
  * Dialog Component
- * Last Updated: 2024
+ * Last Updated: 2024-03
  * 
  * A reusable dialog component for modals and popups.
- * Based on shadcn/ui's dialog component with custom styling.
+ * Features:
+ * - Modal dialogs
+ * - Accessible overlay
+ * - Keyboard navigation
+ * - Focus management
+ * - Animated transitions
+ * - Header and footer sections
  */
-
-'use client';
 
 import * as React from 'react';
 import * as DialogPrimitive from '@radix-ui/react-dialog';

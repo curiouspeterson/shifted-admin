@@ -1,124 +1,53 @@
-import { toast as sonnerToast } from 'sonner';
-
-interface ToastOptions {
-  title: string;
-  description?: string;
-  variant?: 'default' | 'destructive';
-  duration?: number;
-}
-
 /**
- * Utility function for showing toast notifications
+ * Toast Utility
+ * Last updated: January 15, 2024
+ * 
+ * This module provides a centralized way to show toast notifications
+ * using the sonner library. It includes pre-configured toast types
+ * for common scenarios in our application.
  */
-export function toast({
-  title,
-  description,
-  variant = 'default',
-  duration = 5000,
-}: ToastOptions) {
-  const toastFn = variant === 'destructive' ? sonnerToast.error : sonnerToast;
 
-  toastFn(title, {
-    description,
-    duration,
-  });
-}
+import { toast } from 'sonner';
 
-/**
- * Show a success toast
- */
-export function showSuccess(title: string, description?: string) {
-  toast({
-    title,
-    description,
-    variant: 'default',
-  });
-}
+// Re-export the toast function for direct use
+export { toast };
 
-/**
- * Show an error toast
- */
-export function showError(title: string, description?: string) {
-  toast({
-    title,
-    description,
-    variant: 'destructive',
-  });
-}
+// Custom toast functions for common scenarios
+export const showError = (message: string) => {
+  toast.error(message);
+};
 
-/**
- * Show a network error toast
- */
-export function showNetworkError(error: Error) {
-  toast({
-    title: 'Network Error',
-    description: error.message || 'Failed to connect to the server.',
-    variant: 'destructive',
-  });
-}
+export const showSuccess = (message: string) => {
+  toast.success(message);
+};
 
-/**
- * Show an offline toast
- */
-export function showOffline() {
-  toast({
-    title: 'You\'re Offline',
-    description: 'Some features may be unavailable until you\'re back online.',
-    variant: 'destructive',
-  });
-}
+export const showInfo = (message: string) => {
+  toast.info(message);
+};
 
-/**
- * Show a back online toast
- */
-export function showOnline() {
-  toast({
-    title: 'Back Online',
-    description: 'Your connection has been restored.',
-    variant: 'default',
-  });
-}
+// Offline-specific toasts
+export const showOfflineToast = () => {
+  toast.error('You are currently offline');
+};
 
-/**
- * Show a sync error toast
- */
-export function showSyncError() {
-  toast({
-    title: 'Sync Error',
-    description: 'Failed to synchronize your changes. They will be retried later.',
-    variant: 'destructive',
-  });
-}
+export const showOnlineToast = () => {
+  toast.success('Back online');
+};
 
-/**
- * Show a sync success toast
- */
-export function showSyncSuccess() {
-  toast({
-    title: 'Sync Complete',
-    description: 'All changes have been synchronized.',
-    variant: 'default',
-  });
-}
+// Sync-specific toasts
+export const showSyncError = (message: string) => {
+  toast.error(`Sync failed: ${message}`);
+};
 
-/**
- * Show a cache error toast
- */
-export function showCacheError() {
-  toast({
-    title: 'Cache Error',
-    description: 'Failed to access offline storage.',
-    variant: 'destructive',
-  });
-}
+export const showSyncSuccess = () => {
+  toast.success('Sync completed successfully');
+};
 
-/**
- * Show a stale data toast
- */
-export function showStaleData() {
-  toast({
-    title: 'Using Cached Data',
-    description: 'You\'re viewing an older version of this content.',
-    variant: 'destructive',
-  });
-} 
+// Cache-specific toasts
+export const showCacheError = (message: string) => {
+  toast.error(`Cache error: ${message}`);
+};
+
+export const showStaleDataToast = () => {
+  toast.info('You are viewing cached data');
+}; 

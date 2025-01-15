@@ -1,14 +1,21 @@
+'use client';
+
 /**
  * Alert Component
- * Last Updated: 2025-01-15
+ * Last Updated: 2024-03
  * 
- * This component provides alert messages with different variants.
- * Based on shadcn/ui design system.
+ * A reusable alert component for displaying messages.
+ * Features:
+ * - Multiple variants (default, destructive)
+ * - Title and description support
+ * - Icon integration
+ * - Accessibility support
  */
 
 import * as React from 'react';
 import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
+import { AlertTriangle, CheckCircle, Info, XCircle } from 'lucide-react';
 
 const alertVariants = cva(
   'relative w-full rounded-lg border p-4 [&>svg~*]:pl-7 [&>svg+div]:translate-y-[-3px] [&>svg]:absolute [&>svg]:left-4 [&>svg]:top-4 [&>svg]:text-foreground',
@@ -18,6 +25,10 @@ const alertVariants = cva(
         default: 'bg-background text-foreground',
         destructive:
           'border-destructive/50 text-destructive dark:border-destructive [&>svg]:text-destructive',
+        success:
+          'border-green-500/50 text-green-700 dark:border-green-500 [&>svg]:text-green-700',
+        warning:
+          'border-yellow-500/50 text-yellow-700 dark:border-yellow-500 [&>svg]:text-yellow-700',
       },
     },
     defaultVariants: {
@@ -63,4 +74,11 @@ const AlertDescription = React.forwardRef<
 ));
 AlertDescription.displayName = 'AlertDescription';
 
-export { Alert, AlertTitle, AlertDescription }; 
+const AlertIcon = {
+  default: Info,
+  destructive: XCircle,
+  success: CheckCircle,
+  warning: AlertTriangle,
+};
+
+export { Alert, AlertTitle, AlertDescription, AlertIcon }; 

@@ -51,11 +51,8 @@ function classifyRoute(path: string) {
 export async function middleware(request: NextRequest) {
   // Set up request headers for the middleware chain
   const requestHeaders = new Headers(request.headers);
-  const res = NextResponse.next({
-    request: {
-      headers: requestHeaders,
-    },
-  });
+  const res = NextResponse.next();
+  res.headers.set('x-middleware-cache', 'no-cache');
 
   try {
     // Initialize Supabase client with cookie handling
@@ -132,11 +129,10 @@ export const config = {
     '/settings/:path*',
     '/profile/:path*',
     
-    // API routes (except docs)
+    // API routes (excluding docs)
     '/api/:path*',
-    '!/api/docs/:path*',
     
-    // Dynamic routes
-    '/((?!_next/static|_next/image|favicon.ico|public/|api/docs/).*)',
+    // Dynamic routes (excluding static files and API docs)
+    '/((?!_next/static|_next/image|favicon.ico|public|api/docs).*)'
   ],
 }; 

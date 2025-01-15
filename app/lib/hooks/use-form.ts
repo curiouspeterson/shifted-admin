@@ -34,7 +34,9 @@ export const useForm = <TFormValues extends FieldValues>({
   onSubmit,
   onError,
   ...formConfig
-}: UseFormConfig<TFormValues>): UseFormReturn<TFormValues> => {
+}: UseFormConfig<TFormValues>): Omit<UseFormReturn<TFormValues>, 'handleSubmit'> & {
+  handleSubmit: (e?: React.BaseSyntheticEvent) => Promise<void>;
+} => {
   // Initialize form with zod resolver
   const form = useHookForm<TFormValues>({
     ...formConfig,
@@ -59,8 +61,10 @@ export const useForm = <TFormValues extends FieldValues>({
   );
 
   // Override the submit handler
-  const originalHandleSubmit = form.handleSubmit;
-  form.handleSubmit = (onValid = handleSubmit, onInvalid = onError) => originalHandleSubmit(onValid, onInvalid);
+  const submit = form.handleSubmit(handleSubmit, onError);
 
-  return form;
+  return {
+    ...form,
+    handleSubmit: submit,
+  };
 }; 

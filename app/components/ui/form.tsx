@@ -1,9 +1,16 @@
+'use client';
+
 /**
- * Form Component
- * Last Updated: 2024
+ * Form Components
+ * Last Updated: 2024-03
  * 
- * A reusable form component with validation and error handling.
- * Based on shadcn/ui's form component with custom styling.
+ * A collection of form-specific components that work with our form hook.
+ * Features:
+ * - Form context provider
+ * - Field components with validation
+ * - Error message display
+ * - Label integration
+ * - Accessibility support
  */
 
 import * as React from 'react';
@@ -17,8 +24,9 @@ import {
   FormProvider,
   useFormContext,
 } from 'react-hook-form';
+
 import { cn } from '@/lib/utils';
-import { Label } from './label';
+import { Label } from '@/components/ui/label';
 
 const Form = FormProvider;
 
@@ -92,14 +100,13 @@ const FormItem = React.forwardRef<
 FormItem.displayName = 'FormItem';
 
 const FormLabel = React.forwardRef<
-  React.ElementRef<typeof LabelPrimitive.Root>,
-  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root>
+  HTMLLabelElement,
+  React.ComponentPropsWithoutRef<typeof Label>
 >(({ className, ...props }, ref) => {
   const { error, formItemId } = useFormField();
 
   return (
     <Label
-      ref={ref}
       className={cn(error && 'text-destructive', className)}
       htmlFor={formItemId}
       {...props}
@@ -140,7 +147,7 @@ const FormDescription = React.forwardRef<
     <p
       ref={ref}
       id={formDescriptionId}
-      className={cn('text-[0.8rem] text-muted-foreground', className)}
+      className={cn('text-sm text-muted-foreground', className)}
       {...props}
     />
   );
@@ -162,7 +169,7 @@ const FormMessage = React.forwardRef<
     <p
       ref={ref}
       id={formMessageId}
-      className={cn('text-[0.8rem] font-medium text-destructive', className)}
+      className={cn('text-sm font-medium text-destructive', className)}
       {...props}
     >
       {body}

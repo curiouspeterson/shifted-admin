@@ -19,7 +19,6 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import type { Database } from '@/app/lib/supabase/database.types'
 import { createMiddlewareCookieHandler } from '@/app/lib/supabase/cookies'
-import { handleAuthError } from '@/app/lib/errors'
 
 /**
  * GET /auth/callback

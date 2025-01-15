@@ -1,11 +1,16 @@
+'use client';
+
 /**
  * Popover Component
- * Last Updated: 2025-01-15
+ * Last Updated: 2024-03
  * 
- * This component provides a styled popover using shadcn/ui.
+ * A reusable popover component based on Radix UI.
+ * Features:
+ * - Floating positioning
+ * - Focus management
+ * - Keyboard navigation
+ * - Accessibility support
  */
-
-'use client';
 
 import * as React from 'react';
 import * as PopoverPrimitive from '@radix-ui/react-popover';

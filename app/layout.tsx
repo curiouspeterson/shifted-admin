@@ -1,20 +1,51 @@
 /**
  * Root Layout
- * Last Updated: 2024-03-20 03:15 PST
+ * Last Updated: January 15, 2024
  * 
  * This is the root layout component that wraps all pages.
+ * It includes metadata configuration, font loading, and global providers.
  */
 
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Inter } from 'next/font/google';
-import { ToastProvider } from '@/components/ui';
+import { Toaster } from 'sonner';
+import { Providers } from './providers';
 import './globals.css';
 
-const inter = Inter({ subsets: ['latin'] });
+// Initialize font
+const inter = Inter({ 
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+});
 
+// Metadata configuration
 export const metadata: Metadata = {
-  title: 'Shifted Admin',
-  description: 'Admin dashboard for managing schedules and assignments',
+  title: {
+    default: '24/7 Dispatch Center',
+    template: '%s | 24/7 Dispatch Center'
+  },
+  description: 'Scheduling application for 24/7 dispatch center operations',
+  applicationName: '24/7 Dispatch Center',
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: '24/7 Dispatch Center',
+  },
+  formatDetection: {
+    telephone: false,
+  },
+};
+
+// Viewport configuration
+export const viewport: Viewport = {
+  themeColor: '#000000',
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({
@@ -23,11 +54,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className={inter.className}>
-        <ToastProvider>
+    <html lang="en" suppressHydrationWarning>
+      <body className={inter.variable}>
+        <Providers>
           {children}
-        </ToastProvider>
+          <Toaster richColors closeButton position="top-right" />
+        </Providers>
       </body>
     </html>
   );
