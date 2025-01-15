@@ -13,7 +13,7 @@
  * - Input/output type definitions for database operations
  */
 
-import { Database } from '@/lib/database.types';
+import { Database } from '@/lib/supabase/database.types';
 
 /**
  * Defines the available shift patterns for employee scheduling

@@ -1,174 +1,235 @@
 /**
  * Employee Availability API Route Handler
- * Last Updated: 2024
+ * Last Updated: 2024-03
  * 
- * This file implements the API endpoints for managing employee availability.
- * Supports:
- * - GET: Retrieve all availability entries for the authenticated employee
+ * This file implements the API endpoints for managing employee availability:
+ * - GET: List all availability entries for the authenticated employee
  * - POST: Create or update availability for a specific day
  * 
- * Includes validation, error handling, and proper type safety for all operations.
- * Uses Zod for request/response validation and proper database typing.
+ * Features:
+ * - Role-based access control (employee access)
+ * - Input validation using Zod schemas
+ * - Response caching for list operations
+ * - Database type safety
+ * 
+ * Error Handling:
+ * - 400: Invalid request data
+ * - 401: Not authenticated
+ * - 404: Employee not found
+ * - 429: Rate limit exceeded
+ * - 500: Server error
  */
 
-import { createRouteHandler } from '@/app/lib/api/handler'
-import { AppError } from '@/app/lib/errors'
-import { NextResponse } from 'next/server'
-import { z } from 'zod'
-import type { Database } from '@/app/lib/supabase/database.types'
+import { z } from 'zod';
+import { createRouteHandler } from '@/lib/api/handler';
+import type { ApiResponse, RouteContext } from '@/lib/api/types';
+import { HTTP_STATUS_OK, HTTP_STATUS_CREATED } from '@/lib/constants/http';
+import { defaultRateLimits } from '@/lib/api/rate-limit';
+import { cacheConfigs } from '@/lib/api/cache';
+import {
+  ValidationError,
+  AuthorizationError,
+  DatabaseError,
+  NotFoundError,
+} from '@/lib/errors';
+import type { Database } from '@/lib/supabase/database.types';
 
-/**
- * Type Definitions
- * Using database types to ensure type safety with Supabase
- */
-type Availability = Database['public']['Tables']['employee_availability']['Row']
-type AvailabilityInsert = Database['public']['Tables']['employee_availability']['Insert']
+// Database types for type safety
+type Availability = Database['public']['Tables']['employee_availability']['Row'];
+type AvailabilityInsert = Database['public']['Tables']['employee_availability']['Insert'];
 
-/**
- * Validation Schemas
- * Define the shape and constraints for availability data
- */
-
-/**
- * Complete Availability Schema
- * Used for validating database records and API responses
- * Includes all fields from the database
- */
+// Availability validation schemas
 const availabilitySchema = z.object({
-  id: z.string(),
-  employee_id: z.string(),
+  id: z.string().uuid(),
+  employee_id: z.string().uuid(),
   day_of_week: z.number().min(0).max(6),
-  start_time: z.string(),
-  end_time: z.string(),
+  start_time: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/),
+  end_time: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/),
   is_available: z.boolean(),
-  created_at: z.string(),
-  updated_at: z.string()
-})
+  created_at: z.string().datetime(),
+  updated_at: z.string().datetime(),
+});
 
-/**
- * Availability Input Schema
- * Used for validating POST request bodies
- * Only includes fields that can be set by the client
- */
 const availabilityInputSchema = z.object({
   day_of_week: z.number().min(0).max(6),
-  start_time: z.string(),
-  end_time: z.string(),
-  is_available: z.boolean()
-})
+  start_time: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/),
+  end_time: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/),
+  is_available: z.boolean(),
+});
 
-/**
- * API Response Schema
- * Wraps availability data in a response object
- */
-const availabilityResponseSchema = z.object({
-  availability: z.array(availabilitySchema)
-})
+// Custom rate limits for availability operations
+const availabilityRateLimits = {
+  // List availability (100 requests per minute)
+  list: {
+    ...defaultRateLimits.api,
+    limit: 100,
+    identifier: 'availability:list',
+  },
+  // Update availability (50 requests per minute)
+  update: {
+    ...defaultRateLimits.api,
+    limit: 50,
+    identifier: 'availability:update',
+  },
+} as const;
+
+// Cache configuration for availability
+const availabilityCacheConfig = {
+  // List operation (30 seconds cache)
+  list: {
+    ...cacheConfigs.short,
+    ttl: 30,
+    prefix: 'api:availability:list',
+  },
+};
+
+// Middleware configuration
+const middlewareConfig = {
+  maxSize: 100 * 1024, // 100KB
+  requireContentType: true,
+  allowedContentTypes: ['application/json'],
+};
 
 /**
  * GET /api/availability
- * Retrieves all availability entries for the authenticated employee
- * Ordered by day of week
- * Accessible to authenticated employees
+ * List all availability entries for the authenticated employee
  */
-export const GET = createRouteHandler(
-  async (req, { supabase, session }) => {
-    /**
-     * Get Employee ID
-     * Lookup employee record for the authenticated user
-     * Required for filtering availability by employee
-     */
+export const GET = createRouteHandler({
+  methods: ['GET'],
+  requireAuth: true,
+  rateLimit: availabilityRateLimits.list,
+  middleware: middlewareConfig,
+  cache: availabilityCacheConfig.list,
+  cors: true,
+  handler: async ({ 
+    supabase,
+    session,
+    cache,
+  }: RouteContext): Promise<ApiResponse> => {
+    if (!session) {
+      throw new AuthorizationError('Authentication required');
+    }
+
+    // Get employee ID for the authenticated user
     const { data: employee, error: employeeError } = await supabase
       .from('employees')
       .select('id')
       .eq('user_id', session.user.id)
-      .single()
+      .single();
 
     if (employeeError || !employee) {
-      throw new AppError('Employee record not found', 404)
+      throw new NotFoundError('Employee record not found');
     }
 
-    /**
-     * Fetch Availability
-     * Get all availability entries for the employee
-     * Ordered by day of week for consistent presentation
-     */
+    // Fetch availability entries for the employee
     const { data: availability, error } = await supabase
       .from('employee_availability')
       .select('*')
       .eq('employee_id', employee.id)
-      .order('day_of_week')
+      .order('day_of_week');
 
     if (error) {
-      throw new AppError('Failed to fetch availability', 500)
+      throw new DatabaseError('Failed to fetch availability', error);
     }
 
-    // Validate and return response data
-    const validatedResponse = availabilityResponseSchema.parse({ 
-      availability: availability || [] 
-    })
+    // Validate availability data
+    const validatedAvailability = availability?.map(entry => {
+      try {
+        return availabilitySchema.parse(entry);
+      } catch (err) {
+        throw new ValidationError('Invalid availability data format', err);
+      }
+    }) || [];
 
-    return NextResponse.json(validatedResponse)
-  }
-)
+    return {
+      data: validatedAvailability,
+      error: null,
+      status: HTTP_STATUS_OK,
+      metadata: {
+        count: validatedAvailability.length,
+        timestamp: new Date().toISOString(),
+        ...(cache && {
+          cached: true,
+          cacheHit: cache.hit,
+          cacheTtl: cache.ttl,
+        }),
+      },
+    };
+  },
+});
 
 /**
  * POST /api/availability
- * Creates or updates availability for a specific day
- * Uses upsert to handle both creation and updates
- * Returns: The created/updated availability entry
+ * Create or update availability for a specific day
  */
-export const POST = createRouteHandler(
-  async (req, { supabase, session }) => {
-    /**
-     * Get Employee ID
-     * Lookup employee record for the authenticated user
-     * Required for creating/updating availability
-     */
+export const POST = createRouteHandler({
+  methods: ['POST'],
+  requireAuth: true,
+  rateLimit: availabilityRateLimits.update,
+  middleware: middlewareConfig,
+  cors: true,
+  handler: async ({ 
+    supabase,
+    session,
+    body,
+  }: RouteContext): Promise<ApiResponse> => {
+    if (!session) {
+      throw new AuthorizationError('Authentication required');
+    }
+
+    if (!body) {
+      throw new ValidationError('Request body is required');
+    }
+
+    // Get employee ID for the authenticated user
     const { data: employee, error: employeeError } = await supabase
       .from('employees')
       .select('id')
       .eq('user_id', session.user.id)
-      .single()
+      .single();
 
     if (employeeError || !employee) {
-      throw new AppError('Employee record not found', 404)
+      throw new NotFoundError('Employee record not found');
     }
 
-    // Parse and validate request body
-    const body = await req.json()
-    const validatedData = availabilityInputSchema.parse(body)
+    // Validate request body
+    let validatedData;
+    try {
+      validatedData = availabilityInputSchema.parse(body);
+    } catch (err) {
+      throw new ValidationError('Invalid availability data', err);
+    }
 
-    /**
-     * Prepare Availability Data
-     * Combines validated input with system-generated fields
-     */
-    const now = new Date().toISOString()
+    // Prepare availability data
+    const now = new Date().toISOString();
     const newAvailability: AvailabilityInsert = {
       ...validatedData,
       employee_id: employee.id,
       created_at: now,
-      updated_at: now
-    }
+      updated_at: now,
+    };
 
-    /**
-     * Upsert Availability
-     * Creates new entry or updates existing one for the day
-     * Returns the affected record
-     */
+    // Create or update availability
     const { data: availability, error } = await supabase
       .from('employee_availability')
       .upsert(newAvailability)
       .select()
-      .single()
+      .single();
 
     if (error) {
-      throw new AppError('Failed to update availability', 500)
+      throw new DatabaseError('Failed to update availability', error);
     }
 
-    // Validate and return the created/updated availability
-    const validatedAvailability = availabilitySchema.parse(availability)
+    // Validate created/updated availability
+    const validatedAvailability = availabilitySchema.parse(availability);
 
-    return NextResponse.json({ availability: validatedAvailability })
-  }
-) 
+    return {
+      data: validatedAvailability,
+      error: null,
+      status: HTTP_STATUS_CREATED,
+      metadata: {
+        timestamp: new Date().toISOString(),
+      },
+    };
+  },
+}); 

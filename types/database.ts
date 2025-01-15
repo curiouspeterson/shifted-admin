@@ -13,7 +13,7 @@
  * - Ensures type safety across the application
  */
 
-import { Database } from '@/lib/database.types'
+import { Database } from '@/lib/supabase/database.types'
 
 // Base type for accessing table definitions
 type DB = Database['public']['Tables']

@@ -1,15 +1,14 @@
 /**
  * Next.js Middleware Configuration
- * Last Updated: 2024
+ * Last Updated: 2024-03
  * 
  * This middleware handles authentication and routing logic for the application.
- * It:
- * 1. Sets up Supabase client with proper cookie handling
- * 2. Manages authentication state
- * 3. Handles protected route access
- * 4. Manages authentication redirects
- * 
- * The middleware runs on all non-static routes as defined in the config matcher.
+ * Features:
+ * - Supabase client initialization with cookie handling
+ * - Authentication state management
+ * - Protected route access control
+ * - Efficient route matching
+ * - Structured error handling
  */
 
 import { createServerClient } from '@supabase/ssr';
@@ -17,7 +16,33 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import type { Database } from '@/app/lib/supabase/database.types';
 import { createMiddlewareCookieHandler } from '@/app/lib/supabase/cookies';
-import { handleError } from '@/app/lib/errors';
+import { AppError, AuthError } from '@/app/lib/errors';
+
+// Route patterns for classification
+const ROUTE_PATTERNS = {
+  auth: ['/sign-in', '/sign-up'],
+  public: ['/', '/api/docs', '/api/docs/ui'],
+  static: ['/_next', '/public', '/favicon.ico'],
+  api: ['/api'],
+} as const;
+
+/**
+ * Checks if a path matches any of the given patterns
+ */
+function matchesPattern(path: string, patterns: readonly string[]): boolean {
+  return patterns.some(pattern => path.startsWith(pattern));
+}
+
+/**
+ * Classifies a route based on its path
+ */
+function classifyRoute(path: string) {
+  if (matchesPattern(path, ROUTE_PATTERNS.auth)) return 'auth';
+  if (matchesPattern(path, ROUTE_PATTERNS.public)) return 'public';
+  if (matchesPattern(path, ROUTE_PATTERNS.static)) return 'static';
+  if (matchesPattern(path, ROUTE_PATTERNS.api)) return 'api';
+  return 'protected';
+}
 
 /**
  * Main middleware function that runs on all matched routes
@@ -33,10 +58,7 @@ export async function middleware(request: NextRequest) {
   });
 
   try {
-    /**
-     * Initialize Supabase client with cookie handling
-     * This allows us to maintain authentication state across requests
-     */
+    // Initialize Supabase client with cookie handling
     const supabase = createServerClient<Database>(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -47,60 +69,74 @@ export async function middleware(request: NextRequest) {
 
     // Verify authentication status
     const { data: { session }, error } = await supabase.auth.getSession();
-    if (error) throw error;
-
-    /**
-     * Route Classification
-     * Determines which routes require authentication and which are public
-     * - Auth routes: sign-in and sign-up pages
-     * - Protected routes: all non-public routes that require authentication
-     */
-    const isAuthRoute = request.nextUrl.pathname.startsWith('/sign-in') || 
-                       request.nextUrl.pathname.startsWith('/sign-up');
-    const isProtectedRoute = !isAuthRoute && 
-                           !request.nextUrl.pathname.startsWith('/api') &&
-                           !request.nextUrl.pathname.startsWith('/_next') &&
-                           !request.nextUrl.pathname.startsWith('/public') &&
-                           request.nextUrl.pathname !== '/';
-
-    /**
-     * Authentication Redirects
-     * 1. Redirect authenticated users away from auth pages
-     * 2. Redirect unauthenticated users to sign-in from protected pages
-     */
-    if (isAuthRoute && session) {
-      return NextResponse.redirect(new URL('/dashboard', request.url));
+    if (error) {
+      throw new AuthError('Failed to verify authentication');
     }
 
-    if (isProtectedRoute && !session) {
-      const redirectUrl = new URL('/sign-in', request.url);
-      redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname);
-      return NextResponse.redirect(redirectUrl);
+    // Classify the current route
+    const routeType = classifyRoute(request.nextUrl.pathname);
+
+    // Handle route-specific logic
+    switch (routeType) {
+      case 'auth':
+        // Redirect authenticated users away from auth pages
+        if (session) {
+          return NextResponse.redirect(new URL('/dashboard', request.url));
+        }
+        break;
+
+      case 'protected':
+        // Redirect unauthenticated users to sign-in
+        if (!session) {
+          const redirectUrl = new URL('/sign-in', request.url);
+          redirectUrl.searchParams.set('redirectedFrom', request.nextUrl.pathname);
+          return NextResponse.redirect(redirectUrl);
+        }
+        break;
+
+      case 'api':
+        // API routes handle their own authentication
+        break;
+
+      case 'public':
+      case 'static':
+        // No authentication needed
+        break;
     }
 
     return res;
   } catch (error) {
-    console.error('Middleware error:', error);
-    // Continue the request chain even on error
-    // Route handlers will handle authentication properly
+    // Log the error but continue the request
+    // API routes will handle authentication errors properly
+    console.error('Middleware error:', {
+      error,
+      path: request.nextUrl.pathname,
+      method: request.method,
+    });
     return res;
   }
 }
 
 /**
  * Middleware Configuration
- * Defines which routes this middleware should run on
- * Excludes static files and public assets
+ * Defines specific patterns for route matching
  */
 export const config = {
   matcher: [
-    /*
-     * Match all request paths except:
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public folder
-     */
-    '/((?!_next/static|_next/image|favicon.ico|public/).*)',
+    // Auth routes
+    '/sign-in/:path*',
+    '/sign-up/:path*',
+    
+    // Protected routes
+    '/dashboard/:path*',
+    '/settings/:path*',
+    '/profile/:path*',
+    
+    // API routes (except docs)
+    '/api/:path*',
+    '!/api/docs/:path*',
+    
+    // Dynamic routes
+    '/((?!_next/static|_next/image|favicon.ico|public/|api/docs/).*)',
   ],
 }; 

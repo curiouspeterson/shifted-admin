@@ -21,7 +21,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { ScheduleForm } from '@/app/components/forms/ScheduleForm';
 import type { ScheduleFormData } from '@/app/lib/schemas/forms';
-import { createSchedule } from '@/app/lib/actions/schedule';
+import { createSchedule } from '@/lib/actions/schedule.client';
 
 /**
  * New Schedule Page Component

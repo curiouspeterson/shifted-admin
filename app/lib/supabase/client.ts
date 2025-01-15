@@ -1,39 +1,29 @@
 /**
- * Supabase Browser Client Module
- * Last Updated: 2024
+ * Supabase Client Configuration
+ * Last Updated: 2025-01-15
  * 
- * Provides browser-side Supabase client initialization and configuration.
- * This module creates and exports a singleton client instance for use
- * in client-side components and operations.
- * 
- * Features:
- * - Type-safe database operations
- * - Browser-specific client configuration
- * - Singleton pattern for consistent client access
+ * This module provides a configured Supabase client instance.
  */
 
-'use client'
+import { createClient } from '@supabase/supabase-js';
+import type { Database } from './database.types';
 
-import { createBrowserClient } from '@supabase/ssr'
-import { Database } from './database.types'
-
-/**
- * Create Browser Client
- * Creates a new Supabase client configured for browser usage
- * Uses environment variables for URL and anon key
- * 
- * @returns Typed Supabase client instance
- */
-export const createClient = () => {
-  return createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
+  throw new Error('Missing environment variable: NEXT_PUBLIC_SUPABASE_URL');
 }
 
-/**
- * Singleton Client Instance
- * Pre-configured Supabase client for browser-side usage
- * Ensures consistent client usage across the application
- */
-export const supabase = createClient() 
+if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  throw new Error('Missing environment variable: NEXT_PUBLIC_SUPABASE_ANON_KEY');
+}
+
+export const supabase = createClient<Database>(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  }
+); 

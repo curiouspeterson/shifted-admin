@@ -1,119 +1,215 @@
 /**
- * Employees API Route
- * Last Updated: 2024
+ * Employee Management API Routes
+ * Last Updated: 2024-03
  * 
- * This file implements the API endpoints for managing employees.
- * It provides functionality to:
- * - Get all employees
- * - Create new employees
- * - Update existing employees
- * - Delete employees
+ * This file implements the main endpoints for employee management:
+ * - GET: List employees with filtering, sorting, and pagination
+ * - POST: Create new employee records
  * 
- * All operations require supervisor permissions.
+ * Features:
+ * - Role-based access control (supervisor/admin only for mutations)
+ * - Input validation using Zod schemas
+ * - Pagination and filtering
+ * - Response caching for list operations
+ * 
+ * Error Handling:
+ * - 400: Invalid request data
+ * - 401: Not authenticated
+ * - 403: Insufficient permissions
+ * - 409: Conflicting data (e.g., duplicate email)
+ * - 429: Rate limit exceeded
+ * - 500: Server error
  */
 
 import { z } from 'zod';
-import { NextRequest } from 'next/server';
-import { createRouteHandler } from '../../lib/api/handler';
-import { EmployeesOperations } from '../../lib/api/database/employees';
-import type { RouteContext } from '../../lib/api/types';
+import { createRouteHandler } from '@/lib/api/handler';
+import type { ApiResponse, RouteContext } from '@/lib/api/types';
+import { EmployeesOperations } from '@/lib/api/database/employees';
+import {
+  HTTP_STATUS_OK,
+  HTTP_STATUS_CREATED,
+  HTTP_STATUS_CONFLICT,
+} from '@/lib/constants/http';
+import { defaultRateLimits } from '@/lib/api/rate-limit';
+import { cacheConfigs } from '@/lib/api/cache';
+import {
+  listEmployeesQuerySchema,
+  createEmployeeSchema,
+  employeeSortSchema,
+} from '@/lib/schemas/api';
+import type { Database } from '@/lib/supabase/database.types';
+import {
+  ValidationError,
+  AuthorizationError,
+  DatabaseError,
+} from '@/lib/errors';
 
-// Validation Schemas
-const employeeSchema = z.object({
-  user_id: z.string().uuid(),
-  first_name: z.string().min(1).max(100),
-  last_name: z.string().min(1).max(100),
-  email: z.string().email(),
-  phone: z.string().nullable().optional(),
-  position: z.enum(['staff', 'shift_supervisor', 'management']),
-  hourly_rate: z.number().min(0),
-  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-});
+type EmployeeRow = Database['public']['Tables']['employees']['Row'];
+type EmployeeSortColumn = NonNullable<z.infer<typeof employeeSortSchema>['sort']>;
+type ListEmployeesQuery = z.infer<typeof listEmployeesQuerySchema>;
+type CreateEmployee = z.infer<typeof createEmployeeSchema>;
 
-const querySchema = z.object({
-  limit: z.string().regex(/^\d+$/).transform(Number).optional(),
-  offset: z.string().regex(/^\d+$/).transform(Number).optional(),
-  sort: z.enum(['first_name', 'last_name', 'email', 'position', 'start_date']).optional(),
-  order: z.enum(['asc', 'desc']).optional(),
-  position: z.enum(['staff', 'shift_supervisor', 'management']).optional(),
-});
+// Custom rate limits for employee operations
+const employeeRateLimits = {
+  // List employees (100 requests per minute)
+  list: {
+    ...defaultRateLimits.api,
+    limit: 100,
+    identifier: 'employees:list',
+  },
+  
+  // Create employee (30 requests per minute)
+  create: {
+    ...defaultRateLimits.api,
+    limit: 30,
+    identifier: 'employees:create',
+  },
+} as const;
 
-// GET /api/employees
-export const GET = createRouteHandler(
-  async (req: NextRequest, { supabase }: RouteContext) => {
+// Cache configuration for employees
+const employeeCacheConfig = {
+  // List operation (2 minutes cache)
+  list: {
+    ...cacheConfigs.short,
+    prefix: 'api:employees:list',
+    includeQuery: true,
+    excludeParams: ['offset'] as string[],
+  },
+};
+
+// Middleware configuration
+const middlewareConfig = {
+  maxSize: 100 * 1024, // 100KB
+  requireContentType: true,
+  allowedContentTypes: ['application/json'],
+};
+
+/**
+ * GET /api/employees
+ * List employees with optional filtering and pagination
+ */
+export const GET = createRouteHandler({
+  methods: ['GET'],
+  requireAuth: true,
+  querySchema: listEmployeesQuerySchema,
+  rateLimit: employeeRateLimits.list,
+  middleware: middlewareConfig,
+  cache: employeeCacheConfig.list,
+  cors: true,
+  handler: async ({ 
+    supabase, 
+    query, 
+    cache 
+  }: RouteContext<ListEmployeesQuery>): Promise<ApiResponse> => {
+    // Initialize database operations
     const employees = new EmployeesOperations(supabase);
-    const query = Object.fromEntries(req.nextUrl.searchParams);
-    const { sort, order, limit, offset, position } = querySchema.parse(query);
 
-    const { data, error } = await employees.findMany({
-      orderBy: sort ? {
-        column: sort,
-        ascending: order !== 'desc',
-      } : undefined,
-      limit,
-      offset,
-      filter: position ? { position } : undefined,
+    // Build query options using sanitized query parameters
+    const options = {
+      limit: query?.limit,
+      offset: query?.offset,
+      orderBy: query?.sort
+        ? { column: query.sort as EmployeeSortColumn, ascending: query.order !== 'desc' }
+        : undefined,
+      filter: {
+        ...(query?.status && { status: query.status }),
+        ...(query?.role && { role: query.role }),
+        ...(query?.department && { department: query.department }),
+      },
+    };
+
+    // Fetch employees
+    const result = await employees.findMany(options);
+
+    if (result.error) {
+      throw new DatabaseError('Failed to fetch employees', result.error);
+    }
+
+    const employees_data = result.data || [];
+
+    return {
+      data: employees_data,
+      error: null,
+      status: HTTP_STATUS_OK,
+      metadata: {
+        count: employees_data.length,
+        timestamp: new Date().toISOString(),
+        ...(cache && {
+          cached: true,
+          cacheHit: cache.hit,
+          cacheTtl: cache.ttl,
+        }),
+      },
+    };
+  },
+});
+
+/**
+ * POST /api/employees
+ * Create a new employee record
+ */
+export const POST = createRouteHandler({
+  methods: ['POST'],
+  requireAuth: true,
+  requireSupervisor: true,
+  bodySchema: createEmployeeSchema,
+  rateLimit: employeeRateLimits.create,
+  middleware: middlewareConfig,
+  cors: true,
+  handler: async ({ 
+    supabase, 
+    session, 
+    body 
+  }: RouteContext<unknown, CreateEmployee>): Promise<ApiResponse> => {
+    if (!session) {
+      throw new AuthorizationError('Authentication required');
+    }
+
+    if (!body) {
+      throw new ValidationError('Request body is required');
+    }
+
+    // Only supervisors and admins can create employees
+    if (!session.user.user_metadata.role || 
+        !['supervisor', 'admin'].includes(session.user.user_metadata.role)) {
+      throw new AuthorizationError('Only supervisors and admins can create employees');
+    }
+
+    // Initialize database operations
+    const employees = new EmployeesOperations(supabase);
+
+    // Check if employee with same user ID exists
+    const { data: existing } = await employees.findByUserId(body.user_id);
+    if (existing) {
+      throw new ValidationError('Employee record already exists for this user', {
+        code: 'USER_EXISTS',
+        status: HTTP_STATUS_CONFLICT,
+      });
+    }
+
+    // Create employee record
+    const result = await employees.create({
+      ...body,
+      status: 'active',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
     });
 
-    if (error) {
-      return {
-        error: 'Failed to fetch employees',
-        data: null,
-        metadata: { originalError: error },
-      };
+    if (result.error) {
+      throw new DatabaseError('Failed to create employee record', result.error);
+    }
+
+    if (!result.data) {
+      throw new DatabaseError('No data returned from employee creation');
     }
 
     return {
-      data: data || [],
+      data: result.data,
       error: null,
+      status: HTTP_STATUS_CREATED,
       metadata: {
-        count: data?.length || 0,
+        timestamp: new Date().toISOString(),
       },
     };
   },
-  {
-    requireAuth: true,
-    requireSupervisor: true,
-    validateQuery: querySchema,
-  }
-);
-
-// POST /api/employees
-export const POST = createRouteHandler(
-  async (req: NextRequest, { supabase }: RouteContext) => {
-    const employees = new EmployeesOperations(supabase);
-    const body = await req.json();
-    const validatedData = employeeSchema.parse(body);
-
-    const { data, error } = await employees.create(validatedData);
-
-    if (error) {
-      return {
-        error: 'Failed to create employee',
-        data: null,
-        metadata: { originalError: error },
-      };
-    }
-
-    if (!data) {
-      return {
-        error: 'Failed to create employee - no data returned',
-        data: null,
-        metadata: {},
-      };
-    }
-
-    return {
-      data,
-      error: null,
-      metadata: {
-        message: 'Employee created successfully',
-      },
-    };
-  },
-  {
-    requireAuth: true,
-    requireSupervisor: true,
-    validateBody: employeeSchema,
-  }
-);
+});

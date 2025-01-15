@@ -1,128 +1,136 @@
 /**
- * Schedules API Route
- * Last Updated: 2024
+ * Schedules API Route Handler
+ * Last Updated: 2025-01-15
  * 
- * This module provides API endpoints for managing schedules.
- * It includes:
- * - GET /api/schedules - List all schedules with optional filtering and pagination
- * - POST /api/schedules - Create a new schedule
+ * This module provides RESTful endpoints for managing schedules with:
+ * - Type-safe request/response handling
+ * - Request validation
+ * - Response caching
+ * - Rate limiting
+ * - Error handling
  */
 
 import { z } from 'zod';
-import { NextRequest } from 'next/server';
-import { createRouteHandler } from '../../lib/api/handler';
-import { SchedulesOperations } from '../../lib/api/database/schedules';
-import type { RouteContext } from '../../lib/api/types';
+import { createRouteHandler } from '@/lib/api';
+import { ApiError } from '@/lib/api/errors';
+import { scheduleRepository, type Schedule, type CreateScheduleBody, type UpdateScheduleBody, type ScheduleStatus } from '@/lib/api/repositories';
 
-// Query schema for GET requests
-const querySchema = z.object({
-  limit: z.string().regex(/^\d+$/).transform(Number).optional(),
-  offset: z.string().regex(/^\d+$/).transform(Number).optional(),
-  sort: z.enum(['start_date', 'end_date', 'status', 'created_at']).optional(),
-  order: z.enum(['asc', 'desc']).optional(),
-  status: z.enum(['draft', 'published', 'archived']).optional(),
-  include: z.object({
-    assignments: z.boolean().optional(),
-    requirements: z.boolean().optional(),
-  }).optional(),
-});
-
-// Schema for creating a new schedule
+// Validation schemas
 const createScheduleSchema = z.object({
+  name: z.string().min(1).max(255),
+  description: z.string().optional(),
   start_date: z.string().datetime(),
   end_date: z.string().datetime(),
-  status: z.enum(['draft', 'published', 'archived']).default('draft'),
-  is_published: z.boolean().default(false),
-});
+  status: z.enum(['draft', 'published', 'archived']),
+  is_active: z.boolean().default(true),
+  version: z.number().default(1),
+}) satisfies z.Schema<CreateScheduleBody>;
+
+const updateScheduleSchema = createScheduleSchema.partial() satisfies z.Schema<UpdateScheduleBody>;
 
 // GET /api/schedules
-export const GET = createRouteHandler(
-  async (req: NextRequest, { supabase }: RouteContext) => {
-    const schedules = new SchedulesOperations(supabase);
-    const query = Object.fromEntries(req.nextUrl.searchParams);
-    const { sort, order, limit, offset, status, include } = querySchema.parse(query);
-
-    const { data, error } = await schedules.findMany({
-      orderBy: sort ? {
-        column: sort,
-        ascending: order !== 'desc',
-      } : undefined,
-      limit,
-      offset,
-      filter: status ? { status } : undefined,
-      include,
-    });
-
-    if (error) {
-      return {
-        error: 'Failed to fetch schedules',
-        data: null,
-        metadata: { originalError: error },
-      };
-    }
-
-    return {
-      data: data || [],
-      error: null,
-      metadata: {
-        count: data?.length || 0,
-      },
-    };
+export const GET = createRouteHandler<Schedule[]>({
+  auth: {
+    required: true,
   },
-  {
-    requireAuth: true,
-    requireSupervisor: true,
-    validateQuery: querySchema,
-  }
-);
+  cache: {
+    enabled: true,
+    tags: ['schedules'],
+  },
+  rateLimit: {
+    enabled: true,
+    requests: 100,
+    window: 60, // 1 minute
+  },
+}, async (req) => {
+  const { searchParams } = new URL(req.url);
+  const status = searchParams.get('status') as ScheduleStatus;
+  const startDate = searchParams.get('startDate');
+  const endDate = searchParams.get('endDate');
+
+  // Query schedules with filters
+  const schedules = await scheduleRepository.findMany({
+    status,
+    startDate: startDate ? new Date(startDate) : undefined,
+    endDate: endDate ? new Date(endDate) : undefined,
+  });
+
+  return schedules;
+});
 
 // POST /api/schedules
-export const POST = createRouteHandler(
-  async (req: NextRequest, { supabase, session }: RouteContext) => {
-    if (!session) {
-      return {
-        error: 'Unauthorized - session required',
-        data: null,
-        metadata: {},
-      };
-    }
-
-    const schedules = new SchedulesOperations(supabase);
-    const body = await req.json();
-    const validatedData = createScheduleSchema.parse(body);
-
-    const { data, error } = await schedules.create({
-      ...validatedData,
-      created_by: session.user.id,
-    });
-
-    if (error) {
-      return {
-        error: 'Failed to create schedule',
-        data: null,
-        metadata: { originalError: error },
-      };
-    }
-
-    if (!data) {
-      return {
-        error: 'Failed to create schedule - no data returned',
-        data: null,
-        metadata: {},
-      };
-    }
-
-    return {
-      data,
-      error: null,
-      metadata: {
-        message: 'Schedule created successfully',
-      },
-    };
+export const POST = createRouteHandler<Schedule, CreateScheduleBody>({
+  auth: {
+    required: true,
+    roles: ['admin'],
   },
-  {
-    requireAuth: true,
-    requireSupervisor: true,
-    validateBody: createScheduleSchema,
+  validation: {
+    body: createScheduleSchema,
+  },
+  rateLimit: {
+    enabled: true,
+    requests: 50,
+    window: 60, // 1 minute
+  },
+}, async (req, ctx) => {
+  // ctx.validatedBody is guaranteed to be defined due to validation
+  const schedule = await scheduleRepository.create({
+    ...ctx.validatedBody!,
+    created_by: ctx.auth!.id,
+  });
+  return schedule;
+});
+
+// PUT /api/schedules/[id]
+export const PUT = createRouteHandler<Schedule, UpdateScheduleBody>({
+  auth: {
+    required: true,
+    roles: ['admin'],
+  },
+  validation: {
+    body: updateScheduleSchema,
+  },
+  rateLimit: {
+    enabled: true,
+    requests: 50,
+    window: 60, // 1 minute
+  },
+}, async (req, ctx) => {
+  const id = ctx.params?.id;
+  if (!id) {
+    throw new ApiError('BAD_REQUEST', 'Schedule ID is required', 400);
   }
-); 
+
+  // ctx.validatedBody is guaranteed to be defined due to validation
+  const schedule = await scheduleRepository.update(id, {
+    ...ctx.validatedBody!,
+    updated_by: ctx.auth!.id,
+  });
+  
+  if (!schedule) {
+    throw new ApiError('NOT_FOUND', 'Schedule not found', 404);
+  }
+
+  return schedule;
+});
+
+// DELETE /api/schedules/[id]
+export const DELETE = createRouteHandler({
+  auth: {
+    required: true,
+    roles: ['admin'],
+  },
+  rateLimit: {
+    enabled: true,
+    requests: 20,
+    window: 60, // 1 minute
+  },
+}, async (req, ctx) => {
+  const id = ctx.params?.id;
+  if (!id) {
+    throw new ApiError('BAD_REQUEST', 'Schedule ID is required', 400);
+  }
+
+  await scheduleRepository.delete(id);
+  return null;
+}); 

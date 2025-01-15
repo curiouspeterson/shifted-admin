@@ -33,7 +33,7 @@
  */
 
 import { createBrowserClient } from '@supabase/ssr'
-import type { Database } from '@/lib/database.types'
+import type { Database } from '@/lib/supabase/database.types'
 
 /**
  * Creates a typed Supabase client for browser usage

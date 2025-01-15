@@ -1,143 +1,235 @@
 /**
- * Employee Details API Route Handler
- * Last Updated: 2024
+ * Employee Detail API Routes
+ * Last Updated: 2024-03
  * 
- * This file implements the API endpoints for managing individual employee records.
- * Currently supports:
- * - GET: Retrieve a specific employee by ID
- * - PATCH: Update employee details
- * - DELETE: Remove an employee record
+ * This file implements the endpoints for individual employee management:
+ * - GET: Retrieve employee details
+ * - PATCH: Update employee information
+ * - DELETE: Deactivate employee (soft delete)
  * 
- * GET operations are available to all authenticated users.
- * PATCH and DELETE operations are restricted to supervisors only.
- * The route uses dynamic path parameters to identify the target employee.
+ * Features:
+ * - Role-based access control
+ * - Input validation using Zod schemas
+ * - Response caching for GET requests
+ * - Soft delete functionality
+ * 
+ * Error Handling:
+ * - 400: Invalid request data
+ * - 401: Not authenticated
+ * - 403: Insufficient permissions
+ * - 404: Employee not found
+ * - 429: Rate limit exceeded
+ * - 500: Server error
  */
 
-import { createRouteHandler } from '@/app/lib/api/handler'
-import { AppError } from '@/app/lib/errors'
-import { NextResponse } from 'next/server'
-import { z } from 'zod'
-import type { Database } from '@/app/lib/supabase/database.types'
+import { z } from 'zod';
+import { createRouteHandler } from '../../../lib/api/handler';
+import type { ApiResponse } from '../../../lib/api/types';
+import { EmployeesOperations } from '../../../lib/api/database/employees';
+import {
+  HTTP_STATUS_OK,
+  HTTP_STATUS_NOT_FOUND,
+} from '../../../lib/constants/http';
+import { defaultRateLimits } from '../../../lib/api/rate-limit';
+import { cacheConfigs } from '../../../lib/api/cache';
+import {
+  updateEmployeeSchema,
+} from '../../../lib/schemas/api';
+import {
+  ValidationError,
+  AuthorizationError,
+  NotFoundError,
+  DatabaseError,
+} from '../../../lib/errors';
 
-/**
- * Type Definition
- * Using database type to ensure type safety with Supabase
- */
-type Employee = Database['public']['Tables']['employees']['Row']
+// Custom rate limits for employee detail operations
+const employeeRateLimits = {
+  // Get employee details (150 requests per minute)
+  get: {
+    ...defaultRateLimits.api,
+    limit: 150,
+    identifier: 'employees:get',
+  },
+  
+  // Update employee (40 requests per minute)
+  update: {
+    ...defaultRateLimits.api,
+    limit: 40,
+    identifier: 'employees:update',
+  },
 
-/**
- * Validation Schemas
- * Define the shape and constraints for employee data
- */
+  // Delete employee (20 requests per minute)
+  delete: {
+    ...defaultRateLimits.api,
+    limit: 20,
+    identifier: 'employees:delete',
+  },
+} as const;
 
-/**
- * Employee Update Schema
- * Used for validating PATCH request bodies
- * Only allows updating specific fields
- */
-const employeeUpdateSchema = z.object({
-  first_name: z.string().min(1).optional(),
-  last_name: z.string().min(1).optional(),
-  email: z.string().email().optional(),
-  phone: z.string().optional(),
-  position: z.string().min(1).optional(),
-  hourly_rate: z.number().positive().optional(),
-  start_date: z.string().datetime().optional(),
-  is_active: z.boolean().optional()
-})
+// Cache configuration for employee details
+const employeeCacheConfig = {
+  // Get operation (1 minute cache)
+  get: {
+    ...cacheConfigs.short,
+    ttl: 60, // 1 minute
+    prefix: 'api:employees:detail',
+  },
+};
+
+// Middleware configuration
+const middlewareConfig = {
+  maxSize: 100 * 1024, // 100KB
+  requireContentType: true,
+  allowedContentTypes: ['application/json'],
+};
 
 /**
  * GET /api/employees/[id]
- * Retrieves a specific employee by ID
- * Available to all authenticated users
- * Returns: The employee record if found
- * Throws: 404 if not found, 400 if ID missing
+ * Retrieve details for a specific employee
  */
-export const GET = createRouteHandler(
-  async (req, { supabase, params }) => {
+export const GET = createRouteHandler({
+  methods: ['GET'],
+  requireAuth: true,
+  rateLimit: employeeRateLimits.get,
+  middleware: middlewareConfig,
+  cache: employeeCacheConfig.get,
+  cors: true,
+  handler: async ({ supabase, params, cache }): Promise<ApiResponse> => {
     if (!params?.id) {
-      throw new AppError('Employee ID is required', 400)
+      throw new ValidationError('Employee ID is required');
     }
 
-    // Fetch employee by ID
-    const { data: employee, error } = await supabase
-      .from('employees')
-      .select()
-      .eq('id', params.id)
-      .single()
+    // Initialize database operations
+    const employees = new EmployeesOperations(supabase);
 
-    if (error || !employee) {
-      throw new AppError('Employee not found', 404)
+    // Fetch employee details
+    const result = await employees.findById(params.id);
+
+    if (result.error) {
+      throw new DatabaseError('Failed to fetch employee details', result.error);
     }
 
-    return NextResponse.json({ employee })
-  }
-)
+    if (!result.data) {
+      throw new NotFoundError('Employee not found');
+    }
+
+    return {
+      data: result.data,
+      error: null,
+      status: HTTP_STATUS_OK,
+      metadata: {
+        timestamp: new Date().toISOString(),
+        ...(cache && {
+          cached: true,
+          cacheHit: cache.hit,
+          cacheTtl: cache.ttl,
+        }),
+      },
+    };
+  },
+});
 
 /**
  * PATCH /api/employees/[id]
- * Updates an employee's details
- * Restricted to supervisors only
- * Body: Updated employee fields
- * Returns: The updated employee record
- * Throws: 404 if not found, 400 if ID missing or validation fails
+ * Update an employee's information
  */
-export const PATCH = createRouteHandler(
-  async (req, { supabase, params }) => {
+export const PATCH = createRouteHandler({
+  methods: ['PATCH'],
+  requireAuth: true,
+  requireSupervisor: true,
+  bodySchema: updateEmployeeSchema,
+  rateLimit: employeeRateLimits.update,
+  middleware: middlewareConfig,
+  cors: true,
+  handler: async ({ supabase, session, params, body }): Promise<ApiResponse> => {
     if (!params?.id) {
-      throw new AppError('Employee ID is required', 400)
+      throw new ValidationError('Employee ID is required');
     }
 
-    // Parse and validate request body
-    const body = await req.json()
-    const validatedData = employeeUpdateSchema.parse(body)
+    // Initialize database operations
+    const employees = new EmployeesOperations(supabase);
+
+    // Check if employee exists
+    const existing = await employees.findById(params.id);
+    if (!existing.data) {
+      throw new NotFoundError('Employee not found');
+    }
+
+    // Only admins can modify other supervisors
+    if (existing.data.role === 'supervisor' && 
+        session?.user.user_metadata.role !== 'admin') {
+      throw new AuthorizationError('Only admins can modify supervisor accounts');
+    }
 
     // Update employee record
-    const { data: employee, error } = await supabase
-      .from('employees')
-      .update({ 
-        ...validatedData,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', params.id)
-      .select()
-      .single()
+    const result = await employees.update(params.id, {
+      ...body!,
+      updated_at: new Date().toISOString(),
+    });
 
-    if (error || !employee) {
-      throw new AppError('Employee not found', 404)
+    if (result.error) {
+      throw new DatabaseError('Failed to update employee', result.error);
     }
 
-    return NextResponse.json({ employee })
+    return {
+      data: result.data,
+      error: null,
+      status: HTTP_STATUS_OK,
+      metadata: {
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
-  { requireSupervisor: true }
-)
+});
 
 /**
  * DELETE /api/employees/[id]
- * Removes an employee record
- * Restricted to supervisors only
- * Returns: Success message
- * Throws: 404 if not found, 400 if ID missing
+ * Soft delete an employee by setting their status to inactive
  */
-export const DELETE = createRouteHandler(
-  async (req, { supabase, params }) => {
+export const DELETE = createRouteHandler({
+  methods: ['DELETE'],
+  requireAuth: true,
+  requireSupervisor: true,
+  rateLimit: employeeRateLimits.delete,
+  middleware: middlewareConfig,
+  cors: true,
+  handler: async ({ supabase, session, params }): Promise<ApiResponse> => {
     if (!params?.id) {
-      throw new AppError('Employee ID is required', 400)
+      throw new ValidationError('Employee ID is required');
     }
 
-    // Delete the employee record
-    const { error } = await supabase
-      .from('employees')
-      .delete()
-      .eq('id', params.id)
+    // Initialize database operations
+    const employees = new EmployeesOperations(supabase);
 
-    if (error) {
-      throw new AppError('Failed to delete employee', 500)
+    // Check if employee exists
+    const existing = await employees.findById(params.id);
+    if (!existing.data) {
+      throw new NotFoundError('Employee not found');
     }
 
-    return NextResponse.json({ 
-      message: 'Employee successfully deleted' 
-    })
+    // Only admins can delete supervisors
+    if (existing.data.role === 'supervisor' && 
+        session?.user.user_metadata.role !== 'admin') {
+      throw new AuthorizationError('Only admins can delete supervisor accounts');
+    }
+
+    // Soft delete by updating status to inactive
+    const result = await employees.update(params.id, {
+      status: 'inactive',
+      updated_at: new Date().toISOString(),
+    });
+
+    if (result.error) {
+      throw new DatabaseError('Failed to deactivate employee', result.error);
+    }
+
+    return {
+      data: null,
+      error: null,
+      status: HTTP_STATUS_OK,
+      metadata: {
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
-  { requireSupervisor: true }
-) 
+}); 

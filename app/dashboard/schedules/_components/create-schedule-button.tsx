@@ -2,17 +2,17 @@
  * Create Schedule Button Component
  * Last Updated: 2024
  * 
- * This component provides a button to create new schedules.
- * It includes:
- * - A dialog for entering schedule details
- * - Form validation
- * - Server action integration
+ * This component provides a button that opens a dialog for creating a new schedule.
+ * It handles form validation, date selection, and schedule creation through server actions.
  */
 
 'use client';
 
-import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTransition, useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -22,110 +22,110 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
-import { useForm } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
-import { createSchedule, type Schedule } from '@/lib/actions/schedule';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
-import { Plus } from 'lucide-react';
-import { ControllerRenderProps } from 'react-hook-form';
+import { Label } from '@/components/ui/label';
+import { createSchedule } from '@/lib/actions/schedule.client';
+import { scheduleSchema } from '@/lib/schemas/schedule';
 
-const formSchema = z.object({
-  start_date: z.string().datetime(),
-  end_date: z.string().datetime(),
-  status: z.enum(['draft', 'published', 'archived']).default('draft'),
-  is_published: z.boolean().default(false),
-});
-
-type FormValues = z.infer<typeof formSchema>;
+type FormValues = z.infer<typeof scheduleSchema>;
 
 export function CreateScheduleButton() {
-  const [open, setOpen] = useState(false);
   const router = useRouter();
+  const [open, setOpen] = useState(false);
+  const [isPending, startTransition] = useTransition();
 
   const form = useForm<FormValues>({
-    resolver: zodResolver(formSchema),
+    resolver: zodResolver(scheduleSchema),
     defaultValues: {
+      name: '',
       start_date: '',
       end_date: '',
       status: 'draft',
-      is_published: false,
+      is_active: true,
     },
   });
 
-  async function onSubmit(data: FormValues) {
-    try {
-      await createSchedule(data);
-      setOpen(false);
-      form.reset();
-      router.refresh();
-    } catch (error) {
-      console.error('Failed to create schedule:', error);
-    }
-  }
+  const onSubmit = async (data: FormValues) => {
+    startTransition(async () => {
+      try {
+        const result = await createSchedule(data);
+        if (result.error) {
+          throw new Error(result.error);
+        }
+        setOpen(false);
+        router.refresh();
+        router.push(`/dashboard/schedules/${result.data.id}`);
+      } catch (error) {
+        console.error('Failed to create schedule:', error);
+        // Handle error (show toast, etc.)
+      }
+    });
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
-        <Button>
-          <Plus className="h-4 w-4 mr-2" />
-          Create Schedule
-        </Button>
+        <Button>Create Schedule</Button>
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Create New Schedule</DialogTitle>
           <DialogDescription>
-            Create a new schedule by entering the start and end dates.
+            Create a new schedule by filling out the form below.
           </DialogDescription>
         </DialogHeader>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="start_date"
-              render={({ field }: { field: ControllerRenderProps<FormValues, 'start_date'> }) => (
-                <FormItem>
-                  <FormLabel>Start Date</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="datetime-local"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <div>
+            <Label htmlFor="name">Name</Label>
+            <Input
+              id="name"
+              {...form.register('name')}
+              placeholder="Enter schedule name"
             />
-            <FormField
-              control={form.control}
-              name="end_date"
-              render={({ field }: { field: ControllerRenderProps<FormValues, 'end_date'> }) => (
-                <FormItem>
-                  <FormLabel>End Date</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="datetime-local"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
+            {form.formState.errors.name && (
+              <p className="text-sm text-red-500">
+                {form.formState.errors.name.message}
+              </p>
+            )}
+          </div>
+          <div>
+            <Label htmlFor="start_date">Start Date</Label>
+            <Input
+              id="start_date"
+              type="date"
+              {...form.register('start_date')}
             />
-            <div className="flex justify-end">
-              <Button type="submit">Create</Button>
-            </div>
-          </form>
-        </Form>
+            {form.formState.errors.start_date && (
+              <p className="text-sm text-red-500">
+                {form.formState.errors.start_date.message}
+              </p>
+            )}
+          </div>
+          <div>
+            <Label htmlFor="end_date">End Date</Label>
+            <Input
+              id="end_date"
+              type="date"
+              {...form.register('end_date')}
+            />
+            {form.formState.errors.end_date && (
+              <p className="text-sm text-red-500">
+                {form.formState.errors.end_date.message}
+              </p>
+            )}
+          </div>
+          <div>
+            <Label htmlFor="description">Description (Optional)</Label>
+            <Input
+              id="description"
+              {...form.register('description')}
+              placeholder="Enter schedule description"
+            />
+          </div>
+          <Button type="submit" disabled={isPending}>
+            {isPending ? 'Creating...' : 'Create Schedule'}
+          </Button>
+        </form>
       </DialogContent>
     </Dialog>
   );

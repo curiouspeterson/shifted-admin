@@ -1,6 +1,6 @@
 /**
  * Supabase Type Declarations
- * Last Updated: 2024
+ * Last Updated: 2024-03
  * 
  * Type declarations for Supabase client and database types.
  */
@@ -35,10 +35,10 @@ declare module '@/lib/supabase/database.types' {
             start_date: string;
             end_date: string;
             status: 'draft' | 'published' | 'archived';
-            is_published: boolean;
-            created_by: string;
-            published_at: string | null;
-            published_by: string | null;
+            name: string;
+            version: number;
+            is_active: boolean | null;
+            created_by: string | null;
           };
           Insert: {
             id?: string;
@@ -47,10 +47,10 @@ declare module '@/lib/supabase/database.types' {
             start_date: string;
             end_date: string;
             status?: 'draft' | 'published' | 'archived';
-            is_published?: boolean;
-            created_by: string;
-            published_at?: string | null;
-            published_by?: string | null;
+            name: string;
+            version?: number;
+            is_active?: boolean | null;
+            created_by?: string | null;
           };
           Update: {
             id?: string;
@@ -59,10 +59,10 @@ declare module '@/lib/supabase/database.types' {
             start_date?: string;
             end_date?: string;
             status?: 'draft' | 'published' | 'archived';
-            is_published?: boolean;
-            created_by?: string;
-            published_at?: string | null;
-            published_by?: string | null;
+            name?: string;
+            version?: number;
+            is_active?: boolean | null;
+            created_by?: string | null;
           };
         };
         employees: {

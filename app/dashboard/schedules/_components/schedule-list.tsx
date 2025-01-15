@@ -17,9 +17,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Calendar, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
-import { publishSchedule, unpublishSchedule, type Schedule } from '@/lib/actions/schedule';
+import { publishSchedule, unpublishSchedule } from '@/lib/actions/schedule.client';
 import { useTransition } from 'react';
 import { useRouter } from 'next/navigation';
+import type { Schedule } from '@/lib/schemas/schedule';
 
 interface ScheduleListProps {
   schedules: Schedule[];
@@ -30,21 +31,33 @@ export function ScheduleList({ schedules }: ScheduleListProps) {
   const router = useRouter();
 
   const handlePublish = async (id: string) => {
-    try {
-      await publishSchedule(id);
-      router.refresh();
-    } catch (error) {
-      console.error('Failed to publish schedule:', error);
-    }
+    startTransition(async () => {
+      try {
+        const result = await publishSchedule(id);
+        if (result.error) {
+          throw new Error(result.error);
+        }
+        router.refresh();
+      } catch (error) {
+        console.error('Failed to publish schedule:', error);
+        // Handle error (show toast, etc.)
+      }
+    });
   };
 
   const handleUnpublish = async (id: string) => {
-    try {
-      await unpublishSchedule(id);
-      router.refresh();
-    } catch (error) {
-      console.error('Failed to unpublish schedule:', error);
-    }
+    startTransition(async () => {
+      try {
+        const result = await unpublishSchedule(id);
+        if (result.error) {
+          throw new Error(result.error);
+        }
+        router.refresh();
+      } catch (error) {
+        console.error('Failed to unpublish schedule:', error);
+        // Handle error (show toast, etc.)
+      }
+    });
   };
 
   return (
@@ -76,20 +89,20 @@ export function ScheduleList({ schedules }: ScheduleListProps) {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => startTransition(() => handlePublish(schedule.id))}
+                    onClick={() => handlePublish(schedule.id)}
                     disabled={isPending}
                   >
-                    Publish
+                    {isPending ? 'Publishing...' : 'Publish'}
                   </Button>
                 )}
                 {schedule.status === 'published' && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => startTransition(() => handleUnpublish(schedule.id))}
+                    onClick={() => handleUnpublish(schedule.id)}
                     disabled={isPending}
                   >
-                    Unpublish
+                    {isPending ? 'Unpublishing...' : 'Unpublish'}
                   </Button>
                 )}
                 <Link

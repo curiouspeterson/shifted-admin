@@ -13,7 +13,7 @@
  * - Null handling and default values
  */
  
-import type { Database } from '@/lib/database.types';
+import type { Database } from '@/lib/supabase/database.types';
 import type { Employee, Assignment, Shift, TimeBasedRequirement, Schedule } from '@/app/lib/types/scheduling';
 
 /**

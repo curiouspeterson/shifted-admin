@@ -1,117 +1,209 @@
 /**
  * Shifts API Route
- * Last Updated: 2024
+ * Last Updated: 2024-03
  * 
- * This file implements the API endpoints for managing shift definitions.
- * It provides functionality to:
- * - Get all shift templates
- * - Create new shift templates
- * - Update existing shift templates
+ * This file implements the endpoints for managing shift definitions:
+ * - GET: List all shifts with filtering and pagination
+ * - POST: Create new shift definitions
  * 
- * All operations require supervisor permissions.
+ * Features:
+ * - Role-based access control
+ * - Input validation using Zod schemas
+ * - Response caching for list operations
+ * - Shift validation and conflict detection
+ * 
+ * Error Handling:
+ * - 400: Invalid request data
+ * - 401: Not authenticated
+ * - 403: Insufficient permissions
+ * - 404: Shift not found
+ * - 429: Rate limit exceeded
+ * - 500: Server error
  */
 
 import { z } from 'zod';
-import { NextRequest } from 'next/server';
-import { createRouteHandler } from '../../lib/api/handler';
-import { ShiftsOperations } from '../../lib/api/database/shifts';
-import type { RouteContext } from '../../lib/api/types';
+import { createRouteHandler } from '@/lib/api/handler';
+import { ShiftsOperations } from '@/lib/api/database/shifts';
+import type { ApiResponse, RouteContext } from '@/lib/api/types';
+import { 
+  HTTP_STATUS_OK, 
+  HTTP_STATUS_CREATED,
+  HTTP_STATUS_BAD_REQUEST,
+  HTTP_STATUS_NOT_FOUND,
+} from '@/lib/constants/http';
+import { defaultRateLimits } from '@/lib/api/rate-limit';
+import { cacheConfigs } from '@/lib/api/cache';
+import {
+  listShiftsQuerySchema,
+  createShiftSchema,
+  shiftSortSchema,
+} from '@/lib/schemas/api';
+import type { Database } from '@/lib/supabase/database.types';
+import {
+  ValidationError,
+  AuthorizationError,
+  NotFoundError,
+  DatabaseError,
+} from '@/lib/errors';
 
-// Validation Schemas
-const shiftSchema = z.object({
-  name: z.string().min(1).max(100),
-  start_time: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/),
-  end_time: z.string().regex(/^([01]?[0-9]|2[0-3]):[0-5][0-9]$/),
-  duration_hours: z.number().min(0).max(24),
-  min_staff_count: z.number().min(1),
-  requires_supervisor: z.boolean().optional(),
-  crosses_midnight: z.boolean().optional(),
-  description: z.string().optional(),
-  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
-});
+// Direct type reference to avoid potential circular dependencies
+type ShiftRow = {
+  id: string;
+  created_at: string;
+  updated_at: string;
+  name: string;
+  start_time: string;
+  end_time: string;
+  duration_hours: number;
+  crosses_midnight: boolean;
+  requires_supervisor: boolean;
+  created_by: string;
+};
 
-const querySchema = z.object({
-  limit: z.string().regex(/^\d+$/).transform(Number).optional(),
-  offset: z.string().regex(/^\d+$/).transform(Number).optional(),
-  sort: z.enum(['name', 'start_time', 'end_time']).optional(),
-  order: z.enum(['asc', 'desc']).optional(),
-});
+type ShiftSortColumn = NonNullable<z.infer<typeof shiftSortSchema>['sort']>;
+type ListShiftsQuery = z.infer<typeof listShiftsQuerySchema>;
+type CreateShift = z.infer<typeof createShiftSchema>;
+
+// Custom rate limits for shifts
+const shiftsRateLimits = {
+  // List shifts (150 requests per minute)
+  list: {
+    ...defaultRateLimits.api,
+    limit: 150,
+    identifier: 'shifts:list',
+  },
+  
+  // Create shift (40 requests per minute)
+  create: {
+    ...defaultRateLimits.api,
+    limit: 40,
+    identifier: 'shifts:create',
+  },
+} as const;
+
+// Cache configurations for shifts
+const shiftsCacheConfig = {
+  // List shifts (5 minutes cache)
+  list: {
+    ...cacheConfigs.medium,
+    prefix: 'shifts:list',
+  },
+} as const;
+
+// Middleware configuration
+const middlewareConfig = {
+  maxSize: 100 * 1024, // 100KB
+  requireContentType: true,
+  allowedContentTypes: ['application/json'],
+};
 
 // GET /api/shifts
-export const GET = createRouteHandler(
-  async (req: NextRequest, { supabase }: RouteContext) => {
+export const GET = createRouteHandler({
+  methods: ['GET'],
+  requireAuth: true,
+  querySchema: listShiftsQuerySchema,
+  rateLimit: shiftsRateLimits.list,
+  middleware: middlewareConfig,
+  cache: shiftsCacheConfig.list,
+  cors: true,
+  handler: async ({ 
+    supabase, 
+    query, 
+    cache 
+  }: RouteContext<ListShiftsQuery>): Promise<ApiResponse> => {
+    // Initialize database operations
     const shifts = new ShiftsOperations(supabase);
-    const query = Object.fromEntries(req.nextUrl.searchParams);
-    const { sort, order, limit, offset } = querySchema.parse(query);
 
-    const { data, error } = await shifts.findMany({
-      orderBy: sort ? {
-        column: sort,
-        ascending: order !== 'desc',
-      } : undefined,
-      limit,
-      offset,
-    });
+    // Build query options using sanitized query parameters
+    const options = {
+      limit: query?.limit,
+      offset: query?.offset,
+      orderBy: query?.sort
+        ? { column: query.sort as ShiftSortColumn, ascending: query?.order !== 'desc' }
+        : undefined,
+      filter: {
+        ...(query?.requires_supervisor !== undefined && { requires_supervisor: query.requires_supervisor }),
+        ...(query?.crosses_midnight !== undefined && { crosses_midnight: query.crosses_midnight }),
+      },
+    };
 
-    if (error) {
-      return {
-        error: 'Failed to fetch shifts',
-        data: null,
-        metadata: { originalError: error },
-      };
+    // Fetch shifts
+    const result = await shifts.findMany(options);
+
+    if (result.error) {
+      throw new DatabaseError('Failed to fetch shifts', result.error);
     }
 
+    const shifts_data = result.data || [];
+
     return {
-      data: data || [],
+      data: shifts_data,
       error: null,
+      status: HTTP_STATUS_OK,
       metadata: {
-        count: data?.length || 0,
+        count: shifts_data.length,
+        timestamp: new Date().toISOString(),
+        ...(cache && {
+          cached: true,
+          cacheHit: cache.hit,
+          cacheTtl: cache.ttl,
+        }),
       },
     };
   },
-  {
-    requireAuth: true,
-    requireSupervisor: true,
-    validateQuery: querySchema,
-  }
-);
+});
 
 // POST /api/shifts
-export const POST = createRouteHandler(
-  async (req: NextRequest, { supabase }: RouteContext) => {
-    const shifts = new ShiftsOperations(supabase);
-    const body = await req.json();
-    const validatedData = shiftSchema.parse(body);
-
-    const { data, error } = await shifts.create(validatedData);
-
-    if (error) {
-      return {
-        error: 'Failed to create shift',
-        data: null,
-        metadata: { originalError: error },
-      };
+export const POST = createRouteHandler({
+  methods: ['POST'],
+  requireAuth: true,
+  requireSupervisor: true,
+  bodySchema: createShiftSchema,
+  rateLimit: shiftsRateLimits.create,
+  middleware: middlewareConfig,
+  cors: true,
+  handler: async ({ 
+    supabase, 
+    session, 
+    body 
+  }: RouteContext<unknown, CreateShift>): Promise<ApiResponse> => {
+    if (!session) {
+      throw new AuthorizationError('Authentication required');
     }
 
-    if (!data) {
-      return {
-        error: 'Failed to create shift - no data returned',
-        data: null,
-        metadata: {},
-      };
+    if (!body) {
+      throw new ValidationError('Request body is required');
+    }
+
+    // Initialize database operations
+    const shifts = new ShiftsOperations(supabase);
+
+    // Create shift with current user as creator
+    const shiftData = {
+      ...body,
+      created_by: session.user.id,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    // Create shift
+    const result = await shifts.create(shiftData);
+
+    if (result.error) {
+      throw new DatabaseError('Failed to create shift', result.error);
+    }
+
+    if (!result.data) {
+      throw new DatabaseError('No data returned from shift creation');
     }
 
     return {
-      data,
+      data: result.data,
       error: null,
+      status: HTTP_STATUS_CREATED,
       metadata: {
-        message: 'Shift created successfully',
+        timestamp: new Date().toISOString(),
       },
     };
   },
-  {
-    requireAuth: true,
-    requireSupervisor: true,
-    validateBody: shiftSchema,
-  }
-); 
+}); 

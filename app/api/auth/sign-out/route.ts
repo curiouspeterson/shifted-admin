@@ -1,40 +1,70 @@
 /**
- * Sign-Out API Route Handler
- * Last Updated: 2024
+ * Sign Out API Route Handler
+ * Last Updated: 2024-03
  * 
- * This file implements the user sign-out endpoint.
- * It handles:
+ * This file implements the endpoint for user sign-out.
+ * Handles session termination and cleanup using Supabase Auth.
+ * 
+ * Features:
  * - Session termination
- * - Cookie cleanup
- * - Auth state reset
+ * - Rate limiting to prevent abuse
+ * - Standardized error handling
  * 
- * The route requires authentication (default behavior) and
- * properly cleans up the user's session on successful sign-out.
+ * Error Handling:
+ * - 401: Not authenticated
+ * - 429: Rate limit exceeded
+ * - 500: Server error
  */
 
-import { createRouteHandler } from '@/app/lib/api/handler'
-import { AppError } from '@/app/lib/errors'
-import { NextResponse } from 'next/server'
+import { createRouteHandler } from '../../../lib/api/handler';
+import type { ApiResponse } from '../../../lib/api/types';
+import {
+  HTTP_STATUS_OK,
+  HTTP_STATUS_UNAUTHORIZED,
+} from '../../../lib/constants/http';
+import { defaultRateLimits } from '../../../lib/api/rate-limit';
+import {
+  AuthenticationError,
+  DatabaseError,
+} from '../../../lib/errors';
+
+// Custom rate limits for authentication
+const authRateLimits = {
+  signOut: {
+    ...defaultRateLimits.api,
+    limit: 30, // 30 requests per minute
+    identifier: 'auth:sign-out',
+  },
+};
 
 /**
  * POST /api/auth/sign-out
- * Terminates the current user session
- * 
- * Requires authentication (handled by route handler)
- * No request body needed
- * Returns: Success confirmation
+ * Signs out the current user and invalidates their session
  */
-export const POST = createRouteHandler(
-  async (req, { supabase }) => {
-    // Attempt to sign out user and cleanup session
-    const { error } = await supabase.auth.signOut()
-
-    // Handle any sign-out errors
-    if (error) {
-      throw new AppError(error.message, 500)
+export const POST = createRouteHandler({
+  methods: ['POST'],
+  requireAuth: true,
+  rateLimit: authRateLimits.signOut,
+  cors: true,
+  handler: async ({ supabase, session }): Promise<ApiResponse> => {
+    if (!session) {
+      throw new AuthenticationError('No active session');
     }
 
-    // Confirm successful sign-out
-    return NextResponse.json({ success: true })
-  }
-) 
+    // Sign out the user
+    const { error: signOutError } = await supabase.auth.signOut();
+
+    if (signOutError) {
+      throw new DatabaseError('Failed to sign out', signOutError);
+    }
+
+    return {
+      data: null,
+      error: null,
+      status: HTTP_STATUS_OK,
+      metadata: {
+        timestamp: new Date().toISOString(),
+      },
+    };
+  },
+}); 

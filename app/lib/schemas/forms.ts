@@ -31,19 +31,13 @@ import { scheduleSchema, assignmentSchema } from './schedule';
  * Optional fields:
  * - description: Schedule description
  */
-export const scheduleFormSchema = scheduleSchema
-  .omit({
-    id: true,
-    created_at: true,
-    created_by: true,
-    published_at: true,
-    published_by: true,
-    version: true
-  })
-  .extend({
-    name: z.string().min(1, 'Schedule name is required'),
-    description: z.string().optional(),
-  });
+export const scheduleFormSchema = z.object({
+  name: z.string().min(1, 'Schedule name is required'),
+  description: z.string().optional(),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
+  status: z.enum(['draft', 'published', 'archived']),
+});
 
 /**
  * Assignment Form Schema
@@ -51,33 +45,27 @@ export const scheduleFormSchema = scheduleSchema
  * Omits server-controlled fields and adds form-specific validations.
  * 
  * Required fields:
+ * - schedule_id: UUID of the schedule
  * - employee_id: UUID of the assigned employee
  * - shift_id: UUID of the assigned shift
  * - date: Assignment date in YYYY-MM-DD format
+ * - is_supervisor_shift: Whether this is a supervisor shift
  * 
  * Optional fields:
- * - is_supervisor_shift: Whether this is a supervisor shift (defaults to false)
  * - overtime_hours: Number of overtime hours (nullable)
  * - overtime_status: Status of overtime request (nullable)
  */
-export const assignmentFormSchema = assignmentSchema
-  .omit({
-    id: true,
-    created_at: true,
-    updated_at: true,
-    employee: true,
-    shift: true,
-  })
-  .extend({
-    employee_id: z.string().uuid('Invalid employee ID'),
-    shift_id: z.string().uuid('Invalid shift ID'),
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
-      message: 'Date must be in YYYY-MM-DD format',
-    }),
-    is_supervisor_shift: z.boolean().default(false),
-    overtime_hours: z.number().min(0).nullable(),
-    overtime_status: z.enum(['none', 'pending', 'approved', 'rejected']).nullable(),
-  });
+export const assignmentFormSchema = z.object({
+  schedule_id: z.string().uuid('Invalid schedule ID'),
+  employee_id: z.string().uuid('Invalid employee ID'),
+  shift_id: z.string().uuid('Invalid shift ID'),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
+    message: 'Date must be in YYYY-MM-DD format',
+  }),
+  is_supervisor_shift: z.boolean(),
+  overtime_hours: z.number().min(0).nullable(),
+  overtime_status: z.enum(['none', 'pending', 'approved', 'rejected']).nullable(),
+});
 
 /**
  * Type Inference

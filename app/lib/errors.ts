@@ -1,120 +1,118 @@
 /**
- * Error Handling Utilities
- * Last Updated: 2024
+ * Application Error Classes
+ * Last Updated: 2025-01-15
  * 
- * This file provides a centralized error handling system for the application.
- * It includes:
- * - Custom error class for application-specific errors
- * - Error handlers for different types of errors (general, auth, validation, database)
- * - Consistent error response formatting
- * 
- * All error handlers return NextResponse objects with appropriate status codes
- * and formatted error messages.
+ * This module provides custom error classes for different types of errors
+ * in the application.
  */
 
-import { NextResponse } from 'next/server'
-import { PostgrestError } from '@supabase/supabase-js'
+export type ErrorCode = 
+  | 'UNAUTHORIZED'
+  | 'FORBIDDEN'
+  | 'NOT_FOUND'
+  | 'VALIDATION_ERROR'
+  | 'DATABASE_ERROR'
+  | 'API_ERROR'
+  | 'INTERNAL_SERVER_ERROR'
+  | 'TOO_MANY_REQUESTS';
+
+export interface ErrorDetails {
+  code: ErrorCode;
+  message: string;
+  details?: any;
+  statusCode: number;
+}
 
 /**
- * Custom Application Error Class
- * Extends the base Error class with additional properties for HTTP status codes
- * and error codes for more specific error handling
+ * Base error class for application errors
  */
 export class AppError extends Error {
-  constructor(
-    message: string,
-    public statusCode: number = 500,
-    public code?: string
-  ) {
-    super(message)
-    this.name = 'AppError'
+  readonly code: ErrorCode;
+  readonly statusCode: number;
+  readonly details?: any;
+
+  constructor(details: ErrorDetails) {
+    super(details.message);
+    this.name = this.constructor.name;
+    this.code = details.code;
+    this.statusCode = details.statusCode;
+    this.details = details.details;
+    Error.captureStackTrace(this, this.constructor);
   }
 }
 
 /**
- * General Error Handler
- * Handles any type of error and returns an appropriate response
- * Supports:
- * - AppError: Uses provided status code and message
- * - PostgrestError: Database-specific errors
- * - Generic errors: Converts to 500 Internal Server Error
+ * Authentication related errors
  */
-export function handleError(error: unknown) {
-  console.error('Error:', error)
-
-  if (error instanceof AppError) {
-    return NextResponse.json(
-      { error: error.message },
-      { status: error.statusCode }
-    )
+export class AuthError extends AppError {
+  constructor(code: 'UNAUTHORIZED' | 'FORBIDDEN', message: string, details?: any) {
+    super({
+      code,
+      message,
+      details,
+      statusCode: code === 'UNAUTHORIZED' ? 401 : 403,
+    });
   }
-
-  if (error instanceof PostgrestError) {
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
-    )
-  }
-
-  return NextResponse.json(
-    { error: error instanceof Error ? error.message : 'An unexpected error occurred' },
-    { status: 500 }
-  )
 }
 
 /**
- * Authentication Error Handler
- * Specifically handles authentication-related errors
- * Returns 401 Unauthorized for generic auth errors
+ * Database related errors
  */
-export function handleAuthError(error: unknown) {
-  console.error('Auth error:', error)
-  
-  if (error instanceof AppError) {
-    return NextResponse.json(
-      { error: error.message },
-      { status: error.statusCode }
-    )
+export class DatabaseError extends AppError {
+  constructor(message: string, details?: any) {
+    super({
+      code: 'DATABASE_ERROR',
+      message,
+      details,
+      statusCode: 500,
+    });
   }
-
-  return NextResponse.json(
-    { error: error instanceof Error ? error.message : 'Authentication failed' },
-    { status: 401 }
-  )
 }
 
 /**
- * Validation Error Handler
- * Handles errors related to input validation
- * Always returns 400 Bad Request with validation error details
+ * API related errors
  */
-export function handleValidationError(error: unknown) {
-  console.error('Validation error:', error)
-  
-  return NextResponse.json(
-    { error: error instanceof Error ? error.message : 'Validation failed' },
-    { status: 400 }
-  )
+export class ApiError extends AppError {
+  constructor(code: ErrorCode, message: string, details?: any) {
+    const statusCode = 
+      code === 'NOT_FOUND' ? 404 :
+      code === 'VALIDATION_ERROR' ? 400 :
+      code === 'TOO_MANY_REQUESTS' ? 429 :
+      500;
+
+    super({
+      code,
+      message,
+      details,
+      statusCode,
+    });
+  }
 }
 
 /**
- * Database Error Handler
- * Specifically handles database-related errors
- * Provides special handling for Postgrest errors
- * Returns 500 Internal Server Error for database issues
+ * Validation related errors
  */
-export function handleDatabaseError(error: unknown) {
-  console.error('Database error:', error)
-  
-  if (error instanceof PostgrestError) {
-    return NextResponse.json(
-      { error: error.message },
-      { status: 500 }
-    )
+export class ValidationError extends AppError {
+  constructor(message: string, details?: any) {
+    super({
+      code: 'VALIDATION_ERROR',
+      message,
+      details,
+      statusCode: 400,
+    });
   }
+}
 
-  return NextResponse.json(
-    { error: error instanceof Error ? error.message : 'Database operation failed' },
-    { status: 500 }
-  )
+/**
+ * Not found errors
+ */
+export class NotFoundError extends AppError {
+  constructor(message: string, details?: any) {
+    super({
+      code: 'NOT_FOUND',
+      message,
+      details,
+      statusCode: 404,
+    });
+  }
 } 

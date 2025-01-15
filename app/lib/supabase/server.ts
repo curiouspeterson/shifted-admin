@@ -2,11 +2,11 @@
  * Supabase Server Client
  * Last Updated: 2024
  * 
- * Creates a Supabase client for server-side operations.
- * This client is used in server components and server actions.
+ * Server-side Supabase client for use in server components and server actions.
+ * Handles session management and cookie handling.
  */
 
-import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
 import { Database } from './database.types';
 
@@ -19,18 +19,18 @@ export function createClient(cookieStore: ReturnType<typeof cookies>) {
         get(name: string) {
           return cookieStore.get(name)?.value;
         },
-        set(name: string, value: string, options: CookieOptions) {
+        set(name: string, value: string, options: { path: string; maxAge: number }) {
           try {
             cookieStore.set({ name, value, ...options });
           } catch (error) {
-            // Handle cookies in edge functions
+            // This can happen in middleware when the cookie is already set
           }
         },
-        remove(name: string, options: CookieOptions) {
+        remove(name: string, options: { path: string }) {
           try {
-            cookieStore.set({ name, value: '', ...options });
+            cookieStore.set({ name, value: '', ...options, maxAge: -1 });
           } catch (error) {
-            // Handle cookies in edge functions
+            // This can happen in middleware when the cookie is already set
           }
         },
       },

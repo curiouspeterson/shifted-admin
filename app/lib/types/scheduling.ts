@@ -14,7 +14,7 @@
  * - Scheduling rules
  */
 
-import type { Database } from '@/lib/database.types';
+import type { Database } from '@/lib/supabase/database.types';
 
 /**
  * Shift Pattern Types

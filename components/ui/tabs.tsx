@@ -1,5 +1,17 @@
 "use client"
 
+/**
+ * Tabs Component
+ * Last Updated: 2024-03
+ * 
+ * A reusable tabs component based on Radix UI.
+ * Features:
+ * - Keyboard navigation
+ * - Accessibility support
+ * - Custom styling
+ * - Focus management
+ */
+
 import * as React from "react"
 import * as TabsPrimitive from "@radix-ui/react-tabs"
 

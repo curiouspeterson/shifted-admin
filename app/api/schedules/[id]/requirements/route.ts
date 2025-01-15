@@ -1,150 +1,381 @@
 /**
- * Schedule Requirements API Route Handler
- * Last Updated: 2024
+ * Schedule Requirements API Routes
+ * Last Updated: 2024-03
  * 
- * This file implements the API endpoints for managing time-based staffing requirements
- * for specific schedules. Currently supports:
- * - GET: Retrieve all requirements for a specific schedule
- * - PUT: Update staffing levels for a specific requirement
+ * This file implements the endpoints for managing schedule time requirements:
+ * - GET: List time requirements with filtering and pagination
+ * - POST: Create new time requirements
  * 
- * All operations are restricted to supervisors only.
- * The route uses dynamic path parameters to identify the target schedule.
- * Requirements define minimum staffing levels and supervisor counts for specific time blocks.
+ * Features:
+ * - Role-based access control
+ * - Input validation using Zod schemas
+ * - Response caching for list operations
+ * - Schedule existence validation
+ * - Time requirement validation
+ * 
+ * Error Handling:
+ * - 400: Invalid request data
+ * - 401: Not authenticated
+ * - 403: Insufficient permissions
+ * - 404: Schedule not found
+ * - 409: Conflicting requirements
+ * - 429: Rate limit exceeded
+ * - 500: Server error
  */
 
-import { createRouteHandler } from '@/app/lib/api/handler'
-import { AppError } from '@/app/lib/errors'
-import { NextResponse } from 'next/server'
-import { z } from 'zod'
-import type { Database } from '@/lib/database.types'
+import { z } from 'zod';
+import { createRouteHandler } from '@/lib/api/handler';
+import type { ApiResponse, RouteContext } from '@/lib/api/types';
+import { TimeRequirementsOperations } from '@/lib/api/database/time-requirements';
+import { SchedulesOperations } from '@/lib/api/database/schedules';
+import {
+  HTTP_STATUS_OK,
+  HTTP_STATUS_CREATED,
+  HTTP_STATUS_NOT_FOUND,
+  HTTP_STATUS_CONFLICT,
+} from '@/lib/constants/http';
+import { defaultRateLimits } from '@/lib/api/rate-limit';
+import { cacheConfigs } from '@/lib/api/cache';
+import {
+  listTimeRequirementsQuerySchema,
+  createTimeRequirementSchema,
+  timeRequirementSortSchema,
+  updateTimeRequirementSchema,
+} from '@/lib/schemas/api';
+import {
+  ValidationError,
+  AuthorizationError,
+  NotFoundError,
+  DatabaseError,
+} from '@/lib/errors';
+import type { Database } from '@/lib/supabase/database.types';
+import { timeBasedRequirementSchema } from '@/lib/schemas/schedule';
 
-/**
- * Type Definition
- * Using database type to ensure type safety with Supabase
- */
-type TimeRequirement = Database['public']['Tables']['time_based_requirements']['Row']
+type TimeRequirementRow = Database['public']['Tables']['time_requirements']['Row'];
+type TimeRequirementSortColumn = NonNullable<z.infer<typeof timeRequirementSortSchema>['sort']>;
+type ListTimeRequirementsQuery = z.infer<typeof listTimeRequirementsQuerySchema>;
+type CreateTimeRequirement = z.infer<typeof createTimeRequirementSchema>;
+type UpdateTimeRequirement = z.infer<typeof updateTimeRequirementSchema>;
 
-/**
- * Validation Schemas
- * Define the shape and constraints for time requirement data
- */
+// Custom rate limits for requirement operations
+const requirementRateLimits = {
+  // List requirements (150 requests per minute)
+  list: {
+    ...defaultRateLimits.api,
+    limit: 150,
+    identifier: 'requirements:list',
+  },
+  
+  // Create requirement (40 requests per minute)
+  create: {
+    ...defaultRateLimits.api,
+    limit: 40,
+    identifier: 'requirements:create',
+  },
+} as const;
 
-/**
- * Complete Time Requirement Schema
- * Used for validating database records and API responses
- * Includes all fields that define a time-based requirement
- */
-const timeRequirementSchema = z.object({
-  id: z.string(),
-  schedule_id: z.string(),
-  start_time: z.string(),
-  end_time: z.string(),
-  min_total_staff: z.number(),
-  min_supervisors: z.number(),
-  crosses_midnight: z.boolean(),
-  is_active: z.boolean(),
-  created_at: z.string().nullable(),
-  updated_at: z.string().nullable()
-})
+// Cache configuration for requirements
+const requirementCacheConfig = {
+  // List operation (1 minute cache)
+  list: {
+    ...cacheConfigs.short,
+    ttl: 60, // 1 minute
+    prefix: 'api:requirements:list',
+    includeQuery: true,
+    excludeParams: ['offset'] as string[],
+  },
+};
 
-/**
- * API Response Schema
- * Wraps time requirement data in a response object
- */
-const timeRequirementsResponseSchema = z.object({
-  requirements: z.array(timeRequirementSchema)
-})
-
-/**
- * Update Schema
- * Defines the fields that can be updated for a requirement
- * Only allows modifying staffing level requirements
- */
-const updateRequirementSchema = z.object({
-  min_total_staff: z.number(),
-  min_supervisors: z.number()
-})
+// Middleware configuration
+const middlewareConfig = {
+  maxSize: 100 * 1024, // 100KB
+  requireContentType: true,
+  allowedContentTypes: ['application/json'],
+};
 
 /**
  * GET /api/schedules/[id]/requirements
- * Retrieves all time-based requirements for a specific schedule
- * Restricted to supervisors only
- * Returns: Array of requirement objects ordered by start time
- * Throws: 400 if schedule ID missing, 500 if fetch fails
+ * List time requirements for a specific schedule
  */
-export const GET = createRouteHandler(
-  async (req, { supabase, params }) => {
+export const GET = createRouteHandler({
+  methods: ['GET'],
+  requireAuth: true,
+  querySchema: listTimeRequirementsQuerySchema,
+  rateLimit: requirementRateLimits.list,
+  middleware: middlewareConfig,
+  cache: requirementCacheConfig.list,
+  cors: true,
+  handler: async ({ 
+    supabase, 
+    params, 
+    query, 
+    cache 
+  }: RouteContext<ListTimeRequirementsQuery>): Promise<ApiResponse> => {
     if (!params?.id) {
-      throw new AppError('Schedule ID is required', 400)
+      throw new ValidationError('Schedule ID is required');
     }
 
-    const { data: requirements, error } = await supabase
-      .from('time_based_requirements')
-      .select('*')
-      .eq('schedule_id', params.id)
-      .order('start_time')
+    // Initialize database operations
+    const schedules = new SchedulesOperations(supabase);
+    const requirements = new TimeRequirementsOperations(supabase);
 
-    if (error) {
-      throw new AppError('Failed to fetch requirements', 500)
+    // Check if schedule exists
+    const schedule = await schedules.findById(params.id);
+    if (!schedule.data) {
+      throw new NotFoundError('Schedule not found');
     }
 
-    // Validate response data
-    const validatedResponse = timeRequirementsResponseSchema.parse({ 
-      requirements: requirements || [] 
-    })
+    // Build query options using sanitized query parameters
+    const options = {
+      limit: query?.limit,
+      offset: query?.offset,
+      orderBy: query?.sort
+        ? { column: query.sort as TimeRequirementSortColumn, ascending: query.order !== 'desc' }
+        : undefined,
+      filter: {
+        schedule_id: params.id,
+        ...(query?.day_of_week && { day_of_week: query.day_of_week }),
+        ...(query?.requires_supervisor !== undefined && { requires_supervisor: query.requires_supervisor }),
+      },
+    };
 
-    return NextResponse.json(validatedResponse)
+    // Fetch requirements
+    const result = await requirements.findMany(options);
+
+    if (result.error) {
+      throw new DatabaseError('Failed to fetch time requirements', result.error);
+    }
+
+    const requirements_data = result.data || [];
+
+    return {
+      data: requirements_data,
+      error: null,
+      status: HTTP_STATUS_OK,
+      metadata: {
+        count: requirements_data.length,
+        timestamp: new Date().toISOString(),
+        ...(cache && {
+          cached: true,
+          cacheHit: cache.hit,
+          cacheTtl: cache.ttl,
+        }),
+      },
+    };
   },
-  { requireSupervisor: true }
-)
+});
 
 /**
- * PUT /api/schedules/[id]/requirements
- * Updates staffing levels for a specific requirement
- * Restricted to supervisors only
- * Body: Requirement ID and updated staffing levels
- * Returns: The updated requirement record
- * Throws: 400 if IDs missing, 404 if not found, 500 if update fails
+ * POST /api/schedules/[id]/requirements
+ * Create a new time requirement for a schedule
  */
-export const PUT = createRouteHandler(
-  async (req, { supabase, params }) => {
+export const POST = createRouteHandler({
+  methods: ['POST'],
+  requireAuth: true,
+  requireSupervisor: true,
+  bodySchema: createTimeRequirementSchema,
+  rateLimit: requirementRateLimits.create,
+  middleware: middlewareConfig,
+  cors: true,
+  handler: async ({ 
+    supabase, 
+    session, 
+    params, 
+    body 
+  }: RouteContext<unknown, CreateTimeRequirement>): Promise<ApiResponse> => {
     if (!params?.id) {
-      throw new AppError('Schedule ID is required', 400)
+      throw new ValidationError('Schedule ID is required');
     }
 
-    const body = await req.json()
-    const { id: requirementId, ...updateData } = body
-
-    if (!requirementId) {
-      throw new AppError('Requirement ID is required', 400)
+    if (!session) {
+      throw new AuthorizationError('Authentication required');
     }
 
-    // Validate update data
-    const validatedData = updateRequirementSchema.parse(updateData)
+    // Initialize database operations
+    const schedules = new SchedulesOperations(supabase);
+    const requirements = new TimeRequirementsOperations(supabase);
 
-    const { data: requirement, error } = await supabase
-      .from('time_based_requirements')
-      .update({
-        ...validatedData,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', requirementId)
-      .eq('schedule_id', params.id)
-      .select()
-      .single()
-
-    if (error) {
-      throw new AppError('Failed to update requirement', 500)
+    // Check if schedule exists
+    const schedule = await schedules.findById(params.id);
+    if (!schedule.data) {
+      throw new NotFoundError('Schedule not found');
     }
 
-    if (!requirement) {
-      throw new AppError('Requirement not found', 404)
+    // Only creator, supervisors, and admins can add requirements
+    if (schedule.data.created_by !== session.user.id && 
+        !session.user.user_metadata.role || 
+        !['supervisor', 'admin'].includes(session.user.user_metadata.role)) {
+      throw new AuthorizationError('Only schedule creator, supervisors, and admins can add requirements');
     }
 
-    // Validate response data
-    const validatedRequirement = timeRequirementSchema.parse(requirement)
+    // Since body is validated by bodySchema, we know it exists and has all required fields
+    const validatedBody = body as Required<CreateTimeRequirement>;
 
-    return NextResponse.json(validatedRequirement)
+    // Check for existing requirements in the same time slot
+    const existing = await requirements.findMany({
+      filter: {
+        schedule_id: params.id,
+        day_of_week: validatedBody.day_of_week,
+      },
+    });
+
+    if (existing.data?.some((requirement: TimeRequirementRow) => {
+      const newStart = new Date(`1970-01-01T${validatedBody.start_time}`);
+      const newEnd = new Date(`1970-01-01T${validatedBody.end_time}`);
+      const requirementStart = new Date(`1970-01-01T${requirement.start_time}`);
+      const requirementEnd = new Date(`1970-01-01T${requirement.end_time}`);
+      return (
+        (newStart >= requirementStart && newStart < requirementEnd) ||
+        (newEnd > requirementStart && newEnd <= requirementEnd) ||
+        (newStart <= requirementStart && newEnd >= requirementEnd)
+      );
+    })) {
+      throw new ValidationError('Time requirement already exists for this time slot', {
+        code: 'REQUIREMENT_CONFLICT',
+        status: HTTP_STATUS_CONFLICT,
+      });
+    }
+
+    // Create requirement record with all required fields
+    const result = await requirements.create({
+      schedule_id: params.id,
+      start_time: validatedBody.start_time,
+      end_time: validatedBody.end_time,
+      day_of_week: validatedBody.day_of_week,
+      min_staff: validatedBody.min_staff,
+      requires_supervisor: validatedBody.requires_supervisor,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    if (result.error) {
+      throw new DatabaseError('Failed to create time requirement', result.error);
+    }
+
+    if (!result.data) {
+      throw new DatabaseError('No data returned from requirement creation');
+    }
+
+    return {
+      data: result.data,
+      error: null,
+      status: HTTP_STATUS_CREATED,
+      metadata: {
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
-  { requireSupervisor: true }
-)
+});
+
+/**
+ * PATCH /api/schedules/[id]/requirements/[requirementId]
+ * Update an existing time requirement
+ */
+export const PATCH = createRouteHandler({
+  methods: ['PATCH'],
+  requireAuth: true,
+  requireSupervisor: true,
+  bodySchema: updateTimeRequirementSchema,
+  rateLimit: requirementRateLimits.create,
+  middleware: middlewareConfig,
+  cors: true,
+  handler: async ({ 
+    supabase, 
+    session, 
+    params, 
+    body 
+  }: RouteContext<unknown, UpdateTimeRequirement>): Promise<ApiResponse> => {
+    if (!params?.id || !params?.requirementId) {
+      throw new ValidationError('Schedule ID and requirement ID are required');
+    }
+
+    if (!session) {
+      throw new AuthorizationError('Authentication required');
+    }
+
+    if (!body) {
+      throw new ValidationError('Request body is required');
+    }
+
+    // Initialize database operations
+    const schedules = new SchedulesOperations(supabase);
+    const requirements = new TimeRequirementsOperations(supabase);
+
+    // Check if schedule exists
+    const schedule = await schedules.findById(params.id);
+    if (!schedule.data) {
+      throw new NotFoundError('Schedule not found');
+    }
+
+    // Only creator, supervisors, and admins can update requirements
+    if (schedule.data.created_by !== session.user.id && 
+        !session.user.user_metadata.role || 
+        !['supervisor', 'admin'].includes(session.user.user_metadata.role)) {
+      throw new AuthorizationError('Only schedule creator, supervisors, and admins can update requirements');
+    }
+
+    // Check if requirement exists
+    const existing = await requirements.findById(params.requirementId);
+    if (!existing.data) {
+      throw new NotFoundError('Time requirement not found');
+    }
+
+    // If updating time-related fields, check for conflicts
+    if (body.start_time || body.end_time || body.day_of_week !== undefined) {
+      const start_time = body.start_time || existing.data.start_time;
+      const end_time = body.end_time || existing.data.end_time;
+      const day_of_week = body.day_of_week ?? existing.data.day_of_week;
+
+      const conflicts = await requirements.findMany({
+        filter: {
+          schedule_id: params.id,
+          day_of_week,
+        },
+      });
+
+      if (conflicts.data?.some((requirement: TimeRequirementRow) => {
+        if (requirement.id === params.requirementId) return false;
+        const newStart = new Date(`1970-01-01T${start_time}`);
+        const newEnd = new Date(`1970-01-01T${end_time}`);
+        const requirementStart = new Date(`1970-01-01T${requirement.start_time}`);
+        const requirementEnd = new Date(`1970-01-01T${requirement.end_time}`);
+        return (
+          (newStart >= requirementStart && newStart < requirementEnd) ||
+          (newEnd > requirementStart && newEnd <= requirementEnd) ||
+          (newStart <= requirementStart && newEnd >= requirementEnd)
+        );
+      })) {
+        throw new ValidationError('Time requirement already exists for this time slot', {
+          code: 'REQUIREMENT_CONFLICT',
+          status: HTTP_STATUS_CONFLICT,
+        });
+      }
+    }
+
+    // Update requirement with transformed data
+    const updateData = {
+      ...body,
+      requires_supervisor: body.requires_supervisor ?? existing.data.requires_supervisor,
+      updated_at: new Date().toISOString(),
+    };
+
+    const result = await requirements.update(params.requirementId, updateData);
+
+    if (result.error) {
+      throw new DatabaseError('Failed to update time requirement', result.error);
+    }
+
+    if (!result.data) {
+      throw new DatabaseError('No data returned from requirement update');
+    }
+
+    return {
+      data: result.data,
+      error: null,
+      status: HTTP_STATUS_OK,
+      metadata: {
+        timestamp: new Date().toISOString(),
+      },
+    };
+  },
+});

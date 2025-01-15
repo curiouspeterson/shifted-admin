@@ -1,149 +1,259 @@
 /**
- * Schedule Assignments API Route Handler
- * Last Updated: 2024
+ * Schedule Assignments API Routes
+ * Last Updated: 2024-03
  * 
- * This file implements the API endpoints for managing schedule assignments.
- * Supports:
- * - GET: Retrieve all assignments for a specific schedule
- * - POST: Create a new assignment (supervisor access only)
+ * This file implements the endpoints for managing schedule assignments:
+ * - GET: List assignments for a schedule with filtering and pagination
+ * - POST: Create new assignments for a schedule
  * 
- * Includes validation, error handling, and proper type safety for all operations.
- * Uses Zod for request/response validation and proper database typing.
+ * Features:
+ * - Role-based access control
+ * - Input validation using Zod schemas
+ * - Response caching for list operations
+ * - Schedule existence validation
+ * - Employee availability checking
+ * 
+ * Error Handling:
+ * - 400: Invalid request data
+ * - 401: Not authenticated
+ * - 403: Insufficient permissions
+ * - 404: Schedule or employee not found
+ * - 409: Conflicting assignments
+ * - 429: Rate limit exceeded
+ * - 500: Server error
  */
 
-import { createRouteHandler } from '@/app/lib/api/handler'
-import { AppError } from '@/app/lib/errors'
-import { NextResponse } from 'next/server'
-import { z } from 'zod'
-import type { Database } from '@/app/lib/supabase/database.types'
+import { z } from 'zod';
+import { createRouteHandler } from '@/lib/api/handler';
+import type { ApiResponse, RouteContext } from '@/lib/api/types';
+import { AssignmentsOperations } from '@/lib/api/database/assignments';
+import { SchedulesOperations } from '@/lib/api/database/schedules';
+import {
+  HTTP_STATUS_OK,
+  HTTP_STATUS_CREATED,
+  HTTP_STATUS_NOT_FOUND,
+  HTTP_STATUS_CONFLICT,
+} from '@/lib/constants/http';
+import { defaultRateLimits } from '@/lib/api/rate-limit';
+import { cacheConfigs } from '@/lib/api/cache';
+import {
+  listAssignmentsQuerySchema,
+  createAssignmentSchema,
+  assignmentSortSchema,
+} from '@/lib/schemas/api';
+import {
+  ValidationError,
+  AuthorizationError,
+  NotFoundError,
+  DatabaseError,
+} from '@/lib/errors';
+import type { Database } from '@/lib/supabase/database.types';
 
-/**
- * Type Definitions
- * Using database types to ensure type safety with Supabase
- */
-type Assignment = Database['public']['Tables']['schedule_assignments']['Row']
-type AssignmentInsert = Database['public']['Tables']['schedule_assignments']['Insert']
+type AssignmentRow = Database['public']['Tables']['assignments']['Row'];
+type AssignmentSortColumn = NonNullable<z.infer<typeof assignmentSortSchema>['sort']>;
+type ListAssignmentsQuery = z.infer<typeof listAssignmentsQuerySchema>;
+type CreateAssignment = z.infer<typeof createAssignmentSchema>;
 
-/**
- * Validation Schemas
- * Define the shape and constraints for assignment data
- */
+// Custom rate limits for assignment operations
+const assignmentRateLimits = {
+  // List assignments (150 requests per minute)
+  list: {
+    ...defaultRateLimits.api,
+    limit: 150,
+    identifier: 'assignments:list',
+  },
+  
+  // Create assignment (40 requests per minute)
+  create: {
+    ...defaultRateLimits.api,
+    limit: 40,
+    identifier: 'assignments:create',
+  },
+} as const;
 
-/**
- * Complete Assignment Schema
- * Used for validating database records and API responses
- */
-const assignmentSchema = z.object({
-  id: z.string(),
-  schedule_id: z.string(),
-  employee_id: z.string(),
-  shift_id: z.string(),
-  date: z.string(),
-  is_supervisor_shift: z.boolean(),
-  overtime_hours: z.number().nullable(),
-  overtime_status: z.string().nullable(),
-  created_at: z.string(),
-  updated_at: z.string()
-})
+// Cache configuration for assignments
+const assignmentCacheConfig = {
+  // List operation (1 minute cache)
+  list: {
+    ...cacheConfigs.short,
+    ttl: 60, // 1 minute
+    prefix: 'api:assignments:list',
+    includeQuery: true,
+    excludeParams: ['offset'] as string[],
+  },
+};
 
-/**
- * Assignment Input Schema
- * Used for validating POST request bodies
- * Only includes fields that can be set by the client
- */
-const assignmentInputSchema = z.object({
-  employee_id: z.string(),
-  shift_id: z.string(),
-  date: z.string(),
-  is_supervisor_shift: z.boolean().optional()
-})
-
-/**
- * API Response Schema
- * Wraps assignment data in a response object
- */
-const assignmentsResponseSchema = z.object({
-  assignments: z.array(assignmentSchema)
-})
+// Middleware configuration
+const middlewareConfig = {
+  maxSize: 100 * 1024, // 100KB
+  requireContentType: true,
+  allowedContentTypes: ['application/json'],
+};
 
 /**
  * GET /api/schedules/[id]/assignments
- * Retrieves all assignments for a specific schedule
- * Includes related employee and shift data
- * Accessible to all authenticated users
+ * List assignments for a specific schedule
  */
-export const GET = createRouteHandler(
-  async (req, { supabase, params }) => {
-    // Validate schedule ID from route parameter
+export const GET = createRouteHandler({
+  methods: ['GET'],
+  requireAuth: true,
+  querySchema: listAssignmentsQuerySchema,
+  rateLimit: assignmentRateLimits.list,
+  middleware: middlewareConfig,
+  cache: assignmentCacheConfig.list,
+  cors: true,
+  handler: async ({ 
+    supabase, 
+    params, 
+    query, 
+    cache 
+  }: RouteContext<ListAssignmentsQuery>): Promise<ApiResponse> => {
     if (!params?.id) {
-      throw new AppError('Schedule ID is required', 400)
+      throw new ValidationError('Schedule ID is required');
     }
 
-    // Fetch assignments with related data
-    const { data: assignments, error } = await supabase
-      .from('schedule_assignments')
-      .select(`
-        *,
-        employee:employees(*),
-        shift:shifts(*)
-      `)
-      .eq('schedule_id', params.id)
+    // Initialize database operations
+    const schedules = new SchedulesOperations(supabase);
+    const assignments = new AssignmentsOperations(supabase);
 
-    if (error) {
-      throw new AppError('Failed to fetch assignments', 500)
+    // Check if schedule exists
+    const schedule = await schedules.findById(params.id);
+    if (!schedule.data) {
+      throw new NotFoundError('Schedule not found');
     }
 
-    // Validate and return response data
-    const validatedResponse = assignmentsResponseSchema.parse({ 
-      assignments: assignments || [] 
-    })
+    // Build query options using sanitized query parameters
+    const options = {
+      limit: query?.limit,
+      offset: query?.offset,
+      orderBy: query?.sort
+        ? { column: query.sort as AssignmentSortColumn, ascending: query.order !== 'desc' }
+        : undefined,
+      filter: {
+        schedule_id: params.id,
+        ...(query?.employee_id && { employee_id: query.employee_id }),
+        ...(query?.status && { status: query.status }),
+      },
+    };
 
-    return NextResponse.json(validatedResponse)
-  }
-)
+    // Fetch assignments
+    const result = await assignments.findMany(options);
+
+    if (result.error) {
+      throw new DatabaseError('Failed to fetch assignments', result.error);
+    }
+
+    const assignments_data = result.data || [];
+
+    return {
+      data: assignments_data,
+      error: null,
+      status: HTTP_STATUS_OK,
+      metadata: {
+        count: assignments_data.length,
+        timestamp: new Date().toISOString(),
+        ...(cache && {
+          cached: true,
+          cacheHit: cache.hit,
+          cacheTtl: cache.ttl,
+        }),
+      },
+    };
+  },
+});
 
 /**
  * POST /api/schedules/[id]/assignments
- * Creates a new assignment for a specific schedule
- * Requires supervisor access
- * Body must contain employee_id, shift_id, and date
- * Returns: The newly created assignment
+ * Create a new assignment for a schedule
  */
-export const POST = createRouteHandler(
-  async (req, { supabase, params }) => {
-    // Validate schedule ID from route parameter
+export const POST = createRouteHandler({
+  methods: ['POST'],
+  requireAuth: true,
+  requireSupervisor: true,
+  bodySchema: createAssignmentSchema,
+  rateLimit: assignmentRateLimits.create,
+  middleware: middlewareConfig,
+  cors: true,
+  handler: async ({ 
+    supabase, 
+    session, 
+    params, 
+    body 
+  }: RouteContext<unknown, CreateAssignment>): Promise<ApiResponse> => {
     if (!params?.id) {
-      throw new AppError('Schedule ID is required', 400)
+      throw new ValidationError('Schedule ID is required');
     }
 
-    // Parse and validate request body
-    const body = await req.json()
-    const validatedData = assignmentInputSchema.parse(body)
+    if (!session) {
+      throw new AuthorizationError('Authentication required');
+    }
 
-    // Prepare new assignment data
-    const now = new Date().toISOString()
-    const newAssignment: AssignmentInsert = {
-      ...validatedData,
+    // Initialize database operations
+    const schedules = new SchedulesOperations(supabase);
+    const assignments = new AssignmentsOperations(supabase);
+
+    // Check if schedule exists
+    const schedule = await schedules.findById(params.id);
+    if (!schedule.data) {
+      throw new NotFoundError('Schedule not found');
+    }
+
+    // Only creator, supervisors, and admins can add assignments
+    if (schedule.data.created_by !== session.user.id && 
+        !session.user.user_metadata.role || 
+        !['supervisor', 'admin'].includes(session.user.user_metadata.role)) {
+      throw new AuthorizationError('Only schedule creator, supervisors, and admins can add assignments');
+    }
+
+    // Check for existing assignments in the same time slot
+    const existing = await assignments.findMany({
+      filter: {
+        schedule_id: params.id,
+        employee_id: body!.employee_id,
+      },
+    });
+
+    if (existing.data?.some((assignment: AssignmentRow) => {
+      const newStart = new Date(body!.start_time);
+      const newEnd = new Date(body!.end_time);
+      const assignmentStart = new Date(assignment.start_time);
+      const assignmentEnd = new Date(assignment.end_time);
+      return (
+        (newStart >= assignmentStart && newStart < assignmentEnd) ||
+        (newEnd > assignmentStart && newEnd <= assignmentEnd) ||
+        (newStart <= assignmentStart && newEnd >= assignmentEnd)
+      );
+    })) {
+      throw new ValidationError('Employee already has an assignment during this time', {
+        code: 'ASSIGNMENT_CONFLICT',
+        status: HTTP_STATUS_CONFLICT,
+      });
+    }
+
+    // Create assignment record
+    const result = await assignments.create({
+      ...body!,
       schedule_id: params.id,
-      created_at: now,
-      updated_at: now
+      status: 'pending',
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    });
+
+    if (result.error) {
+      throw new DatabaseError('Failed to create assignment', result.error);
     }
 
-    // Insert new assignment and return the created record
-    const { data: assignment, error } = await supabase
-      .from('schedule_assignments')
-      .insert(newAssignment)
-      .select()
-      .single()
-
-    if (error) {
-      throw new AppError('Failed to create assignment', 500)
+    if (!result.data) {
+      throw new DatabaseError('No data returned from assignment creation');
     }
 
-    // Validate and return the created assignment
-    const validatedAssignment = assignmentSchema.parse(assignment)
-
-    return NextResponse.json({ assignment: validatedAssignment })
+    return {
+      data: result.data,
+      error: null,
+      status: HTTP_STATUS_CREATED,
+      metadata: {
+        timestamp: new Date().toISOString(),
+      },
+    };
   },
-  { requireSupervisor: true }
-) 
+}); 

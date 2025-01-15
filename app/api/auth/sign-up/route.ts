@@ -1,6 +1,6 @@
 /**
  * Sign-Up API Route Handler
- * Last Updated: 2024
+ * Last Updated: 2024-03
  * 
  * This file implements the user registration endpoint.
  * It handles:
@@ -15,8 +15,19 @@
 
 import { createRouteHandler } from '@/app/lib/api/handler'
 import { AppError } from '@/app/lib/errors'
-import { NextResponse } from 'next/server'
 import { adminClient } from '@/app/lib/supabase'
+import type { ApiResponse } from '@/app/lib/api/types'
+import { z } from 'zod'
+
+const signUpSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  firstName: z.string().min(1, 'First name is required'),
+  lastName: z.string().min(1, 'Last name is required'),
+  position: z.string().default('dispatcher')
+})
+
+type SignUpBody = z.infer<typeof signUpSchema>
 
 /**
  * POST /api/auth/sign-up
@@ -31,15 +42,12 @@ import { adminClient } from '@/app/lib/supabase'
  * 
  * Returns: Created user and employee records
  */
-export const POST = createRouteHandler(
-  async (req, { supabase }) => {
-    // Extract and validate required fields from request body
-    const { email, password, firstName, lastName, position = 'dispatcher' } = await req.json()
-
-    // Validate required fields
-    if (!email || !password || !firstName || !lastName) {
-      throw new AppError('All fields are required', 400)
-    }
+export const POST = createRouteHandler({
+  methods: ['POST'],
+  requireAuth: false,
+  bodySchema: signUpSchema,
+  handler: async ({ body, supabase }) => {
+    const { email, password, firstName, lastName, position } = body as SignUpBody
 
     /**
      * Create User Account
@@ -98,12 +106,13 @@ export const POST = createRouteHandler(
     }
 
     // Return created records with 201 Created status
-    return NextResponse.json({ 
-      user,
-      employee
-    }, {
-      status: 201
-    })
-  },
-  { requireAuth: false } // Public endpoint - no auth required
-) 
+    return {
+      data: { user, employee },
+      error: null,
+      status: 201,
+      metadata: {
+        timestamp: new Date().toISOString()
+      }
+    } as ApiResponse
+  }
+}) 
