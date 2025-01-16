@@ -1,6 +1,6 @@
 /**
  * Type Mapping Layer
- * Last Updated: 2024-01-15
+ * Last Updated: 2024-01-16
  * 
  * Provides type-safe conversions between domain types and database types.
  * Handles Supabase's complex type system and ensures proper type safety.
@@ -52,42 +52,55 @@ export interface TypeMapper<
 }
 
 /**
- * Base type mapper implementation with common validation logic
+ * Enhanced type guard for database row validation
  */
-export abstract class BaseTypeMapper<
-  T extends TableName,
-  D,
-  I,
-  U = Partial<I>
-> implements TypeMapper<T, D, I, U> {
-  abstract toRow(data: Row<T>): D
-  abstract toDbInsert(data: I): Insert<T>
-  abstract toDbUpdate(data: U): Update<T>
-
-  /**
-   * Default validation implementation
-   * Override in specific mappers for more precise validation
-   */
-  validateDbData(data: unknown): data is Row<T> | Insert<T> | Update<T> {
-    if (!data || typeof data !== 'object') {
-      return false
-    }
-
-    // Basic structure validation
-    const keys = Object.keys(data)
-    if (keys.length === 0) {
-      return false
-    }
-
-    // Check for required fields based on operation type
-    if ('id' in data) {
-      // Row type validation
-      return typeof (data as Row<T>).id === 'string'
-    }
-
-    // Insert/Update validation
-    return true
+function isValidDatabaseRow<T extends TableName>(data: unknown): data is Row<T> {
+  if (!data || typeof data !== 'object') {
+    return false
   }
+
+  const row = data as Record<string, unknown>
+  
+  // Validate ID field for row type
+  if ('id' in row) {
+    return typeof row.id === 'string' && row.id.length > 0
+  }
+
+  return false
+}
+
+/**
+ * Helper function to safely cast database response to row type with validation
+ */
+export function asRow<T extends TableName>(data: unknown): Row<T> {
+  if (!isValidDatabaseRow<T>(data)) {
+    throw new Error(
+      `Invalid database row: ${
+        !data
+          ? 'data is null or undefined'
+          : typeof data !== 'object'
+          ? `expected object, got ${typeof data}`
+          : 'missing or invalid id field'
+      }`
+    )
+  }
+  return data
+}
+
+/**
+ * Helper function to safely cast a value to a filter value with detailed errors
+ */
+export function asFilterValue(value: unknown): FilterValue {
+  if (value === null) return value
+  
+  const type = typeof value
+  if (type === 'string' || type === 'number' || type === 'boolean') {
+    return value as FilterValue
+  }
+  
+  throw new Error(
+    `Invalid filter value: expected string, number, boolean, or null; got ${type}`
+  )
 }
 
 /**
@@ -101,31 +114,55 @@ export type ColumnKey<T extends TableName> = keyof Row<T> & string
 export type FilterValue = string | number | boolean | null
 
 /**
- * Helper function to safely cast a value to a filter value
+ * Base type mapper implementation with enhanced validation logic
  */
-export function asFilterValue(value: unknown): FilterValue {
-  if (
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean' ||
-    value === null
-  ) {
-    return value
-  }
-  throw new Error(`Invalid filter value: ${value}`)
-}
+export abstract class BaseTypeMapper<
+  T extends TableName,
+  D,
+  I,
+  U = Partial<I>
+> implements TypeMapper<T, D, I, U> {
+  abstract toRow(data: Row<T>): D
+  abstract toDbInsert(data: I): Insert<T>
+  abstract toDbUpdate(data: U): Update<T>
 
-/**
- * Helper function to safely cast database response to row type
- */
-export function asRow<T extends TableName>(data: unknown): Row<T> {
-  if (!data || typeof data !== 'object') {
-    throw new Error('Invalid database row')
+  /**
+   * Enhanced validation implementation with better type checking
+   */
+  validateDbData(data: unknown): data is Row<T> | Insert<T> | Update<T> {
+    if (!data || typeof data !== 'object') {
+      return false
+    }
+
+    const record = data as Record<string, unknown>
+
+    // Validate basic structure
+    if (Object.keys(record).length === 0) {
+      return false
+    }
+
+    // Row type validation
+    if ('id' in record) {
+      return isValidDatabaseRow<T>(record)
+    }
+
+    // Insert/Update validation - ensure all values are valid database types
+    return Object.values(record).every(value => 
+      value === null ||
+      typeof value === 'string' ||
+      typeof value === 'number' ||
+      typeof value === 'boolean' ||
+      (Array.isArray(value) && value.every(v => 
+        v === null ||
+        typeof v === 'string' ||
+        typeof v === 'number' ||
+        typeof v === 'boolean'
+      )) ||
+      (typeof value === 'object' && value !== null)
+    )
   }
-  return data as Row<T>
 }
 
 /**
  * Helper type for database operations
- */
-export type { Tables } 
+ */ 

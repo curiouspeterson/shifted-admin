@@ -1,115 +1,136 @@
 /**
- * Database Types
- * Last Updated: 2024-01-15
- * 
- * This module defines base types for database operations.
+ * Database Types and Guards
+ * Last Updated: January 16, 2025
  */
 
-import { Database } from '@/lib/database/database.types'
-import { DatabaseError } from './errors'
+import type { Database as GeneratedDatabase } from '../../../types/supabase'
 
-export type Tables = Database['public']['Tables']
-export type TableName = keyof Tables
-export type Row<T extends TableName> = Tables[T]['Row']
-export type Insert<T extends TableName> = Tables[T]['Insert']
-export type Update<T extends TableName> = Tables[T]['Update']
+// Helper types for easier table access
+export type Tables<T extends keyof Database['public']['Tables']> = Database['public']['Tables'][T]['Row']
+export type Enums<T extends keyof Database['public']['Enums']> = Database['public']['Enums'][T]
 
-/**
- * Column names for a table
- */
-export type ColumnName<T extends TableName> = keyof Row<T>
+// Override types for views and specific columns
+export type Database = {
+  public: {
+    Tables: {
+      teams: GeneratedDatabase['public']['Tables']['teams'] & {
+        Row: {
+          id: string
+          created_at: string
+          updated_at: string
+        }
+      }
+      team_members: GeneratedDatabase['public']['Tables']['team_members'] & {
+        Row: {
+          id: string
+          team_id: string
+          user_id: string
+          status: Enums<'team_member_status'>
+          created_at: string
+          updated_at: string
+        }
+      }
+      projects: GeneratedDatabase['public']['Tables']['projects']
+      tasks: GeneratedDatabase['public']['Tables']['tasks']
+      comments: GeneratedDatabase['public']['Tables']['comments']
+    }
+    Views: GeneratedDatabase['public']['Views']
+    Functions: GeneratedDatabase['public']['Functions']
+    Enums: GeneratedDatabase['public']['Enums']
+  }
+}
 
-/**
- * Result type for single record operations
- */
+// Type guard for DatabaseRecord
+export function isDatabaseRecord(value: unknown): value is DatabaseRecord {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'id' in value &&
+    typeof (value as DatabaseRecord).id === 'string'
+  )
+}
+
+// Base interface for all database records
+export interface DatabaseRecord {
+  id: string
+  created_at: string
+  updated_at: string
+}
+
+// Type-safe query options
+export interface QueryOptions<T extends DatabaseRecord> {
+  select?: (keyof T)[]
+  order?: {
+    column: keyof T
+    ascending?: boolean
+  }
+  limit?: number
+  offset?: number
+  filter?: {
+    column: keyof T
+    operator: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'ilike' | 'in'
+    value: unknown
+  }[]
+}
+
+// Type-safe database result
 export interface DatabaseResult<T> {
   data: T | null
   error: DatabaseError | null
+  count: number | null
+  status: number
+  statusText: string
 }
 
-/**
- * Result type for operations returning multiple records
- */
-export interface DatabaseListResult<T> {
-  data: T[]
-  error: DatabaseError | null
+// Database error type
+export interface DatabaseError {
+  code: string
+  message: string
+  details?: unknown
 }
 
-/**
- * Base filter options for queries
- */
-export interface BaseFilters {
-  limit?: number
-  offset?: number
-  orderBy?: {
-    column: string
-    ascending?: boolean
-  }
+// Type guard for database errors
+export function isDatabaseError(error: unknown): error is DatabaseError {
+  if (!error || typeof error !== 'object') return false
+  
+  const err = error as DatabaseError
+  return (
+    typeof err.code === 'string' &&
+    typeof err.message === 'string'
+  )
 }
 
-/**
- * Filter operator types
- */
-export type FilterOperator = 
-  | 'eq' 
-  | 'neq' 
-  | 'gt' 
-  | 'gte' 
-  | 'lt' 
-  | 'lte' 
-  | 'like' 
-  | 'ilike' 
-  | 'in' 
-  | 'is'
+// Helper type for insert operations
+export type InsertParams<T extends DatabaseRecord> = Omit<T, 'id' | 'created_at' | 'updated_at'>
 
-/**
- * Filter value types
- */
-export type FilterValue = string | number | boolean | null | Date | Array<string | number>
+// Helper type for update operations
+export type UpdateParams<T extends DatabaseRecord> = Partial<Omit<T, 'id' | 'created_at' | 'updated_at'>>
 
-/**
- * Query filter
- */
-export interface Filter<T extends TableName> {
-  field: keyof Row<T>
-  operator: FilterOperator
-  value: FilterValue
+// Helper type for database joins
+export type JoinedTable<T extends DatabaseRecord, U extends DatabaseRecord> = T & {
+  [K in keyof U as `${string & K}_${string}`]: U[K]
 }
 
-/**
- * Query options
- */
-export interface QueryOptions<T extends TableName> {
-  select?: Array<keyof Row<T>>
-  filters?: Filter<T>[]
-  pagination?: {
-    page: number
-    perPage: number
-  }
-  sorting?: {
-    column: keyof Row<T>
-    direction: 'asc' | 'desc'
-  }
+// Type-safe response for complex queries
+export type QueryData<T> = T extends PromiseLike<{ data: infer U }> ? U : never
+export type QueryError<T> = T extends PromiseLike<{ error: infer U }> ? U : never
+
+// RLS-specific types
+export interface RLSContext {
+  user_id: string
+  roles: string[]
+  team_id?: string
 }
 
-/**
- * Type guard to check if a value is a valid database row
- */
-export function isValidRow<T extends TableName>(value: unknown): value is Row<T> {
-  return value !== null && typeof value === 'object' && 'id' in value
-}
-
-/**
- * Type guard to check if a value is an array of valid database rows
- */
-export function isValidRowArray<T extends TableName>(value: unknown): value is Row<T>[] {
-  return Array.isArray(value) && value.every(item => isValidRow<T>(item))
-}
-
-/**
- * Helper type for Supabase query responses
- */
-export type QueryResponse<T> = {
-  data: T | null
-  error: Error | null
+// Type guard for RLS context
+export function isRLSContext(value: unknown): value is RLSContext {
+  if (!value || typeof value !== 'object') return false
+  
+  const ctx = value as RLSContext
+  return (
+    typeof ctx.user_id === 'string' &&
+    Array.isArray(ctx.roles) &&
+    ctx.roles.every(role => typeof role === 'string') &&
+    (ctx.team_id === undefined || typeof ctx.team_id === 'string')
+  )
 } 

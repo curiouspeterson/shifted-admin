@@ -1,296 +1,249 @@
 /**
  * Base Repository Class
- * Last Updated: 2024-01-15
+ * Last Updated: January 16, 2025
  * 
- * Provides base database operations with proper typing and error handling.
- * Uses type mappers for safe conversions between domain and database types.
+ * Provides type-safe database operations with RLS support
  */
 
-import { 
-  SupabaseClient, 
-  PostgrestError,
-  PostgrestResponse,
-  PostgrestSingleResponse
-} from '@supabase/supabase-js'
-import { Database } from '@/lib/database/database.types'
-import { DatabaseError, ErrorCode } from './errors'
-import { 
-  DatabaseResult, 
-  DatabaseListResult, 
-  BaseFilters,
-  TableName,
-  Row,
-  Insert,
-  Update
-} from './types'
-import { mapDatabaseError } from './errorMapper'
-import { 
-  TypeMapper, 
-  TableWithId, 
-  ColumnKey,
-  asFilterValue,
-  asRow
-} from './typeMapping'
+import { SupabaseClient, PostgrestError } from '@supabase/supabase-js'
+import type { Database } from '../../../types/supabase'
 
-export abstract class BaseRepository<
-  T extends TableWithId<TableName>,
-  D,
-  I,
-  U = Partial<I>
-> {
+type Tables = Database['public']['Tables']
+type TableName = keyof Tables
+type Row<T extends TableName> = Tables[T]['Row']
+type Insert<T extends TableName> = Tables[T]['Insert']
+type Update<T extends TableName> = Tables[T]['Update']
+
+export interface DatabaseResult<T> {
+  data: T | null
+  error: PostgrestError | null
+  count: number | null
+  status: number
+  statusText: string
+}
+
+export interface QueryOptions<T extends TableName> {
+  select?: Array<keyof Row<T>>
+  filter?: {
+    column: keyof Row<T>
+    operator: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'ilike' | 'in'
+    value: unknown
+  }[]
+  order?: {
+    column: keyof Row<T>
+    ascending?: boolean
+  }
+  limit?: number
+  offset?: number
+}
+
+export class BaseRepository<T extends TableName> {
   constructor(
-    protected readonly supabase: SupabaseClient<Database>,
-    protected readonly tableName: T,
-    protected readonly typeMapper: TypeMapper<T, D, I, U>
+    protected readonly client: SupabaseClient<Database>,
+    protected readonly table: T
   ) {}
 
   /**
-   * Find a record by ID with proper type safety
+   * Find a record by ID with RLS validation
    */
-  async findById(id: Row<T>['id']): Promise<DatabaseResult<D>> {
-    try {
-      const result = await this.executeWithRetry(
-        async () => {
-          const response = await this.supabase
-            .from(this.tableName)
-            .select('*')
-            .eq('id', asFilterValue(id))
-            .single()
+  async findById(id: string): Promise<DatabaseResult<Row<T>>> {
+    const { data, error, status, statusText } = await this.client
+      .from(this.table)
+      .select()
+      .match({ id })
+      .single()
 
-          if (response.error) throw response.error
-          if (!response.data) throw new Error('Record not found')
-
-          return this.typeMapper.toRow(asRow<T>(response.data))
-        },
-        {
-          tableName: this.tableName,
-          operation: 'findById',
-          id,
-          requestId: crypto.randomUUID()
-        }
-      )
-
-      return { data: result, error: null }
-    } catch (err) {
-      const error = err instanceof DatabaseError ? err : mapDatabaseError(err)
-      return { data: null, error }
-    }
-  }
-
-  /**
-   * Find multiple records with optional filters
-   */
-  async findMany(filters: BaseFilters = {}): Promise<DatabaseListResult<D>> {
-    try {
-      const result = await this.executeWithRetry(
-        async () => {
-          let query = this.supabase
-            .from(this.tableName)
-            .select('*')
-
-          if (filters.limit) {
-            query = query.limit(filters.limit)
-          }
-
-          if (filters.offset) {
-            query = query.range(
-              filters.offset,
-              filters.offset + (filters.limit || 10) - 1
-            )
-          }
-
-          if (filters.orderBy) {
-            const column = filters.orderBy.column as ColumnKey<T>
-            query = query.order(column, {
-              ascending: filters.orderBy.ascending ?? true
-            })
-          }
-
-          const response = await query
-          if (response.error) throw response.error
-          if (!response.data) return []
-
-          return response.data.map(row => 
-            this.typeMapper.toRow(asRow<T>(row))
-          )
-        },
-        {
-          tableName: this.tableName,
-          operation: 'findMany',
-          requestId: crypto.randomUUID(),
-          metadata: { filters }
-        }
-      )
-
-      return { data: result, error: null }
-    } catch (err) {
-      const error = err instanceof DatabaseError ? err : mapDatabaseError(err)
-      return { data: [], error }
-    }
-  }
-
-  /**
-   * Create a new record with runtime validation
-   */
-  async create(data: I): Promise<DatabaseResult<D>> {
-    try {
-      const result = await this.executeWithRetry(
-        async () => {
-          const dbData = this.typeMapper.toDbInsert(data)
-          
-          // Validate mapped data before insert
-          if (!this.typeMapper.validateDbData(dbData)) {
-            throw new Error('Invalid database data structure')
-          }
-          
-          const response = await this.supabase
-            .from(this.tableName)
-            .insert(dbData)
-            .select()
-            .single()
-
-          if (response.error) throw response.error
-          if (!response.data) throw new Error('Failed to create record')
-
-          return this.typeMapper.toRow(asRow<T>(response.data))
-        },
-        {
-          tableName: this.tableName,
-          operation: 'create',
-          requestId: crypto.randomUUID(),
-          metadata: { data }
-        }
-      )
-
-      return { data: result, error: null }
-    } catch (err) {
-      const error = err instanceof DatabaseError ? err : mapDatabaseError(err)
-      return { data: null, error }
-    }
-  }
-
-  /**
-   * Update an existing record with runtime validation
-   */
-  async update(id: Row<T>['id'], data: U): Promise<DatabaseResult<D>> {
-    try {
-      const result = await this.executeWithRetry(
-        async () => {
-          const dbData = this.typeMapper.toDbUpdate(data)
-          
-          // Validate mapped data before update
-          if (!this.typeMapper.validateDbData(dbData)) {
-            throw new Error('Invalid database data structure')
-          }
-          
-          const response = await this.supabase
-            .from(this.tableName)
-            .update(dbData)
-            .eq('id', asFilterValue(id))
-            .select()
-            .single()
-
-          if (response.error) throw response.error
-          if (!response.data) throw new Error('Failed to update record')
-
-          return this.typeMapper.toRow(asRow<T>(response.data))
-        },
-        {
-          tableName: this.tableName,
-          operation: 'update',
-          id,
-          requestId: crypto.randomUUID(),
-          metadata: { data }
-        }
-      )
-
-      return { data: result, error: null }
-    } catch (err) {
-      const error = err instanceof DatabaseError ? err : mapDatabaseError(err)
-      return { data: null, error }
-    }
-  }
-
-  /**
-   * Delete a record by ID
-   */
-  async delete(id: Row<T>['id']): Promise<DatabaseResult<D>> {
-    try {
-      const result = await this.executeWithRetry(
-        async () => {
-          const response = await this.supabase
-            .from(this.tableName)
-            .delete()
-            .eq('id', asFilterValue(id))
-            .select()
-            .single()
-
-          if (response.error) throw response.error
-          if (!response.data) throw new Error('Failed to delete record')
-
-          return this.typeMapper.toRow(asRow<T>(response.data))
-        },
-        {
-          tableName: this.tableName,
-          operation: 'delete',
-          id,
-          requestId: crypto.randomUUID()
-        }
-      )
-
-      return { data: result, error: null }
-    } catch (err) {
-      const error = err instanceof DatabaseError ? err : mapDatabaseError(err)
-      return { data: null, error }
-    }
-  }
-
-  /**
-   * Execute an operation with retry logic and proper error handling
-   */
-  protected async executeWithRetry<R>(
-    operation: () => Promise<R>,
-    context: {
-      tableName: string
-      operation: string
-      id?: Row<T>['id']
-      requestId: string
-      metadata?: Record<string, unknown>
-    }
-  ): Promise<R> {
-    let attempt = 1
-    const maxAttempts = 3
-    const baseDelay = 100
-
-    while (attempt <= maxAttempts) {
-      const start = Date.now()
-      try {
-        return await operation()
-      } catch (err) {
-        const duration = Date.now() - start
-        const error = err instanceof DatabaseError ? err : mapDatabaseError(err, {
-          ...context,
-          attempt,
-          duration
-        })
-
-        if (!error.isRetryable() || attempt === maxAttempts) {
-          throw error
-        }
-
-        const delay = baseDelay * Math.pow(2, attempt - 1)
-        await new Promise(resolve => setTimeout(resolve, delay))
-        attempt++
+    if (error) {
+      return {
+        data: null,
+        error,
+        count: null,
+        status,
+        statusText
       }
     }
 
-    throw new DatabaseError({
-      code: ErrorCode.UNKNOWN,
-      message: 'Max retry attempts exceeded',
-      context: {
-        ...context,
-        attempt: maxAttempts
+    return {
+      data: data as unknown as Row<T>,
+      error: null,
+      count: 1,
+      status,
+      statusText
+    }
+  }
+
+  /**
+   * Find records with options and RLS validation
+   */
+  async find(options?: QueryOptions<T>): Promise<DatabaseResult<Row<T>[]>> {
+    let query = this.client
+      .from(this.table)
+      .select(options?.select ? options.select.join(',') : '*')
+
+    if (options?.filter) {
+      for (const filter of options.filter) {
+        const column = String(filter.column)
+        const value = filter.value
+        
+        switch (filter.operator) {
+          case 'eq':
+            query = query.match({ [column]: value })
+            break
+          case 'neq':
+            query = query.not(column, 'eq', value)
+            break
+          case 'gt':
+            query = query.gt(column, value)
+            break
+          case 'gte':
+            query = query.gte(column, value)
+            break
+          case 'lt':
+            query = query.lt(column, value)
+            break
+          case 'lte':
+            query = query.lte(column, value)
+            break
+          case 'like':
+            query = query.like(column, String(value))
+            break
+          case 'ilike':
+            query = query.ilike(column, String(value))
+            break
+          case 'in':
+            query = query.in(column, Array.isArray(value) ? value : [value])
+            break
+        }
       }
-    })
+    }
+
+    if (options?.order) {
+      query = query.order(String(options.order.column), {
+        ascending: options.order.ascending
+      })
+    }
+
+    if (options?.limit) {
+      query = query.limit(options.limit)
+    }
+
+    if (options?.offset) {
+      query = query.range(
+        options.offset,
+        options.offset + (options.limit || 10) - 1
+      )
+    }
+
+    const { data, error, count, status, statusText } = await query
+
+    if (error) {
+      return {
+        data: null,
+        error,
+        count: null,
+        status,
+        statusText
+      }
+    }
+
+    return {
+      data: data as unknown as Row<T>[],
+      error: null,
+      count: count || null,
+      status,
+      statusText
+    }
+  }
+
+  /**
+   * Create a new record
+   * Note: This should be called from a server context with appropriate service role
+   */
+  async create(params: Insert<T>): Promise<DatabaseResult<Row<T>>> {
+    const { data, error, status, statusText } = await this.client
+      .from(this.table)
+      .insert(params as any)
+      .select()
+      .single()
+
+    if (error) {
+      return {
+        data: null,
+        error,
+        count: null,
+        status,
+        statusText
+      }
+    }
+
+    return {
+      data: data as unknown as Row<T>,
+      error: null,
+      count: 1,
+      status,
+      statusText
+    }
+  }
+
+  /**
+   * Update a record
+   * Note: This should be called from a server context with appropriate service role
+   */
+  async update(id: string, params: Update<T>): Promise<DatabaseResult<Row<T>>> {
+    const { data, error, status, statusText } = await this.client
+      .from(this.table)
+      .update(params as any)
+      .match({ id })
+      .select()
+      .single()
+
+    if (error) {
+      return {
+        data: null,
+        error,
+        count: null,
+        status,
+        statusText
+      }
+    }
+
+    return {
+      data: data as unknown as Row<T>,
+      error: null,
+      count: 1,
+      status,
+      statusText
+    }
+  }
+
+  /**
+   * Delete a record
+   * Note: This should be called from a server context with appropriate service role
+   */
+  async delete(id: string): Promise<DatabaseResult<Row<T>>> {
+    const { data, error, status, statusText } = await this.client
+      .from(this.table)
+      .delete()
+      .match({ id })
+      .select()
+      .single()
+
+    if (error) {
+      return {
+        data: null,
+        error,
+        count: null,
+        status,
+        statusText
+      }
+    }
+
+    return {
+      data: data as unknown as Row<T>,
+      error: null,
+      count: 1,
+      status,
+      statusText
+    }
   }
 } 

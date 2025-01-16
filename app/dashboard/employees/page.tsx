@@ -5,83 +5,45 @@
  * Displays a list of employees and allows for employee management.
  */
 
-'use client'
+import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server'
+import { AddEmployeeButton } from '../../employees/add-employee-button'
+import { EmployeeList } from '../../employees/employee-list'
+import { Employee, EmployeeStatus } from '../../employees/types'
 
-import { useState } from 'react'
-import useSWR from 'swr'
-import LoadingSpinner from '@/components/LoadingSpinner'
-import EmployeeForm from '@/components/employee/EmployeeForm'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-
-export default function EmployeesPage() {
-  const [open, setOpen] = useState(false)
-  const { data, error, isLoading, mutate } = useSWR('/api/employees')
-
-  const handleSubmit = async (formData: any) => {
-    try {
-      const response = await fetch('/api/employees', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      })
-
-      if (!response.ok) {
-        throw new Error('Failed to create employee')
-      }
-
-      await mutate()
-      setOpen(false)
-    } catch (error) {
-      console.error('Error creating employee:', error)
-      throw error
-    }
-  }
-
-  if (isLoading) {
-    return <LoadingSpinner />
-  }
+export default async function EmployeesPage() {
+  const cookieStore = cookies()
+  const supabase = createClient(cookieStore)
+  
+  const { data: employeesRaw, error } = await supabase
+    .from('employees')
+    .select('id, first_name, last_name, email, phone, position, is_active, created_at, updated_at')
+    .order('created_at', { ascending: false })
 
   if (error) {
-    return (
-      <Alert variant="destructive">
-        <AlertDescription>
-          {error.message || 'Failed to load employees'}
-        </AlertDescription>
-      </Alert>
-    )
+    console.error('Error fetching employees:', error)
+    throw error
   }
 
+  // Transform the data to match the expected format
+  const employees = employeesRaw?.map(emp => ({
+    id: emp.id,
+    name: [emp.first_name, emp.last_name].filter(Boolean).join(' '),
+    email: emp.email,
+    phone: emp.phone,
+    position: emp.position,
+    status: emp.is_active ? ('active' as EmployeeStatus) : ('inactive' as EmployeeStatus),
+    created_at: emp.created_at,
+    updated_at: emp.updated_at
+  })) || []
+
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Employees</h1>
-        <Button onClick={() => setOpen(true)}>
-          Add Employee
-        </Button>
+    <div className="container mx-auto py-10">
+      <div className="flex justify-between items-center mb-8">
+        <h1 className="text-3xl font-bold tracking-tight text-black">Employees</h1>
+        <AddEmployeeButton />
       </div>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Employee</DialogTitle>
-          </DialogHeader>
-          <EmployeeForm
-            onSubmit={handleSubmit}
-            onCancel={() => setOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Add employee list here */}
+      <EmployeeList employees={employees} />
     </div>
   )
 } 
