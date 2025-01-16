@@ -1,23 +1,14 @@
 /**
- * Rate Limiting Module
+ * Rate Limiting Core
  * Last Updated: 2024-01-16
  * 
- * Provides rate limiting functionality using Supabase Postgres.
- * Features:
- * - Configurable limits per route type
- * - Postgres-based storage for distributed rate limiting
- * - Analytics tracking
- * - Automatic cleanup via cron job
+ * Core rate limiting functionality for middleware and edge functions.
+ * Uses Supabase Postgres for distributed rate limiting.
  */
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { errorLogger } from '@/lib/logging/error-logger'
-
-interface RateLimitConfig {
-  limit: number
-  window: number // in seconds
-}
 
 export interface RateLimitResult {
   success: boolean
@@ -30,8 +21,13 @@ export interface RateLimitResult {
   }
 }
 
-// Default rate limits per route type
-const defaultRateLimits: Record<string, RateLimitConfig> = {
+interface RateLimitConfig {
+  limit: number
+  window: number // in seconds
+}
+
+// Default rate limits
+const defaultLimits: Record<string, RateLimitConfig> = {
   auth: { limit: 5, window: 60 }, // 5 requests per minute
   api: { limit: 100, window: 60 }, // 100 requests per minute
   protected: { limit: 1000, window: 60 }, // 1000 requests per minute
@@ -43,10 +39,10 @@ const defaultRateLimits: Record<string, RateLimitConfig> = {
  */
 export async function rateLimit(
   ip: string,
-  routeType: keyof typeof defaultRateLimits
+  routeType: keyof typeof defaultLimits
 ): Promise<RateLimitResult> {
   const now = Math.floor(Date.now() / 1000)
-  const config = defaultRateLimits[routeType]
+  const config = defaultLimits[routeType]
   const identifier = `${routeType}:${ip}`
   
   if (!config) {
