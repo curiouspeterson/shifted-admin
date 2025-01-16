@@ -28,9 +28,9 @@ import {
   DatabaseError,
   AppError 
 } from '../errors';
-import { errorLogger, ErrorSeverity } from '../logging/error-logger';
+import { errorLogger, ErrorSeverity } from '../logging/errorLogger';
 import type { ApiResponse, RouteContext, RouteHandler, RouteHandlerConfig } from './types';
-import { createRateLimiter, defaultRateLimits } from './rate-limit';
+import { createRateLimiter, defaultRateLimits } from './rateLimit';
 import { createMiddleware, applyCorsHeaders } from './middleware';
 import { createCache, defaultCacheConfig } from './cache';
 

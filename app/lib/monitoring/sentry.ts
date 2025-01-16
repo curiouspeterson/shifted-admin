@@ -7,7 +7,7 @@
  */
 
 import * as Sentry from '@sentry/nextjs';
-import { ErrorSeverity } from '../logging/error-logger';
+import { ErrorSeverity } from '../logging/errorLogger';
 import { AppError } from '../errors/base';
 
 // Map our error severity levels to Sentry severity levels

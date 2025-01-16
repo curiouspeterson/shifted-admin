@@ -18,7 +18,7 @@ import { z } from 'zod';
 import { cacheService } from './cache';
 import { ApiError } from './errors';
 import { logger } from './logger';
-import { rateLimiter } from './rate-limit';
+import { rateLimiter } from './rateLimit';
 
 export type RouteContext = {
   params?: Record<string, string>;

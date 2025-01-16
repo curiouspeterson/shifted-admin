@@ -22,7 +22,7 @@ import {
   HTTP_STATUS_OK,
   HTTP_STATUS_UNAUTHORIZED,
 } from '../../../lib/constants/http';
-import { defaultRateLimits } from '../../../lib/api/rate-limit';
+import { defaultRateLimits } from '../../../lib/api/rateLimit';
 import {
   AuthenticationError,
   DatabaseError,

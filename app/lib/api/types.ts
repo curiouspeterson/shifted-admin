@@ -1,35 +1,38 @@
 /**
  * API Types
- * Last Updated: 2024-01-15
+ * Last Updated: 2024-01-16
  * 
- * This module provides common types used across the API layer.
+ * This module defines common types used across API endpoints.
  */
 
-import { DatabaseError } from '@/lib/errors/base';
+import { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from '../database/database.types'
 
-export interface ApiErrorDetails {
-  field?: string;
-  code: string;
-  message: string;
-  params?: Record<string, string | number | boolean>;
+/**
+ * API response format
+ */
+export interface ApiResponse<T = any> {
+  data: T | null
+  error: string | null
+  metadata?: Record<string, any>
 }
 
-export interface ApiError {
-  code: string;
-  message: string;
-  details?: ApiErrorDetails[];
-}
-
-export interface ApiMetadata {
-  cached?: boolean;
-  cacheHit?: boolean;
-  cacheTtl?: number;
-  timestamp: string;
-  requestId: string;
-}
-
-export interface ApiResponse<T> {
-  data?: T;
-  error?: ApiError;
-  metadata?: ApiMetadata;
+/**
+ * Route context passed to handlers
+ */
+export interface RouteContext<TBody = any, TQuery = any> {
+  supabase?: SupabaseClient<Database>
+  session?: any
+  body?: TBody
+  query?: TQuery
+  requestId?: string
+  rateLimit?: {
+    limit: number
+    remaining: number
+    reset: number
+  }
+  cache?: {
+    hit: boolean
+    ttl: number
+  }
 } 

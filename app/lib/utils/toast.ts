@@ -1,64 +1,57 @@
 /**
- * Toast Utility
- * Last Updated: 2024-03-20
+ * Toast Utilities
+ * Last Updated: 2024-01-16
  * 
- * Type-safe toast notifications following modern React patterns.
+ * Utility functions and constants for toast notifications.
  */
 
-import { toast as showToast } from '@/components/ui/toast'
-
-type ToastVariant = 'default' | 'destructive'
+import { toast as sonnerToast } from 'sonner'
 
 interface ToastOptions {
-  title: string
+  title?: string
   description?: string
-  variant?: ToastVariant
-  duration?: number
+  variant?: 'default' | 'destructive' | 'success'
 }
 
-/**
- * Show a toast notification with type safety
- */
-export function toast(options: ToastOptions) {
-  return showToast({
-    ...options,
-    variant: options.variant || 'default',
-    duration: options.duration || 5000
-  })
-}
-
-/**
- * Predefined toast messages for consistent messaging
- */
-export const toastMessages = {
-  offline: {
-    title: 'Offline',
-    description: 'No internet connection available',
-    variant: 'destructive' as const
-  },
-  online: {
-    title: 'Connected',
-    description: 'You are back online',
-    variant: 'default' as const
-  },
-  syncError: {
-    title: 'Sync Failed',
-    description: 'Could not sync with server',
-    variant: 'destructive' as const
-  },
-  syncSuccess: {
-    title: 'Synced',
-    description: 'Your data is up to date',
-    variant: 'default' as const
-  },
-  saveError: {
-    title: 'Error',
-    description: 'Failed to save changes',
-    variant: 'destructive' as const
-  },
-  saveSuccess: {
-    title: 'Changes Saved',
-    description: 'Your changes have been saved',
-    variant: 'default' as const
+export const toast = (options: ToastOptions | string) => {
+  if (typeof options === 'string') {
+    sonnerToast(options)
+    return
   }
-} as const 
+
+  const { title, description, variant = 'default' } = options
+
+  switch (variant) {
+    case 'destructive':
+      sonnerToast.error(title, { description })
+      break
+    case 'success':
+      sonnerToast.success(title, { description })
+      break
+    default:
+      sonnerToast(title, { description })
+  }
+}
+
+export const toastMessages = {
+  online: {
+    title: 'Back Online',
+    description: 'Your connection has been restored',
+    variant: 'success' as const
+  },
+  offline: {
+    title: 'Connection Lost',
+    description: 'You are currently offline',
+    variant: 'destructive' as const
+  },
+  error: {
+    title: 'Error',
+    description: 'An unexpected error occurred',
+    variant: 'destructive' as const
+  },
+  success: {
+    title: 'Success',
+    description: 'Operation completed successfully',
+    variant: 'success' as const
+  }
+} 

@@ -11,7 +11,7 @@
  */
 
 import { Suspense } from 'react';
-import { TaskMetrics, TaskStatus } from '@/lib/api/database/base-repository';
+import { TaskMetrics, TaskStatus } from '@/lib/api/database/baseRepository';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { LineChart, BarChart } from '@/components/ui/charts';

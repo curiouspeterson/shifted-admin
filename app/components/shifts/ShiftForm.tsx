@@ -1,170 +1,175 @@
 /**
  * Shift Form Component
- * Last Updated: 2024-01-15
+ * Last Updated: 2024-01-16
  * 
- * Form for creating and editing shifts with validation and error handling.
- * Features:
- * - Type-safe form handling
- * - Zod schema validation
- * - Loading state management
- * - Error feedback
- * - Success/failure callbacks
- * - Offline support
+ * A form component for creating and editing shifts with
+ * validation and offline support.
  */
 
 'use client'
 
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { useForm } from '@/hooks/form/useForm'
-import { AppError } from '@/lib/errors'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { FormInput } from '@/components/ui/form-input'
+import { FormDatePicker } from '@/components/ui/form-date-picker'
+import { Badge } from '@/components/ui/badge'
+import { Plus, X } from 'lucide-react'
 
-const REQUIREMENTS = [
-  'First Aid',
-  'CPR',
-  'Driver License',
-  'Supervisor'
-] as const
-
-// Shift form schema with validation
 const shiftSchema = z.object({
-  start_date: z.string().min(1, 'Start date is required'),
-  end_date: z.string().min(1, 'End date is required'),
-  requirements: z.array(z.enum(REQUIREMENTS)).min(1, 'At least one requirement must be selected')
-}).refine(
-  (data) => new Date(data.start_date) <= new Date(data.end_date),
-  { message: 'End date must be after or equal to start date' }
-)
+  startDate: z.string(),
+  endDate: z.string(),
+  requirements: z.array(z.string()).min(1, 'At least one requirement is needed')
+})
 
 type ShiftFormData = z.infer<typeof shiftSchema>
 
 interface ShiftFormProps {
-  onSubmit: (data: ShiftFormData) => Promise<void>
-  isSubmitting: boolean
-  isOffline: boolean
+  onSubmit: (data: ShiftFormData) => void
+  isSubmitting?: boolean
+  isOffline?: boolean
 }
 
-export function ShiftForm({ onSubmit, isSubmitting, isOffline }: ShiftFormProps) {
+export function ShiftForm({
+  onSubmit,
+  isSubmitting = false,
+  isOffline = false
+}: ShiftFormProps) {
   const {
-    values,
-    handleChange,
+    register,
     handleSubmit,
-    setFieldValue,
-    error,
-    isLoading
-  } = useForm<typeof shiftSchema>({
-    schema: shiftSchema,
+    control,
+    watch,
+    setValue,
+    formState: { errors }
+  } = useForm<ShiftFormData>({
+    resolver: zodResolver(shiftSchema),
     defaultValues: {
-      start_date: '',
-      end_date: '',
+      startDate: '',
+      endDate: '',
       requirements: []
-    },
-    onSubmit: async (data) => {
-      try {
-        await onSubmit(data)
-      } catch (err) {
-        throw new AppError({
-          code: 'API_ERROR',
-          message: err instanceof Error ? err.message : 'Failed to submit shift',
-          statusCode: 500
-        })
-      }
     }
   })
 
-  const toggleRequirement = (req: typeof REQUIREMENTS[number]) => {
-    const newReqs = values.requirements.includes(req)
-      ? values.requirements.filter(r => r !== req)
-      : [...values.requirements, req]
-    setFieldValue('requirements', newReqs)
+  const requirements = watch('requirements')
+
+  const addRequirement = (requirement: string) => {
+    if (!requirement.trim()) return
+    setValue('requirements', [...requirements, requirement.trim()])
+  }
+
+  const removeRequirement = (index: number) => {
+    setValue(
+      'requirements',
+      requirements.filter((_, i) => i !== index)
+    )
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Date Range Selection */}
-      <div className="grid grid-cols-2 gap-4">
-        {/* Start Date */}
-        <div>
-          <label htmlFor="start_date" className="block text-sm font-medium text-gray-700">
-            Start Date
-          </label>
-          <input
-            type="date"
-            id="start_date"
-            name="start_date"
-            value={values.start_date}
-            onChange={handleChange}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-            required
-          />
-        </div>
-
-        {/* End Date */}
-        <div>
-          <label htmlFor="end_date" className="block text-sm font-medium text-gray-700">
-            End Date
-          </label>
-          <input
-            type="date"
-            id="end_date"
-            name="end_date"
-            value={values.end_date}
-            onChange={handleChange}
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
-            required
-          />
-        </div>
-      </div>
-
-      {/* Requirements */}
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-2">
-          Requirements
-        </label>
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          {REQUIREMENTS.map((req) => (
-            <label
-              key={req}
-              className="relative flex items-start py-2"
-            >
-              <div className="min-w-0 flex-1 text-sm">
-                <div className="select-none font-medium text-gray-700">
-                  {req}
-                </div>
-              </div>
-              <div className="ml-3 flex h-5 items-center">
-                <input
-                  type="checkbox"
-                  checked={values.requirements.includes(req)}
-                  onChange={() => toggleRequirement(req)}
-                  className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                />
-              </div>
-            </label>
-          ))}
-        </div>
-      </div>
-
-      {/* Error Display */}
-      {error && (
-        <div className="rounded-md bg-red-50 p-4">
-          <div className="text-sm text-red-700">{error.message}</div>
-        </div>
-      )}
-
-      {/* Submit Button */}
-      <div className="mt-4">
-        <button
-          type="submit"
-          disabled={isLoading || isSubmitting}
-          className={`w-full rounded-md px-4 py-2 text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 ${
-            isOffline
-              ? 'bg-yellow-600 hover:bg-yellow-700 focus:ring-yellow-500'
-              : 'bg-blue-600 hover:bg-blue-700 focus:ring-blue-500'
-          }`}
+    <Card>
+      <CardHeader>
+        <CardTitle>Create Shift</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <form
+          onSubmit={handleSubmit(onSubmit)}
+          className="space-y-4"
         >
-          {isLoading || isSubmitting ? 'Submitting...' : isOffline ? 'Save Offline' : 'Create Shift'}
-        </button>
-      </div>
-    </form>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <FormDatePicker
+              id="startDate"
+              name="startDate"
+              label="Start Date"
+              control={control}
+              error={errors.startDate?.message}
+              required
+            />
+            <FormDatePicker
+              id="endDate"
+              name="endDate"
+              label="End Date"
+              control={control}
+              error={errors.endDate?.message}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-medium">
+              Requirements
+              {errors.requirements && (
+                <span className="text-red-500 ml-1">
+                  {errors.requirements.message}
+                </span>
+              )}
+            </label>
+            
+            <div className="flex gap-2">
+              <FormInput
+                id="requirement"
+                label=""
+                placeholder="Add requirement"
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    const input = e.currentTarget as HTMLInputElement
+                    addRequirement(input.value)
+                    input.value = ''
+                  }
+                }}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                onClick={() => {
+                  const input = document.getElementById('requirement') as HTMLInputElement
+                  addRequirement(input.value)
+                  input.value = ''
+                }}
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="flex flex-wrap gap-2 mt-2">
+              {requirements.map((req, index) => (
+                <Badge
+                  key={index}
+                  variant="secondary"
+                  className="flex items-center gap-1"
+                >
+                  {req}
+                  <button
+                    type="button"
+                    onClick={() => removeRequirement(index)}
+                    className="hover:text-red-500"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </Badge>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex justify-end">
+            <Button
+              type="submit"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Creating...' : 'Create Shift'}
+            </Button>
+          </div>
+
+          {isOffline && (
+            <p className="text-sm text-yellow-600 mt-2">
+              You are offline. Changes will be saved locally and synced when back online.
+            </p>
+          )}
+        </form>
+      </CardContent>
+    </Card>
   )
 } 

@@ -11,7 +11,7 @@
 import { useEffect, useCallback } from 'react';
 import { toast } from '@/components/ui/toast';
 import { SyncQueue } from '@/lib/sync/sync-queue';
-import { CacheManager } from '@/lib/cache/cache-manager';
+import { CacheManager } from '@/lib/cache/cacheManager';
 
 interface UseOfflineSyncOptions {
   onSyncComplete?: () => void;

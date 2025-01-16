@@ -5,8 +5,8 @@
  * This module exports all API-related functionality.
  */
 
-export * from './route-handler';
+export * from './routeHandler';
 export * from './cache';
 export * from './errors';
 export * from './logger';
-export * from './rate-limit'; 
+export * from './rateLimit'; 

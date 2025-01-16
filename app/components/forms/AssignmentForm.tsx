@@ -1,189 +1,220 @@
-'use client';
-
 /**
  * Assignment Form Component
- * Last Updated: 2024-03
+ * Last Updated: 2024-01-15
  * 
- * A form component for creating and editing shift assignments.
- * Features:
- * - Employee selection
- * - Shift selection with supervisor requirements
- * - Date selection
- * - Overlap detection
- * - Supervisor shift toggle
- * - Form validation
- * - Error handling
+ * Form component for creating and updating schedule assignments.
  */
 
-import * as React from 'react';
-import { useEffect } from 'react';
-import type { AssignmentFormData, Employee, Shift } from '@/lib/schemas';
-import { assignmentFormSchema } from '@/lib/schemas';
-import { doesTimeOverlap } from '@/lib/utils/schedule';
-import {
-  FormField,
-  FormItem,
-  FormLabel,
-  FormControl,
-  FormDescription,
-  FormMessage,
-  Checkbox,
-  Input,
-  Button,
-} from '@/components/ui';
-import { BaseForm, SelectField, DateField } from '../forms/base';
+'use client'
 
-interface AssignmentFormProps {
-  scheduleId: string;
-  employees: Employee[];
-  shifts: Shift[];
-  existingAssignments: {
-    employee_id: string;
-    shift_id: string;
-    date: string;
-  }[];
-  onSubmit: (data: AssignmentFormData) => Promise<void>;
-  defaultValues?: Partial<AssignmentFormData>;
+import { useState } from 'react'
+import { useForm, Controller } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { Button } from '@/components/ui/button'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { DateTimePicker } from '@/components/ui/date-time-picker'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Textarea } from '@/components/ui/textarea'
+import { Loader2 } from 'lucide-react'
+
+// Assignment form schema
+const assignmentSchema = z.object({
+  employeeId: z.string().min(1, 'Employee is required'),
+  shiftId: z.string().min(1, 'Shift is required'),
+  startTime: z.string()
+    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/, 'Invalid time format')
+    .refine(time => !isNaN(Date.parse(time)), 'Invalid time'),
+  endTime: z.string()
+    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/, 'Invalid time format')
+    .refine(time => !isNaN(Date.parse(time)), 'Invalid time'),
+  notes: z.string()
+    .max(1000, 'Notes must be 1000 characters or less')
+    .optional()
+    .nullable()
+})
+
+type AssignmentFormData = z.infer<typeof assignmentSchema>
+
+interface Employee {
+  id: string
+  firstName: string
+  lastName: string
 }
 
-export function AssignmentForm({
+interface Shift {
+  id: string
+  name: string
+  startTime: string
+  endTime: string
+}
+
+interface AssignmentFormProps {
+  scheduleId: string
+  employees: Employee[]
+  shifts: Shift[]
+  assignment?: AssignmentFormData
+  onSubmit: (data: AssignmentFormData) => Promise<void>
+  onCancel?: () => void
+}
+
+export default function AssignmentForm({ 
   scheduleId,
   employees,
   shifts,
-  existingAssignments,
+  assignment,
   onSubmit,
-  defaultValues,
+  onCancel
 }: AssignmentFormProps) {
-  // Convert employees and shifts to options format
-  const employeeOptions = employees
-    .filter(e => e.is_active)
-    .map(employee => ({
-      value: employee.id,
-      label: `${employee.first_name} ${employee.last_name} (${employee.position})`
-    }));
+  const [error, setError] = useState<string | null>(null)
+  
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors, isSubmitting }
+  } = useForm<AssignmentFormData>({
+    resolver: zodResolver(assignmentSchema),
+    defaultValues: assignment || {
+      employeeId: '',
+      shiftId: '',
+      startTime: '',
+      endTime: '',
+      notes: null
+    }
+  })
 
-  const shiftOptions = shifts.map(shift => ({
-    value: shift.id,
-    label: `${shift.name} (${shift.start_time}-${shift.end_time})${shift.requires_supervisor ? ' (Supervisor Required)' : ''}`
-  }));
+  const onFormSubmit = async (data: AssignmentFormData) => {
+    try {
+      setError(null)
+      await onSubmit(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save assignment')
+    }
+  }
 
   return (
-    <BaseForm
-      schema={assignmentFormSchema}
-      onSubmit={onSubmit}
-      defaultValues={{
-        schedule_id: scheduleId,
-        employee_id: defaultValues?.employee_id ?? '',
-        shift_id: defaultValues?.shift_id ?? '',
-        date: defaultValues?.date ?? '',
-        is_supervisor_shift: false,
-        overtime_status: 'none',
-        overtime_hours: null,
-        ...defaultValues,
-      }}
-      className="space-y-6"
-    >
-      {(form) => {
-        // Watch form fields for validation
-        const selectedEmployeeId = form.watch('employee_id');
-        const selectedShiftId = form.watch('shift_id');
-        const selectedDate = form.watch('date');
+    <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
-        // Validate overlapping shifts
-        useEffect(() => {
-          if (selectedEmployeeId && selectedShiftId && selectedDate) {
-            const selectedShift = shifts.find(s => s.id === selectedShiftId);
-            if (!selectedShift) return;
+      <div className="space-y-2">
+        <label htmlFor="employeeId" className="text-sm font-medium">
+          Employee
+        </label>
+        <Controller
+          name="employeeId"
+          control={control}
+          render={({ field }) => (
+            <Select onValueChange={field.onChange} value={field.value}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select an employee" />
+              </SelectTrigger>
+              <SelectContent>
+                {employees.map(employee => (
+                  <SelectItem key={employee.id} value={employee.id}>
+                    {employee.firstName} {employee.lastName}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
+        {errors.employeeId && (
+          <p className="text-sm text-red-500">{errors.employeeId.message}</p>
+        )}
+      </div>
 
-            const hasOverlap = existingAssignments.some(assignment => {
-              if (assignment.employee_id !== selectedEmployeeId || assignment.date !== selectedDate) {
-                return false;
-              }
+      <div className="space-y-2">
+        <label htmlFor="shiftId" className="text-sm font-medium">
+          Shift
+        </label>
+        <Controller
+          name="shiftId"
+          control={control}
+          render={({ field }) => (
+            <Select onValueChange={field.onChange} value={field.value}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select a shift" />
+              </SelectTrigger>
+              <SelectContent>
+                {shifts.map(shift => (
+                  <SelectItem key={shift.id} value={shift.id}>
+                    {shift.name} ({new Date(shift.startTime).toLocaleTimeString()} - {new Date(shift.endTime).toLocaleTimeString()})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
+        {errors.shiftId && (
+          <p className="text-sm text-red-500">{errors.shiftId.message}</p>
+        )}
+      </div>
 
-              const assignmentShift = shifts.find(s => s.id === assignment.shift_id);
-              if (!assignmentShift) return false;
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label htmlFor="startTime" className="text-sm font-medium">
+            Start Time
+          </label>
+          <DateTimePicker
+            name="startTime"
+            control={control}
+            error={errors.startTime?.message}
+          />
+        </div>
 
-              return doesTimeOverlap(
-                selectedShift.start_time,
-                selectedShift.end_time,
-                assignmentShift.start_time,
-                assignmentShift.end_time
-              );
-            });
+        <div className="space-y-2">
+          <label htmlFor="endTime" className="text-sm font-medium">
+            End Time
+          </label>
+          <DateTimePicker
+            name="endTime"
+            control={control}
+            error={errors.endTime?.message}
+          />
+        </div>
+      </div>
 
-            if (hasOverlap) {
-              form.setError('shift_id', {
-                type: 'manual',
-                message: 'This shift overlaps with an existing assignment'
-              });
-            }
-          }
-        }, [selectedEmployeeId, selectedShiftId, selectedDate, shifts, existingAssignments, form]);
+      <div className="space-y-2">
+        <label htmlFor="notes" className="text-sm font-medium">
+          Notes
+        </label>
+        <Textarea
+          id="notes"
+          {...register('notes')}
+          className={errors.notes ? 'border-red-500' : ''}
+        />
+        {errors.notes && (
+          <p className="text-sm text-red-500">{errors.notes.message}</p>
+        )}
+      </div>
 
-        return (
-          <>
-            {/* Hidden Schedule ID Field */}
-            <input type="hidden" {...form.register('schedule_id')} />
-
-            {/* Date Selection */}
-            <DateField
-              form={form}
-              name="date"
-              label="Date"
-            />
-
-            {/* Employee Selection */}
-            <SelectField
-              form={form}
-              name="employee_id"
-              label="Employee"
-              options={employeeOptions}
-              placeholder="Select an employee"
-            />
-
-            {/* Shift Selection */}
-            <SelectField
-              form={form}
-              name="shift_id"
-              label="Shift"
-              options={shiftOptions}
-              placeholder="Select a shift"
-            />
-
-            {/* Supervisor Shift Toggle */}
-            <FormField
-              control={form.control}
-              name="is_supervisor_shift"
-              render={({ field }) => (
-                <FormItem className="flex flex-row items-start space-x-3 space-y-0">
-                  <FormControl>
-                    <Checkbox
-                      checked={field.value}
-                      onCheckedChange={field.onChange}
-                    />
-                  </FormControl>
-                  <div className="space-y-1 leading-none">
-                    <FormLabel>Supervisor Shift</FormLabel>
-                    <FormDescription>
-                      Mark this as a supervisor shift
-                    </FormDescription>
-                  </div>
-                </FormItem>
-              )}
-            />
-
-            {/* Form Actions */}
-            <div className="flex justify-end">
-              <Button
-                type="submit"
-                disabled={form.formState.isSubmitting}
-              >
-                {form.formState.isSubmitting ? 'Saving...' : 'Add Assignment'}
-              </Button>
-            </div>
-          </>
-        );
-      }}
-    </BaseForm>
-  );
+      <div className="flex justify-end space-x-4">
+        {onCancel && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={isSubmitting}
+          >
+            Cancel
+          </Button>
+        )}
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Saving...
+            </>
+          ) : (
+            'Save Assignment'
+          )}
+        </Button>
+      </div>
+    </form>
+  )
 } 

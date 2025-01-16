@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { toast } from '@/components/ui/toast';
 import { BackgroundSync } from '@/lib/utils/background-sync';
-import { useNetwork } from '@/hooks/use-network';
+import { useNetwork } from '@/hooks/useNetwork';
 
 interface UseBackgroundSyncOptions {
   onSyncComplete?: (task: any) => void;

@@ -7,7 +7,7 @@
  */
 
 import { createOpenAPIGenerator, RouteDocConfig } from './openapi';
-import { defaultRateLimits } from './rate-limit';
+import { defaultRateLimits } from './rateLimit';
 import { defaultCacheConfig } from './cache';
 
 // OpenAPI configuration

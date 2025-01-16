@@ -26,7 +26,7 @@ import {
   HTTP_STATUS_CREATED,
   HTTP_STATUS_CONFLICT,
 } from '../../../lib/constants/http';
-import { defaultRateLimits } from '../../../lib/api/rate-limit';
+import { defaultRateLimits } from '../../../lib/api/rateLimit';
 import {
   ValidationError,
   AuthorizationError,

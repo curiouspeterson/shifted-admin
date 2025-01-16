@@ -1,9 +1,9 @@
 /**
  * Schedule Form Component
- * Last Updated: 2024-01-15
+ * Last Updated: 2024-01-16
  * 
- * Example component demonstrating the use of background sync functionality
- * for creating and updating schedules with offline support.
+ * A client component for creating and editing schedules.
+ * Uses server actions for mutations and handles loading states.
  */
 
 'use client'
@@ -11,11 +11,11 @@
 import { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { useBackgroundSync } from '@/lib/sync/use-background-sync'
-import { Schedule, ScheduleInput, scheduleInputSchema } from '@/lib/database/schemas/schedule'
+import { useRouter } from 'next/navigation'
+import { createSchedule, updateSchedule } from '@/lib/actions/schedule'
+import { Schedule, ScheduleInput, scheduleInputSchema, ScheduleStatus } from '@/lib/database/schemas/schedule'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
 import { DatePicker } from '@/components/ui/date-picker'
 import { Switch } from '@/components/ui/switch'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -28,26 +28,27 @@ interface ScheduleFormProps {
 
 export function ScheduleForm({ schedule, onSuccess }: ScheduleFormProps) {
   const [error, setError] = useState<string | null>(null)
-  const { status, queueCreate, queueUpdate } = useBackgroundSync()
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const router = useRouter()
   
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    formState: { errors },
     control
   } = useForm<ScheduleInput>({
     resolver: zodResolver(scheduleInputSchema),
     defaultValues: schedule ? {
       name: schedule.name,
-      description: schedule.description,
       startDate: schedule.startDate,
       endDate: schedule.endDate,
       status: schedule.status,
       isActive: schedule.isActive
     } : {
       name: '',
-      description: '',
-      status: 'DRAFT',
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      status: ScheduleStatus.DRAFT,
       isActive: true
     }
   })
@@ -55,43 +56,37 @@ export function ScheduleForm({ schedule, onSuccess }: ScheduleFormProps) {
   const onSubmit = async (data: ScheduleInput) => {
     try {
       setError(null)
+      setIsSubmitting(true)
 
       if (schedule) {
-        await queueUpdate('schedules', {
-          id: schedule.id,
-          ...data
+        await updateSchedule(schedule.id, {
+          name: data.name,
+          start_date: data.startDate,
+          end_date: data.endDate,
+          status: data.status.toLowerCase() as 'draft' | 'published' | 'archived',
+          is_active: data.isActive
         })
       } else {
-        await queueCreate('schedules', data)
+        await createSchedule({
+          name: data.name,
+          start_date: data.startDate,
+          end_date: data.endDate,
+          status: data.status.toLowerCase() as 'draft' | 'published' | 'archived',
+          is_active: data.isActive
+        })
       }
 
+      router.refresh()
       onSuccess?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save schedule')
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-      {/* Connection Status */}
-      {!status.isOnline && (
-        <Alert>
-          <AlertDescription>
-            You are currently offline. Changes will be synchronized when you reconnect.
-          </AlertDescription>
-        </Alert>
-      )}
-
-      {/* Sync Status */}
-      {status.isSyncing && (
-        <Alert>
-          <AlertDescription className="flex items-center gap-2">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Synchronizing changes...
-          </AlertDescription>
-        </Alert>
-      )}
-
       {/* Error Message */}
       {error && (
         <Alert variant="destructive">
@@ -111,21 +106,6 @@ export function ScheduleForm({ schedule, onSuccess }: ScheduleFormProps) {
         />
         {errors.name && (
           <p className="text-sm text-red-500">{errors.name.message}</p>
-        )}
-      </div>
-
-      {/* Description Field */}
-      <div className="space-y-2">
-        <label htmlFor="description" className="text-sm font-medium">
-          Description
-        </label>
-        <Textarea
-          id="description"
-          {...register('description')}
-          className={errors.description ? 'border-red-500' : ''}
-        />
-        {errors.description && (
-          <p className="text-sm text-red-500">{errors.description.message}</p>
         )}
       </div>
 
@@ -165,9 +145,9 @@ export function ScheduleForm({ schedule, onSuccess }: ScheduleFormProps) {
             errors.status ? 'border-red-500' : 'border-gray-300'
           } px-3 py-2`}
         >
-          <option value="DRAFT">Draft</option>
-          <option value="PUBLISHED">Published</option>
-          <option value="ARCHIVED">Archived</option>
+          <option value={ScheduleStatus.DRAFT}>Draft</option>
+          <option value={ScheduleStatus.PUBLISHED}>Published</option>
+          <option value={ScheduleStatus.ARCHIVED}>Archived</option>
         </select>
         {errors.status && (
           <p className="text-sm text-red-500">{errors.status.message}</p>
@@ -189,10 +169,10 @@ export function ScheduleForm({ schedule, onSuccess }: ScheduleFormProps) {
       {/* Submit Button */}
       <Button
         type="submit"
-        disabled={isSubmitting || status.isSyncing}
+        disabled={isSubmitting}
         className="w-full"
       >
-        {isSubmitting || status.isSyncing ? (
+        {isSubmitting ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
             {schedule ? 'Updating...' : 'Creating...'}
@@ -201,17 +181,6 @@ export function ScheduleForm({ schedule, onSuccess }: ScheduleFormProps) {
           schedule ? 'Update Schedule' : 'Create Schedule'
         )}
       </Button>
-
-      {/* Sync Stats */}
-      <div className="text-sm text-gray-500">
-        <p>Pending: {status.stats.pending}</p>
-        <p>Processing: {status.stats.processing}</p>
-        <p>Completed: {status.stats.completed}</p>
-        <p>Failed: {status.stats.failed}</p>
-        {status.stats.lastSync && (
-          <p>Last Sync: {new Date(status.stats.lastSync).toLocaleString()}</p>
-        )}
-      </div>
     </form>
   )
 } 

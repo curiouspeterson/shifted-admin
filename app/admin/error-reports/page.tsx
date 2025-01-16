@@ -9,10 +9,10 @@
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ErrorMetrics } from './components/error-metrics';
-import { ErrorList } from './components/error-list';
-import { ErrorChart } from './components/error-chart';
-import { ErrorFilters } from './components/error-filters';
+import { ErrorMetrics } from './components/errorMetrics';
+import { ErrorList } from './components/errorList';
+import { ErrorChart } from './components/errorChart';
+import { ErrorFilters } from './components/errorFilters';
 
 export const metadata = {
   title: 'Error Reports | Admin Dashboard',

@@ -1,118 +1,64 @@
 /**
- * Application Error Classes
- * Last Updated: 2025-01-15
+ * Error Types
+ * Last Updated: 2024-01-16
  * 
- * This module provides custom error classes for different types of errors
- * in the application.
+ * This module defines custom error types for the application.
+ * Each error type extends the base Error class and includes
+ * additional properties for better error handling.
  */
 
-export type ErrorCode = 
-  | 'UNAUTHORIZED'
-  | 'FORBIDDEN'
-  | 'NOT_FOUND'
-  | 'VALIDATION_ERROR'
-  | 'DATABASE_ERROR'
-  | 'API_ERROR'
-  | 'INTERNAL_SERVER_ERROR'
-  | 'TOO_MANY_REQUESTS';
-
-export interface ErrorDetails {
-  code: ErrorCode;
-  message: string;
-  details?: any;
-  statusCode: number;
-}
-
-/**
- * Base error class for application errors
- */
 export class AppError extends Error {
-  readonly code: ErrorCode;
-  readonly statusCode: number;
-  readonly details?: any;
-
-  constructor(details: ErrorDetails) {
-    super(details.message);
-    this.name = this.constructor.name;
-    this.code = details.code;
-    this.statusCode = details.statusCode;
-    this.details = details.details;
-    Error.captureStackTrace(this, this.constructor);
+  constructor(
+    message: string,
+    public status: number = 500,
+    public code: string = 'INTERNAL_ERROR'
+  ) {
+    super(message);
+    this.name = 'AppError';
   }
 }
 
-/**
- * Authentication related errors
- */
-export class AuthError extends AppError {
-  constructor(code: 'UNAUTHORIZED' | 'FORBIDDEN', message: string, details?: any) {
-    super({
-      code,
-      message,
-      details,
-      statusCode: code === 'UNAUTHORIZED' ? 401 : 403,
-    });
-  }
-}
-
-/**
- * Database related errors
- */
-export class DatabaseError extends AppError {
-  constructor(message: string, details?: any) {
-    super({
-      code: 'DATABASE_ERROR',
-      message,
-      details,
-      statusCode: 500,
-    });
-  }
-}
-
-/**
- * API related errors
- */
-export class ApiError extends AppError {
-  constructor(code: ErrorCode, message: string, details?: any) {
-    const statusCode = 
-      code === 'NOT_FOUND' ? 404 :
-      code === 'VALIDATION_ERROR' ? 400 :
-      code === 'TOO_MANY_REQUESTS' ? 429 :
-      500;
-
-    super({
-      code,
-      message,
-      details,
-      statusCode,
-    });
-  }
-}
-
-/**
- * Validation related errors
- */
 export class ValidationError extends AppError {
-  constructor(message: string, details?: any) {
-    super({
-      code: 'VALIDATION_ERROR',
-      message,
-      details,
-      statusCode: 400,
-    });
+  constructor(message: string, public details?: Record<string, any>) {
+    super(message, 400, 'VALIDATION_ERROR');
+    this.name = 'ValidationError';
   }
 }
 
-/**
- * Not found errors
- */
-export class NotFoundError extends AppError {
-  constructor(message: string, details?: any) {
-    super({
-      code: 'NOT_FOUND',
-      message,
-      details,
-      statusCode: 404,
-    });
+export class AuthenticationError extends AppError {
+  constructor(message: string = 'Authentication failed') {
+    super(message, 401, 'AUTHENTICATION_ERROR');
+    this.name = 'AuthenticationError';
   }
-} 
+}
+
+export class AuthorizationError extends AppError {
+  constructor(message: string = 'Not authorized') {
+    super(message, 403, 'AUTHORIZATION_ERROR');
+    this.name = 'AuthorizationError';
+  }
+}
+
+export class NotFoundError extends AppError {
+  constructor(message: string = 'Resource not found') {
+    super(message, 404, 'NOT_FOUND_ERROR');
+    this.name = 'NotFoundError';
+  }
+}
+
+export class DatabaseError extends AppError {
+  constructor(message: string = 'Database operation failed') {
+    super(message, 500, 'DATABASE_ERROR');
+    this.name = 'DatabaseError';
+  }
+}
+
+export class RateLimitError extends AppError {
+  constructor(message: string = 'Rate limit exceeded') {
+    super(message, 429, 'RATE_LIMIT_ERROR');
+    this.name = 'RateLimitError';
+  }
+}
+
+// Alias for backward compatibility
+export const ForbiddenError = AuthorizationError; 

@@ -17,7 +17,7 @@
 
 import { createContext, useContext, useRef, type PropsWithChildren } from 'react';
 import { type StoreApi, useStore } from 'zustand';
-import { createScheduleStore, type ScheduleStore, type ScheduleState } from '../stores/schedule-store';
+import { createScheduleStore, type ScheduleStore, type ScheduleState } from '../stores/scheduleStore';
 
 /**
  * Context for sharing the Zustand store instance across components

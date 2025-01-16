@@ -23,14 +23,14 @@ import {
   Insert,
   Update
 } from './types'
-import { mapDatabaseError } from './error-mapper'
+import { mapDatabaseError } from './errorMapper'
 import { 
   TypeMapper, 
   TableWithId, 
   ColumnKey,
   asFilterValue,
   asRow
-} from './type-mapping'
+} from './typeMapping'
 
 export abstract class BaseRepository<
   T extends TableWithId<TableName>,

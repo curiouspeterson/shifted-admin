@@ -7,7 +7,7 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
-import { BaseRepository } from '../database/base-repository';
+import { BaseRepository } from '../database/baseRepository';
 import type { Database } from '@/lib/supabase/database.types';
 import { DatabaseError } from '@/lib/errors';
 

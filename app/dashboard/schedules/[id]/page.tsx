@@ -1,19 +1,23 @@
 /**
  * Schedule Details Page Component
- * Last Updated: 2024-03
+ * Last Updated: 2024-01-16
  * 
  * A server component that handles fetching and displaying schedule details.
- * Fetches all required data on the server and passes it to client components
- * for interactivity.
+ * Uses server components by default and only switches to client components
+ * for interactive features.
  */
 
 import { Suspense } from 'react'
 import { notFound } from 'next/navigation'
-import { supabaseAdmin } from '@/lib/supabase/admin'
-import ScheduleDetailsClient from './ScheduleDetailsClient'
+import { createClient } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
+import { ScheduleHeader } from './components/schedule-header'
+import { ScheduleTimeline } from './components/schedule-timeline'
+import { StaffingRequirements } from './components/staffing-requirements'
 import { LoadingSpinner } from '@/components/ui/loading-spinner'
 import type { Schedule, TimeBasedRequirement } from '@/lib/types/scheduling'
-import type { GroupedAssignments, RequirementStatus } from '@/lib/scheduling/utils/schedule.types'
+import type { GroupedAssignments } from '@/lib/scheduling/utils/schedule.types'
+import type { Database } from '@/lib/database/database.types'
 
 /**
  * Loading component for the schedule details
@@ -33,11 +37,13 @@ interface SchedulePageProps {
 }
 
 export default async function SchedulePage({ params }: SchedulePageProps) {
+  const cookieStore = cookies()
+  const supabase = createClient(cookieStore)
   const scheduleId = params.id
   
   try {
     // Fetch schedule details
-    const { data: schedule, error: scheduleError } = await supabaseAdmin
+    const { data: schedule, error: scheduleError } = await supabase
       .from('schedules')
       .select('*')
       .eq('id', scheduleId)
@@ -47,7 +53,7 @@ export default async function SchedulePage({ params }: SchedulePageProps) {
     if (!schedule) notFound()
 
     // Fetch assignments
-    const { data: assignmentsList, error: assignmentsError } = await supabaseAdmin
+    const { data: assignmentsList, error: assignmentsError } = await supabase
       .from('assignments')
       .select('*')
       .eq('schedule_id', scheduleId)
@@ -55,7 +61,7 @@ export default async function SchedulePage({ params }: SchedulePageProps) {
     if (assignmentsError) throw assignmentsError
 
     // Fetch time requirements
-    const { data: timeRequirements, error: requirementsError } = await supabaseAdmin
+    const { data: timeRequirements, error: requirementsError } = await supabase
       .from('time_requirements')
       .select('*')
       .eq('schedule_id', scheduleId)
@@ -77,7 +83,7 @@ export default async function SchedulePage({ params }: SchedulePageProps) {
     }
 
     // Transform assignments into grouped format
-    const transformedAssignments = assignmentsList.reduce<GroupedAssignments>((acc, assignment) => {
+    const transformedAssignments = assignmentsList.reduce<GroupedAssignments>((acc: GroupedAssignments, assignment: Database['public']['Tables']['assignments']['Row']) => {
       const date = assignment.date
       const shiftId = assignment.shift_id
       
@@ -96,7 +102,7 @@ export default async function SchedulePage({ params }: SchedulePageProps) {
     }, {})
 
     // Transform time requirements
-    const transformedRequirements: TimeBasedRequirement[] = timeRequirements.map(req => ({
+    const transformedRequirements: TimeBasedRequirement[] = timeRequirements.map((req: Database['public']['Tables']['time_requirements']['Row']) => ({
       id: req.id,
       schedule_id: scheduleId,
       start_time: req.start_time,
@@ -109,19 +115,34 @@ export default async function SchedulePage({ params }: SchedulePageProps) {
       updated_at: req.updated_at || new Date().toISOString()
     }))
 
-    // Calculate requirement statuses
-    const requirementStatuses = calculateRequirementStatuses(transformedRequirements, assignmentsList)
-
     return (
-      <div className="container mx-auto py-8">
+      <div className="container mx-auto py-8 space-y-8">
         <Suspense fallback={<ScheduleDetailsLoader />}>
-          <ScheduleDetailsClient
-            schedule={transformedSchedule}
-            assignments={transformedAssignments}
-            timeRequirements={transformedRequirements}
-            requirementStatuses={requirementStatuses}
-            error={null}
-          />
+          <ScheduleHeader schedule={transformedSchedule} />
+          
+          {Object.entries(transformedAssignments).map(([date, shifts]) => {
+            const allAssignments = shifts ? Object.values(shifts).flat() : []
+            
+            return (
+              <div key={date} className="space-y-6">
+                <h3 className="text-lg font-medium leading-6 text-gray-900">
+                  {new Date(date).toLocaleDateString()}
+                </h3>
+                
+                <StaffingRequirements
+                  scheduleId={scheduleId}
+                  date={date}
+                  assignments={allAssignments}
+                  timeRequirements={transformedRequirements}
+                />
+                
+                <ScheduleTimeline
+                  date={date}
+                  shifts={shifts}
+                />
+              </div>
+            )
+          })}
         </Suspense>
       </div>
     )
@@ -137,30 +158,4 @@ export default async function SchedulePage({ params }: SchedulePageProps) {
       </div>
     )
   }
-}
-
-/**
- * Calculate requirement statuses for each time requirement
- * 
- * @param requirements - List of time requirements
- * @param assignments - List of assignments
- * @returns Array of requirement statuses
- */
-function calculateRequirementStatuses(
-  requirements: TimeBasedRequirement[],
-  assignments: any[]
-): RequirementStatus[] {
-  return requirements.map(requirement => ({
-    date: new Date().toISOString().split('T')[0],
-    timeBlock: {
-      start: requirement.start_time,
-      end: requirement.end_time
-    },
-    required: requirement.min_employees,
-    actual: assignments.filter(assignment => 
-      assignment.shift_id && 
-      assignment.date === new Date().toISOString().split('T')[0]
-    ).length,
-    type: 'total'
-  }))
 } 

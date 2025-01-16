@@ -11,7 +11,7 @@
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import DashboardNav from '@/components/DashboardNav'
-import { AppProvider } from '@/lib/context/app-context'
+import { AppProvider } from '@/lib/context/appContext'
 
 /**
  * Dashboard Layout Component

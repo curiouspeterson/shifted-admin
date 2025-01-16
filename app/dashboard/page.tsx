@@ -8,7 +8,7 @@
 
 'use client'
 
-import { useApp } from '@/lib/context/app-context'
+import { useApp } from '@/lib/context/appContext'
 import { LoadingSpinner } from '@/components/ui/loading-spinner'
 import { useEffect } from 'react'
 

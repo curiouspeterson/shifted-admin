@@ -25,7 +25,7 @@
 import { z } from 'zod';
 import { createRouteHandler } from '@/lib/api/handler';
 import type { RouteContext, ApiResponse } from '@/lib/api/types';
-import { TimeRequirementsOperations } from '@/lib/api/database/time-requirements';
+import { TimeRequirementsOperations } from '@/lib/api/database/timeRequirements';
 import {
   HTTP_STATUS_OK,
   HTTP_STATUS_CREATED,

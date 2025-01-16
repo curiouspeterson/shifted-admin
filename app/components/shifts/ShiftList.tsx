@@ -1,12 +1,18 @@
 /**
  * Shift List Component
- * Last Updated: 2024-03-20
+ * Last Updated: 2024-01-16
  * 
- * This component displays a list of shifts with offline support
- * and retry functionality.
+ * A component that displays a list of shifts with their details
+ * and handles offline states.
  */
 
 'use client'
+
+import { format } from 'date-fns'
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Calendar, Clock } from 'lucide-react'
 
 interface Shift {
   id: string
@@ -19,80 +25,79 @@ interface Shift {
 interface ShiftListProps {
   shifts: Shift[]
   isOffline: boolean
-  onRetry: () => void
+  onRetry?: () => void
 }
 
 export function ShiftList({ shifts, isOffline, onRetry }: ShiftListProps) {
+  if (shifts.length === 0) {
+    return (
+      <Card>
+        <CardContent className="p-6 text-center">
+          <p className="text-gray-500">No shifts found</p>
+          {isOffline && onRetry && (
+            <Button
+              variant="outline"
+              onClick={onRetry}
+              className="mt-4"
+            >
+              Retry Loading Shifts
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    )
+  }
+
   return (
-    <div className="bg-white shadow rounded-lg overflow-hidden">
-      <div className="overflow-x-auto">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Start Date
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                End Date
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Requirements
-              </th>
-              <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {shifts.map((shift) => (
-              <tr key={shift.id} className={isOffline ? 'opacity-75' : ''}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {new Date(shift.startDate).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                  {new Date(shift.endDate).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
-                  <div className="flex flex-wrap gap-2">
-                    {shift.requirements.map((req) => (
-                      <span
-                        key={req}
-                        className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800"
-                      >
-                        {req}
-                      </span>
-                    ))}
+    <div className="space-y-4">
+      {shifts.map((shift) => (
+        <Card key={shift.id}>
+          <CardHeader className="pb-2">
+            <div className="flex justify-between items-start">
+              <div className="space-y-1">
+                <CardTitle className="text-lg">
+                  Shift {shift.id.slice(0, 8)}
+                </CardTitle>
+                <div className="flex items-center text-sm text-gray-500 space-x-4">
+                  <div className="flex items-center">
+                    <Calendar className="w-4 h-4 mr-1" />
+                    <span>
+                      {format(new Date(shift.startDate), 'MMM d, yyyy')}
+                    </span>
                   </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm">
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
-                    ${shift.status === 'approved' ? 'bg-green-100 text-green-800' :
-                      shift.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                      'bg-yellow-100 text-yellow-800'}`}
-                  >
-                    {shift.status.charAt(0).toUpperCase() + shift.status.slice(1)}
-                  </span>
-                </td>
-              </tr>
-            ))}
-            {shifts.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-center">
-                  No shifts found
-                  {isOffline && (
-                    <button
-                      onClick={onRetry}
-                      className="ml-2 text-blue-600 hover:text-blue-800"
-                    >
-                      Retry
-                    </button>
-                  )}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+                  <div className="flex items-center">
+                    <Clock className="w-4 h-4 mr-1" />
+                    <span>
+                      {format(new Date(shift.startDate), 'h:mm a')} -
+                      {format(new Date(shift.endDate), 'h:mm a')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <Badge
+                variant={
+                  shift.status === 'approved'
+                    ? 'success'
+                    : shift.status === 'rejected'
+                    ? 'destructive'
+                    : 'default'
+                }
+              >
+                {shift.status.charAt(0).toUpperCase() + shift.status.slice(1)}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-2">
+              {shift.requirements.map((req) => (
+                <Badge key={req} variant="outline">
+                  {req}
+                </Badge>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
     </div>
   )
 } 

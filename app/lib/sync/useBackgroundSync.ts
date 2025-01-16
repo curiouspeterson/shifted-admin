@@ -8,7 +8,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { Database } from '@/lib/database/database.types'
-import { BackgroundSyncService, SyncStats } from './background-sync-service'
+import { BackgroundSyncService, SyncStats } from './backgroundSyncService'
 import { LocalSyncStorage } from './local-storage'
 import { useSupabase } from '@/lib/supabase/provider'
 

@@ -1,9 +1,9 @@
 /**
  * Error Boundary Component
- * Last Updated: 2024-03-20
+ * Last Updated: 2024-01-16
  * 
- * This component provides error boundary functionality with
- * fallback UI and error logging.
+ * A React error boundary component that catches errors in its children
+ * and displays a fallback UI.
  */
 
 'use client'
@@ -17,58 +17,39 @@ interface Props {
 }
 
 interface State {
+  hasError: boolean
   error: Error | null
-}
-
-/**
- * Format error for logging
- */
-function formatError(error: unknown) {
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-      cause: error.cause instanceof Error ? {
-        name: error.cause.name,
-        message: error.cause.message,
-        stack: error.cause.stack
-      } : undefined
-    }
-  }
-  return {
-    name: 'UnknownError',
-    message: String(error)
-  }
 }
 
 export class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
     super(props)
-    this.state = { error: null }
+    this.state = { hasError: false, error: null }
   }
 
   static getDerivedStateFromError(error: Error): State {
-    return { error }
+    return { hasError: true, error }
   }
 
   componentDidCatch(error: Error, errorInfo: { componentStack: string }) {
-    errorLogger.error('React error boundary caught error', {
-      error: formatError(error),
-      componentStack: errorInfo.componentStack
+    errorLogger.error('React component error', {
+      error: {
+        name: error.name,
+        message: error.message,
+        stack: error.stack,
+        componentStack: errorInfo.componentStack
+      }
     })
   }
 
   reset = () => {
-    this.setState({ error: null })
+    this.setState({ hasError: false, error: null })
   }
 
   render() {
-    const { error } = this.state
-
-    if (error) {
+    if (this.state.hasError && this.state.error) {
       return this.props.fallback({
-        error,
+        error: this.state.error,
         reset: this.reset
       })
     }

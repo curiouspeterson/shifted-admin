@@ -1,6 +1,6 @@
 /**
  * Dashboard Navigation Component
- * Last Updated: 2024-03-20
+ * Last Updated: 2024-01-16
  * 
  * A responsive navigation bar component for the dashboard.
  * Features:
@@ -13,13 +13,16 @@
 'use client'
 
 import { useRouter } from 'next/navigation'
-import { useApp } from '@/lib/context/app-context'
+import { useApp } from '@/lib/context/appContext'
 import { createBrowserClient } from '@supabase/ssr'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard' },
-  { name: 'Schedule', href: '/dashboard/schedule' },
+  { name: 'Schedules', href: '/dashboard/schedules' },
   { name: 'Shifts', href: '/dashboard/shifts' },
+  { name: 'Employees', href: '/dashboard/employees' },
+  { name: 'Availability', href: '/dashboard/availability' },
+  { name: 'Time Off', href: '/dashboard/requests' },
   { name: 'Settings', href: '/dashboard/settings' },
 ]
 

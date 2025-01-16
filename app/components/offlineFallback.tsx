@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { WifiOff, RefreshCw, Clock } from 'lucide-react';
-import { useNetwork } from '@/hooks/use-network';
+import { useNetwork } from '@/hooks/useNetwork';
 
 interface OfflineFallbackProps {
   children: React.ReactNode;

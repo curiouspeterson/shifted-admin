@@ -1,62 +1,57 @@
 /**
  * Offline Indicator Component
- * Last Updated: 2024-03-20
+ * Last Updated: 2024-01-16
  * 
- * This component displays the current connection status and
- * provides a way to retry the connection.
+ * A component that displays the current online/offline status
+ * with appropriate visual feedback.
  */
 
 'use client'
 
-interface OfflineIndicatorProps {
-  isOnline: boolean
-  isChecking?: boolean
-  lastOnline?: number | null
-  onRetry?: () => void
-}
+import { useEffect, useState } from 'react'
+import { Wifi, WifiOff } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
-export function OfflineIndicator({
-  isOnline,
-  isChecking = false,
-  lastOnline,
-  onRetry
-}: OfflineIndicatorProps) {
-  if (isOnline) {
-    return (
-      <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800">
-        <span className="w-2 h-2 mr-2 rounded-full bg-green-500" />
-        Online
-        {lastOnline && (
-          <span className="ml-2 text-xs text-green-600">
-            Connected since {new Date(lastOnline).toLocaleTimeString()}
-          </span>
-        )}
-      </div>
-    )
-  }
+export function OfflineIndicator() {
+  const [isOnline, setIsOnline] = useState(true)
 
-  if (isChecking) {
-    return (
-      <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800">
-        <span className="w-2 h-2 mr-2 rounded-full bg-blue-500 animate-pulse" />
-        Checking Connection...
-      </div>
-    )
-  }
+  useEffect(() => {
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+
+    // Set initial state
+    setIsOnline(navigator.onLine)
+
+    // Add event listeners
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   return (
-    <button
-      onClick={onRetry}
-      disabled={!onRetry}
-      className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-100 text-yellow-800 hover:bg-yellow-200 disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      <span className="w-2 h-2 mr-2 rounded-full bg-yellow-500 animate-pulse" />
-      Offline - {onRetry ? 'Click to Retry' : 'Retrying...'}
-      {lastOnline && (
-        <span className="ml-2 text-xs text-yellow-600">
-          Last online: {new Date(lastOnline).toLocaleTimeString()}
-        </span>
+    <div
+      className={cn(
+        'inline-flex items-center gap-2 px-3 py-1 rounded-full text-sm font-medium',
+        isOnline
+          ? 'bg-green-50 text-green-700'
+          : 'bg-yellow-50 text-yellow-700'
       )}
-    </button>
+    >
+      {isOnline ? (
+        <>
+          <Wifi className="w-4 h-4" />
+          <span>Online</span>
+        </>
+      ) : (
+        <>
+          <WifiOff className="w-4 h-4" />
+          <span>Offline</span>
+        </>
+      )}
+    </div>
   )
 } 

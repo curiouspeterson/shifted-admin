@@ -1,21 +1,38 @@
 /**
  * Loading Spinner Component
- * Last Updated: 2024-03-20
+ * Last Updated: 2024-01-16
  * 
- * This component provides a loading indicator with an optional label.
+ * A reusable loading spinner component with customizable size and color.
  */
 
+import { cn } from '@/lib/utils'
+
 interface LoadingSpinnerProps {
-  label?: string
+  size?: 'sm' | 'md' | 'lg'
+  className?: string
 }
 
-export function LoadingSpinner({ label = 'Loading...' }: LoadingSpinnerProps) {
+export function LoadingSpinner({
+  size = 'md',
+  className
+}: LoadingSpinnerProps) {
+  const sizeClasses = {
+    sm: 'w-4 h-4',
+    md: 'w-8 h-8',
+    lg: 'w-12 h-12'
+  }
+
   return (
-    <div className="flex flex-col items-center justify-center p-4">
-      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600" />
-      {label && (
-        <div className="mt-2 text-sm text-gray-500">{label}</div>
-      )}
+    <div className="flex items-center justify-center p-4">
+      <div
+        className={cn(
+          'animate-spin rounded-full border-2 border-current border-t-transparent text-gray-400',
+          sizeClasses[size],
+          className
+        )}
+      >
+        <span className="sr-only">Loading...</span>
+      </div>
     </div>
   )
 } 

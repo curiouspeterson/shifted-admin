@@ -6,7 +6,7 @@
  * with proper error handling and data validation.
  */
 
-import { SyncOperation } from './background-sync-service'
+import { SyncOperation } from './backgroundSyncService'
 import { SyncStorage } from './storage'
 
 const STORAGE_KEY = 'sync_operations'

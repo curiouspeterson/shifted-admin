@@ -5,7 +5,7 @@
  * Defines the interface for storing and managing sync operations.
  */
 
-import { SyncOperation } from './background-sync-service'
+import { SyncOperation } from './backgroundSyncService'
 
 /**
  * Interface for sync operation storage

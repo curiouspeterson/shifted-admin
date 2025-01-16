@@ -1,6 +1,6 @@
 /**
  * Next.js Middleware Configuration
- * Last Updated: 2024-03-20
+ * Last Updated: 2024-01-16
  * 
  * This middleware handles authentication and routing logic for the application.
  * Features:
@@ -17,7 +17,7 @@
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { rateLimit, type RateLimitResult } from './app/lib/rate-limit';
+import { rateLimit, type RateLimitResult } from '@/lib/rate-limit';
 import { errorLogger } from '@/lib/logging/error-logger';
 import { 
   MiddlewareError,
@@ -25,7 +25,7 @@ import {
   createRateLimitError, 
   createError,
   type MiddlewareErrorCode
-} from '@/lib/errors/middleware-errors';
+} from '@/lib/errors/middlewareErrors';
 import { createMeasurement } from '@/lib/utils/performance';
 
 // Route patterns for classification

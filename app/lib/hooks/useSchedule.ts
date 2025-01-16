@@ -1,56 +1,40 @@
 /**
- * Schedule Hook Module
- * Last Updated: 2024
+ * Schedule Hook
+ * Last Updated: 2024-01-15
  * 
- * Custom React hook for fetching and managing schedule data using SWR.
- * Provides real-time schedule data with automatic revalidation and
- * error handling.
- * 
- * Features:
- * - Automatic data fetching and caching
- * - Loading and error state management
- * - Type-safe data handling
- * - Database to client data mapping
+ * Custom hook for fetching and managing schedule data.
  */
 
-import useSWR from 'swr';
-import type { Schedule } from '@/app/lib/types/scheduling';
-import type { ScheduleSchema } from '../schemas/schedule';
-import { mapDatabaseScheduleToClient } from '../database/mappers';
+'use client'
 
-/**
- * Return type for useSchedule hook
- * 
- * @property schedule - The fetched schedule data or null if not available
- * @property isLoading - Whether the schedule is currently being fetched
- * @property isError - Whether an error occurred during fetching
- * @property error - Error message if any, null otherwise
- */
-interface UseScheduleReturn {
-  schedule: Schedule | null;
-  isLoading: boolean;
-  isError: boolean;
-  error: string | null;
-}
+import useSWR from 'swr'
+import { createClient } from '@/lib/supabase/client'
+import { toDomainSchedule } from '@/lib/database/mappers/schedule'
 
-/**
- * Custom hook for fetching schedule data
- * Uses SWR for data fetching with caching and revalidation
- * 
- * @param scheduleId - The ID of the schedule to fetch
- * @returns Object containing schedule data, loading state, and error information
- */
-export function useSchedule(scheduleId: string): UseScheduleReturn {
-  // Fetch schedule data using SWR
-  const { data, error } = useSWR<{ data: ScheduleSchema | null; error: string | null }>(
-    scheduleId ? `/api/schedules/${scheduleId}` : null
-  );
+const supabase = createClient()
 
-  // Return processed schedule data with status information
+export function useSchedule(id: string) {
+  const { data, error, isLoading, mutate } = useSWR(
+    id ? `/api/schedules/${id}` : null,
+    async () => {
+      const { data, error } = await supabase
+        .from('schedules')
+        .select('*')
+        .eq('id', id)
+        .single()
+
+      if (error) {
+        throw new Error(error.message)
+      }
+
+      return toDomainSchedule(data)
+    }
+  )
+
   return {
-    schedule: data?.data ? mapDatabaseScheduleToClient(data.data) : null,
-    isLoading: !error && !data,
-    isError: error !== undefined || data?.error !== null,
-    error: data?.error ?? null,
-  };
+    schedule: data,
+    error,
+    isLoading,
+    mutate
+  }
 } 

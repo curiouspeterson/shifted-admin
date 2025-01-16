@@ -9,7 +9,7 @@
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { DatabaseError, ErrorCodes } from '../database/base/errors';
-import { ErrorLogger } from '../logging/error-logger';
+import { ErrorLogger } from '../logging/errorLogger';
 
 /**
  * HTTP status codes

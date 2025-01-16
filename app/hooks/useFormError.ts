@@ -8,7 +8,7 @@
 
 import { useState, useCallback } from 'react'
 import { errorLogger } from '@/lib/logging/error-logger'
-import { createValidationError } from '@/lib/errors/middleware-errors'
+import { createValidationError } from '@/lib/errors/middlewareErrors'
 
 interface FormErrorState {
   message: string | null

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { RefreshCw, Power, PowerOff, AlertTriangle } from 'lucide-react';
-import { useServiceWorker } from '@/hooks/use-service-worker';
+import { useServiceWorker } from '@/hooks/useServiceWorker';
 
 interface ServiceWorkerStatusProps {
   className?: string;

@@ -8,8 +8,8 @@
  */
 
 import { Suspense } from 'react';
-import { ScheduleList } from './components/schedule-list';
-import { ScheduleFilters } from './components/schedule-filters';
+import { ScheduleList } from './components/scheduleList';
+import { ScheduleFilters } from './components/scheduleFilters';
 import { PageHeader } from '@/components/ui/page-header';
 import { LoadingSpinner } from '@/components/ui/loading-spinner';
 

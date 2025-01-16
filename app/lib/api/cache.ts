@@ -1,180 +1,124 @@
 /**
- * API Cache Utility
- * Last Updated: 2025-01-15
+ * API Cache Configuration
+ * Last Updated: 2024-01-16
  * 
- * This module provides caching functionality for API responses
- * using Redis as the cache store.
+ * This module provides caching utilities for API responses
+ * using Postgres as the cache backend.
  */
 
-import { Redis } from '@upstash/redis';
-import { NextRequest } from 'next/server';
-import { ApiResponse } from './types';
+import { createClient } from '@/lib/supabase/server'
+import { NextRequest } from 'next/server'
+import { cookies } from 'next/headers'
 
-// Initialize Redis client
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_REST_URL!,
-  token: process.env.UPSTASH_REDIS_REST_TOKEN!,
-});
-
-/**
- * Default cache configuration
- */
-const defaultConfig: CacheConfig = {
-  ttl: 60 * 60, // 1 hour
-  prefix: 'api:',
-  includeQuery: true,
-  excludeParams: ['_t', 'timestamp'],
-  cacheControl: 'public, max-age=3600',
-  staleWhileRevalidate: true,
-};
-
-/**
- * Cache configuration options
- */
-export interface CacheConfig {
-  /**
-   * Time-to-live in seconds
-   */
-  ttl: number;
-
-  /**
-   * Cache key prefix
-   */
-  prefix?: string;
-
-  /**
-   * Whether to include query parameters in cache key
-   */
-  includeQuery?: boolean;
-
-  /**
-   * Query parameters to exclude from cache key
-   */
-  excludeParams?: string[];
-
-  /**
-   * Cache-Control header value
-   */
-  cacheControl?: string;
-
-  /**
-   * Whether to use stale-while-revalidate
-   */
-  staleWhileRevalidate?: boolean;
+// Default cache configuration
+export const defaultCacheConfig = {
+  ttl: 60, // 1 minute
+  tags: ['api'],
+  staleWhileRevalidate: 30, // 30 seconds
 }
 
-interface CacheKeyOptions {
-  method: string;
-  path: string;
-  query?: URLSearchParams;
-  prefix?: string;
-  includeQuery?: boolean;
-  excludeParams?: string[];
+interface CacheConfig {
+  ttl?: number
+  tags?: string[]
+  staleWhileRevalidate?: number
 }
 
 /**
- * Generate a cache key from request parameters
+ * Creates a cache instance with the specified configuration
  */
-function generateCacheKey({
-  method,
-  path,
-  query,
-  prefix = defaultConfig.prefix,
-  includeQuery = defaultConfig.includeQuery,
-  excludeParams = defaultConfig.excludeParams ?? [],
-}: CacheKeyOptions): string {
-  const parts = [prefix, method, path];
+export function createCache(config: CacheConfig = {}) {
+  const {
+    ttl = defaultCacheConfig.ttl,
+    tags = defaultCacheConfig.tags,
+    staleWhileRevalidate = defaultCacheConfig.staleWhileRevalidate,
+  } = config
 
-  if (includeQuery && query) {
-    const filteredParams = new URLSearchParams();
-    query.forEach((value, key) => {
-      if (!excludeParams.includes(key)) {
-        filteredParams.append(key, value);
+  // Create cache key from request
+  function createKey(req: NextRequest): string {
+    const url = new URL(req.url)
+    return `${url.pathname}${url.search}`
+  }
+
+  return {
+    /**
+     * Gets a cached response
+     */
+    async get(req: NextRequest) {
+      const cookieStore = cookies()
+      const supabase = createClient(cookieStore)
+      const key = createKey(req)
+      const now = new Date()
+
+      const { data, error } = await supabase
+        .from('cache_entries')
+        .select('value, created_at')
+        .eq('key', key)
+        .single()
+
+      if (error || !data) return null
+
+      const age = Math.floor((now.getTime() - new Date(data.created_at).getTime()) / 1000)
+      const isStale = age > ttl
+
+      // Return stale data if within stale-while-revalidate window
+      if (isStale && age > ttl + staleWhileRevalidate) {
+        return null
       }
-    });
-    if (filteredParams.toString()) {
-      parts.push(filteredParams.toString());
-    }
-  }
 
-  return parts.join(':');
-}
+      return {
+        data: JSON.parse(data.value),
+        isStale
+      }
+    },
 
-class CacheService {
-  private config: CacheConfig;
+    /**
+     * Sets a cached response
+     */
+    async set(req: NextRequest, value: any) {
+      const cookieStore = cookies()
+      const supabase = createClient(cookieStore)
+      const key = createKey(req)
+      const now = new Date().toISOString()
 
-  constructor(config: Partial<CacheConfig> = {}) {
-    this.config = { ...defaultConfig, ...config };
-  }
+      // Store the cache entry
+      await supabase
+        .from('cache_entries')
+        .upsert({
+          key,
+          value: JSON.stringify(value),
+          created_at: now,
+          tags: tags
+        }, {
+          onConflict: 'key'
+        })
 
-  /**
-   * Get a cached response
-   */
-  async get(req: NextRequest): Promise<ApiResponse | null> {
-    const url = new URL(req.url);
-    const key = generateCacheKey({
-      method: req.method,
-      path: url.pathname,
-      query: url.searchParams,
-      prefix: this.config.prefix,
-      includeQuery: this.config.includeQuery,
-      excludeParams: this.config.excludeParams,
-    });
+      // Clean up old entries
+      await supabase.rpc('cleanup_cache_entries')
+    },
 
-    const cached = await redis.get<ApiResponse>(key);
-    return cached;
-  }
+    /**
+     * Invalidates cache by tags
+     */
+    async invalidate(invalidateTags: string[]) {
+      const cookieStore = cookies()
+      const supabase = createClient(cookieStore)
+      
+      await supabase
+        .from('cache_entries')
+        .delete()
+        .overlaps('tags', invalidateTags)
+    },
 
-  /**
-   * Cache a response
-   */
-  async set(req: NextRequest, response: ApiResponse): Promise<void> {
-    const url = new URL(req.url);
-    const key = generateCacheKey({
-      method: req.method,
-      path: url.pathname,
-      query: url.searchParams,
-      prefix: this.config.prefix,
-      includeQuery: this.config.includeQuery,
-      excludeParams: this.config.excludeParams,
-    });
-
-    await redis.set(key, response, {
-      ex: this.config.ttl,
-    });
-  }
-
-  /**
-   * Invalidate cached responses matching a pattern
-   */
-  async invalidate(pattern: string): Promise<void> {
-    const keys = await redis.keys(`${this.config.prefix}:${pattern}`);
-    if (keys.length > 0) {
-      await redis.del(...keys);
-    }
-  }
-
-  /**
-   * Get cache control headers
-   */
-  getCacheControlHeaders(): Headers {
-    const headers = new Headers();
-    
-    if (this.config.cacheControl) {
-      headers.set('Cache-Control', this.config.cacheControl);
-    }
-
-    if (this.config.staleWhileRevalidate) {
-      const value = headers.get('Cache-Control') || '';
+    /**
+     * Gets cache control headers
+     */
+    getCacheControlHeaders() {
+      const headers = new Headers()
       headers.set(
         'Cache-Control',
-        value ? `${value}, stale-while-revalidate=60` : 'stale-while-revalidate=60'
-      );
+        `s-maxage=${ttl}, stale-while-revalidate=${staleWhileRevalidate}`
+      )
+      return headers
     }
-
-    return headers;
   }
-}
-
-// Export singleton instance
-export const cacheService = new CacheService(); 
+} 

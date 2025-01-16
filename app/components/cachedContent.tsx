@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Archive, RefreshCw, AlertTriangle } from 'lucide-react';
-import { useNetwork } from '@/hooks/use-network';
+import { useNetwork } from '@/hooks/useNetwork';
 
 interface CachedContentProps {
   children: React.ReactNode;

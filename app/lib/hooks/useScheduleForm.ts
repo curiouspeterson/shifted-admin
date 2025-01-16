@@ -11,7 +11,7 @@ import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { z } from 'zod';
 import { scheduleInputSchema, type ScheduleInput, type Schedule, ScheduleStatus } from '@/lib/schemas/schedule';
-import { useFormError } from './use-form-error';
+import { useFormError } from './useFormError';
 import { createSchedule } from '@/lib/actions/schedule/client';
 import { createError } from '@/lib/errors/utils';
 import { ErrorCodes } from '@/lib/errors/types';

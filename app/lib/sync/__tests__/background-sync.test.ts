@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect, beforeEach, jest, afterEach } from '@jest/globals'
-import { BackgroundSyncService } from '../background-sync-service'
+import { BackgroundSyncService } from '../backgroundSyncService'
 import { LocalSyncStorage } from '../local-storage'
 import { createMockSupabaseClient } from './mocks/supabase'
 import { Database } from '@/lib/database/database.types'

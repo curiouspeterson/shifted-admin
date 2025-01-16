@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { Cloud, CloudOff, RefreshCw, AlertTriangle } from 'lucide-react';
-import { useBackgroundSync } from '@/hooks/use-background-sync';
-import { useNetwork } from '@/hooks/use-network';
+import { useBackgroundSync } from '@/hooks/useBackground-sync';
+import { useNetwork } from '@/hooks/useNetwork';
 
 interface SyncStatusProps {
   className?: string;
