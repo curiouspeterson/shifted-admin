@@ -1,6 +1,6 @@
 /**
  * Generic Form Hook
- * Last Updated: 2024-03
+ * Last Updated: 2024-01-15
  * 
  * A reusable hook for form handling with Zod validation and React Hook Form.
  * Features:
@@ -16,7 +16,13 @@ import { useState, useCallback } from 'react';
 import { useForm as useHookForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import type { z } from 'zod';
-import type { UseFormProps as UseHookFormProps } from 'react-hook-form';
+import type { 
+  UseFormProps as UseHookFormProps,
+  Path,
+  PathValue,
+  FieldErrors,
+  UseFormSetValue
+} from 'react-hook-form';
 import { AppError } from '@/lib/errors';
 
 export interface UseFormProps<T extends z.ZodType> {
@@ -29,9 +35,13 @@ export interface UseFormProps<T extends z.ZodType> {
 
 export interface UseFormReturn<T extends z.ZodType> {
   form: ReturnType<typeof useHookForm<z.infer<T>>>;
+  values: z.infer<T>;
+  errors: FieldErrors<z.infer<T>> | null;
   isLoading: boolean;
   error: AppError | null;
   handleSubmit: () => Promise<void>;
+  handleChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => void;
+  setFieldValue: UseFormSetValue<z.infer<T>>;
   reset: () => void;
 }
 
@@ -58,6 +68,16 @@ export function useForm<T extends z.ZodType>({
   });
 
   /**
+   * Handles form field changes
+   */
+  const handleChange = useCallback((
+    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+  ) => {
+    const { name, value } = e.target;
+    form.setValue(name as Path<z.infer<T>>, value as PathValue<z.infer<T>, Path<z.infer<T>>>);
+  }, [form]);
+
+  /**
    * Handles form submission with loading state and error handling
    */
   const handleSubmit = useCallback(async () => {
@@ -76,11 +96,11 @@ export function useForm<T extends z.ZodType>({
       onSuccess?.();
     } catch (err) {
       // Handle error
-      const error = err instanceof AppError ? err : new AppError(
-        'Form submission failed',
-        500,
-        err instanceof Error ? err.message : 'Unknown error'
-      );
+      const error = err instanceof AppError ? err : new AppError({
+        code: 'VALIDATION_ERROR',
+        message: err instanceof Error ? err.message : 'Form submission failed',
+        statusCode: 400,
+      });
       
       setError(error);
       onError?.(error);
@@ -99,9 +119,13 @@ export function useForm<T extends z.ZodType>({
 
   return {
     form,
+    values: form.getValues(),
+    errors: form.formState.errors,
     isLoading,
     error,
     handleSubmit,
+    handleChange,
+    setFieldValue: form.setValue,
     reset,
   };
 }

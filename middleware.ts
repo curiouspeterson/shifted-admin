@@ -162,7 +162,7 @@ export async function middleware(request: NextRequest) {
     }
 
     // Log successful request
-    const duration = measurement.getElapsed();
+    const duration = measurement.elapsed();
     errorLogger.info('Request processed', {
       path: request.nextUrl.pathname,
       method: request.method,
@@ -173,7 +173,7 @@ export async function middleware(request: NextRequest) {
 
     return response;
   } catch (err) {
-    const duration = measurement.getElapsed();
+    const duration = measurement.elapsed();
 
     // Handle known errors
     if (err instanceof MiddlewareError) {

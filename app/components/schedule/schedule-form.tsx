@@ -1,142 +1,217 @@
 /**
  * Schedule Form Component
- * Last Updated: 2024-03-20 02:35 PST
+ * Last Updated: 2024-01-15
  * 
- * This component provides a form for creating and editing schedules.
+ * Example component demonstrating the use of background sync functionality
+ * for creating and updating schedules with offline support.
  */
 
-'use client';
+'use client'
 
-import { useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import { useScheduleForm, type ScheduleFormData } from '@/hooks/use-schedule-form';
-import {
-  Button,
-  Input,
-  Textarea,
-  DatePicker,
-  Switch,
-  Label,
-} from '@/components/ui';
-import { cn } from '@/lib/utils';
+import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useBackgroundSync } from '@/lib/sync/use-background-sync'
+import { Schedule, ScheduleInput, scheduleInputSchema } from '@/lib/database/schemas/schedule'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Textarea } from '@/components/ui/textarea'
+import { DatePicker } from '@/components/ui/date-picker'
+import { Switch } from '@/components/ui/switch'
+import { Alert, AlertDescription } from '@/components/ui/alert'
+import { Loader2 } from 'lucide-react'
 
 interface ScheduleFormProps {
-  initialData?: Partial<ScheduleFormData>;
-  className?: string;
+  schedule?: Schedule
+  onSuccess?: () => void
 }
 
-export function ScheduleForm({ initialData, className }: ScheduleFormProps) {
-  const router = useRouter();
-  const { defaultData, errors, handleSubmit } = useScheduleForm(initialData);
-
-  const onSubmit = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const formData = new FormData(event.currentTarget);
-    const data: Partial<ScheduleFormData> = {
-      name: formData.get('name') as string,
-      description: formData.get('description') as string,
-      start_date: formData.get('start_date') as string,
-      end_date: formData.get('end_date') as string,
-      is_active: formData.get('is_active') === 'true',
-    };
-
-    try {
-      await handleSubmit(data);
-      router.push('/schedules');
-    } catch (error) {
-      // Error is handled by the form hook
-      console.error('Form submission failed:', error);
+export function ScheduleForm({ schedule, onSuccess }: ScheduleFormProps) {
+  const [error, setError] = useState<string | null>(null)
+  const { status, queueCreate, queueUpdate } = useBackgroundSync()
+  
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting },
+    control
+  } = useForm<ScheduleInput>({
+    resolver: zodResolver(scheduleInputSchema),
+    defaultValues: schedule ? {
+      name: schedule.name,
+      description: schedule.description,
+      startDate: schedule.startDate,
+      endDate: schedule.endDate,
+      status: schedule.status,
+      isActive: schedule.isActive
+    } : {
+      name: '',
+      description: '',
+      status: 'DRAFT',
+      isActive: true
     }
-  }, [handleSubmit, router]);
+  })
+
+  const onSubmit = async (data: ScheduleInput) => {
+    try {
+      setError(null)
+
+      if (schedule) {
+        await queueUpdate('schedules', {
+          id: schedule.id,
+          ...data
+        })
+      } else {
+        await queueCreate('schedules', data)
+      }
+
+      onSuccess?.()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save schedule')
+    }
+  }
 
   return (
-    <form onSubmit={onSubmit} className={cn('space-y-6', className)}>
-      {errors.root && (
-        <div className="p-4 rounded-md bg-red-50 text-red-900">
-          {errors.root}
-        </div>
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      {/* Connection Status */}
+      {!status.isOnline && (
+        <Alert>
+          <AlertDescription>
+            You are currently offline. Changes will be synchronized when you reconnect.
+          </AlertDescription>
+        </Alert>
       )}
 
-      <div className="space-y-4">
-        <div>
-          <Label htmlFor="name">Name</Label>
-          <Input
-            id="name"
-            name="name"
-            defaultValue={defaultData.name}
-            className={cn(errors.name && 'border-red-500')}
+      {/* Sync Status */}
+      {status.isSyncing && (
+        <Alert>
+          <AlertDescription className="flex items-center gap-2">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Synchronizing changes...
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {/* Error Message */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Name Field */}
+      <div className="space-y-2">
+        <label htmlFor="name" className="text-sm font-medium">
+          Name
+        </label>
+        <Input
+          id="name"
+          {...register('name')}
+          className={errors.name ? 'border-red-500' : ''}
+        />
+        {errors.name && (
+          <p className="text-sm text-red-500">{errors.name.message}</p>
+        )}
+      </div>
+
+      {/* Description Field */}
+      <div className="space-y-2">
+        <label htmlFor="description" className="text-sm font-medium">
+          Description
+        </label>
+        <Textarea
+          id="description"
+          {...register('description')}
+          className={errors.description ? 'border-red-500' : ''}
+        />
+        {errors.description && (
+          <p className="text-sm text-red-500">{errors.description.message}</p>
+        )}
+      </div>
+
+      {/* Date Range Fields */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <label htmlFor="startDate" className="text-sm font-medium">
+            Start Date
+          </label>
+          <DatePicker
+            name="startDate"
+            control={control}
+            error={errors.startDate?.message}
           />
-          {errors.name && (
-            <p className="mt-1 text-sm text-red-500">{errors.name}</p>
-          )}
         </div>
-
-        <div>
-          <Label htmlFor="description">Description</Label>
-          <Textarea
-            id="description"
-            name="description"
-            defaultValue={defaultData.description}
-            className={cn(errors.description && 'border-red-500')}
+        <div className="space-y-2">
+          <label htmlFor="endDate" className="text-sm font-medium">
+            End Date
+          </label>
+          <DatePicker
+            name="endDate"
+            control={control}
+            error={errors.endDate?.message}
           />
-          {errors.description && (
-            <p className="mt-1 text-sm text-red-500">{errors.description}</p>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label htmlFor="start_date">Start Date</Label>
-            <DatePicker
-              id="start_date"
-              name="start_date"
-              defaultValue={defaultData.start_date}
-              className={cn(errors.start_date && 'border-red-500')}
-            />
-            {errors.start_date && (
-              <p className="mt-1 text-sm text-red-500">{errors.start_date}</p>
-            )}
-          </div>
-
-          <div>
-            <Label htmlFor="end_date">End Date</Label>
-            <DatePicker
-              id="end_date"
-              name="end_date"
-              defaultValue={defaultData.end_date}
-              className={cn(errors.end_date && 'border-red-500')}
-            />
-            {errors.end_date && (
-              <p className="mt-1 text-sm text-red-500">{errors.end_date}</p>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <Switch
-            id="is_active"
-            name="is_active"
-            defaultChecked={defaultData.is_active}
-          />
-          <Label htmlFor="is_active">Active</Label>
-          {errors.is_active && (
-            <p className="text-sm text-red-500">{errors.is_active}</p>
-          )}
         </div>
       </div>
 
-      <div className="flex justify-end space-x-4">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => router.back()}
+      {/* Status Field */}
+      <div className="space-y-2">
+        <label htmlFor="status" className="text-sm font-medium">
+          Status
+        </label>
+        <select
+          id="status"
+          {...register('status')}
+          className={`w-full rounded-md border ${
+            errors.status ? 'border-red-500' : 'border-gray-300'
+          } px-3 py-2`}
         >
-          Cancel
-        </Button>
-        <Button type="submit">
-          Save Schedule
-        </Button>
+          <option value="DRAFT">Draft</option>
+          <option value="PUBLISHED">Published</option>
+          <option value="ARCHIVED">Archived</option>
+        </select>
+        {errors.status && (
+          <p className="text-sm text-red-500">{errors.status.message}</p>
+        )}
+      </div>
+
+      {/* Active Switch */}
+      <div className="flex items-center justify-between">
+        <label htmlFor="isActive" className="text-sm font-medium">
+          Active
+        </label>
+        <Switch
+          id="isActive"
+          {...register('isActive')}
+          defaultChecked={schedule?.isActive ?? true}
+        />
+      </div>
+
+      {/* Submit Button */}
+      <Button
+        type="submit"
+        disabled={isSubmitting || status.isSyncing}
+        className="w-full"
+      >
+        {isSubmitting || status.isSyncing ? (
+          <>
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            {schedule ? 'Updating...' : 'Creating...'}
+          </>
+        ) : (
+          schedule ? 'Update Schedule' : 'Create Schedule'
+        )}
+      </Button>
+
+      {/* Sync Stats */}
+      <div className="text-sm text-gray-500">
+        <p>Pending: {status.stats.pending}</p>
+        <p>Processing: {status.stats.processing}</p>
+        <p>Completed: {status.stats.completed}</p>
+        <p>Failed: {status.stats.failed}</p>
+        {status.stats.lastSync && (
+          <p>Last Sync: {new Date(status.stats.lastSync).toLocaleString()}</p>
+        )}
       </div>
     </form>
-  );
+  )
 } 

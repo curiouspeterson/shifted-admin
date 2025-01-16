@@ -1,22 +1,35 @@
 /**
  * API Types
- * Last Updated: 2025-01-15
+ * Last Updated: 2024-01-15
  * 
  * This module provides common types used across the API layer.
  */
 
-export interface ApiResponse<T = any> {
+import { DatabaseError } from '@/lib/errors/base';
+
+export interface ApiErrorDetails {
+  field?: string;
+  code: string;
+  message: string;
+  params?: Record<string, string | number | boolean>;
+}
+
+export interface ApiError {
+  code: string;
+  message: string;
+  details?: ApiErrorDetails[];
+}
+
+export interface ApiMetadata {
+  cached?: boolean;
+  cacheHit?: boolean;
+  cacheTtl?: number;
+  timestamp: string;
+  requestId: string;
+}
+
+export interface ApiResponse<T> {
   data?: T;
-  error?: {
-    code: string;
-    message: string;
-    details?: any;
-  };
-  metadata?: {
-    cached?: boolean;
-    cacheHit?: boolean;
-    cacheTtl?: number;
-    timestamp: string;
-    requestId: string;
-  };
+  error?: ApiError;
+  metadata?: ApiMetadata;
 } 

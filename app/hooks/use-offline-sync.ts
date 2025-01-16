@@ -1,3 +1,11 @@
+/**
+ * Offline Sync Hook
+ * Last Updated: 2024-01-15
+ * 
+ * Manages offline data synchronization with proper type safety
+ * and error handling.
+ */
+
 'use client';
 
 import { useEffect, useCallback } from 'react';
@@ -12,6 +20,14 @@ interface UseOfflineSyncOptions {
   retryDelay?: number;
 }
 
+type SyncOperation = 'create' | 'update' | 'delete';
+
+interface SyncPayload<T = unknown> {
+  type: SyncOperation;
+  endpoint: string;
+  payload?: T;
+}
+
 export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
   const syncQueue = SyncQueue.getInstance({
     maxRetries: options.maxRetries,
@@ -22,10 +38,10 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
 
   const cacheManager = CacheManager.getInstance();
 
-  const addToSyncQueue = useCallback(async (
-    type: 'create' | 'update' | 'delete',
+  const addToSyncQueue = useCallback(async <T>(
+    type: SyncOperation,
     endpoint: string,
-    payload?: any
+    payload?: T
   ) => {
     try {
       await syncQueue.add({
@@ -34,19 +50,15 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
         payload,
       });
 
-      toast({
-        title: 'Operation Queued',
+      toast('Operation Queued', {
         description: navigator.onLine
           ? 'Your changes will be saved shortly.'
           : 'Your changes will be saved when you\'re back online.',
-        variant: 'default',
       });
     } catch (error) {
       console.error('Failed to add operation to sync queue:', error);
-      toast({
-        title: 'Operation Failed',
+      toast.error('Operation Failed', {
         description: 'Failed to queue your changes. Please try again.',
-        variant: 'destructive',
       });
     }
   }, []);

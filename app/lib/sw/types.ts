@@ -1,6 +1,6 @@
 /**
  * Service Worker Types
- * Last Updated: 2024-03-20
+ * Last Updated: 2024-01-15
  * 
  * This module provides TypeScript type definitions for service worker
  * events and interfaces.
@@ -15,11 +15,11 @@ declare global {
 }
 
 export interface ExtendableEvent extends Event {
-  waitUntil(fn: Promise<any>): void
+  waitUntil(fn: Promise<void>): void
 }
 
 export interface ExtendableMessageEvent extends ExtendableEvent {
-  data: any
+  data: SyncMessage | UpdateMessage
   source: WindowClient | Client | ServiceWorker | MessagePort | null
   ports: ReadonlyArray<MessagePort>
 }
@@ -34,7 +34,7 @@ export interface SyncQueueItem {
   url: string
   method: string
   headers: Record<string, string>
-  body?: any
+  body?: string | FormData | Blob | ArrayBuffer
   retryCount: number
 }
 

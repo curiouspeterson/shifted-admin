@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { errorLogger, ErrorSeverity } from '@/lib/logging/error-logger';
+import { errorLogger } from '@/lib/logging/error-logger';
 import { DatabaseError } from '@/lib/errors/base';
 
 export interface DBConfig {
@@ -10,7 +10,7 @@ export interface DBConfig {
       keyPath: string;
       indexes?: {
         name: string;
-        keyPath: string;
+        keyPath: string | string[];
         options?: IDBIndexParameters;
       }[];
     };
@@ -28,13 +28,83 @@ interface DBOperation<T> {
   };
 }
 
+interface ErrorDetails {
+  name: string;
+  message: string;
+  stack?: string;
+  code?: string;
+  details?: unknown;
+  cause?: {
+    name: string;
+    message: string;
+    stack?: string;
+  };
+}
+
 /**
- * Utility class for handling IndexedDB operations
+ * Extended IDBTransaction interface for upgrade handling
+ */
+interface UpgradeTransaction extends IDBTransaction {
+  error: DOMException | null;
+  oncomplete: ((this: IDBTransaction, ev: Event) => void) | null;
+  onerror: ((this: IDBTransaction, ev: Event) => void) | null;
+}
+
+/**
+ * Format error for logging
+ */
+function formatError(error: unknown): ErrorDetails {
+  if (error instanceof DatabaseError) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      details: error.details
+    };
+  }
+  if (error instanceof DOMException) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      code: String(error.code)
+    };
+  }
+  if (error instanceof Error) {
+    return {
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      cause: error.cause instanceof Error ? {
+        name: error.cause.name,
+        message: error.cause.message,
+        stack: error.cause.stack
+      } : undefined
+    };
+  }
+  return {
+    name: 'UnknownError',
+    message: String(error)
+  };
+}
+
+/**
+ * IndexedDB Utility Class
+ * Last Updated: 2024-01-15
+ * 
+ * Provides a type-safe wrapper around IndexedDB with proper error handling
+ * and transaction management for offline-first PWA functionality.
+ */
+
+/**
+ * Utility class for handling IndexedDB operations with proper error handling
+ * and transaction management.
  */
 export class IndexedDB {
   private static instances: Map<string, IndexedDB> = new Map();
   private db: IDBDatabase | null = null;
   private config: DBConfig;
+  private upgradeInProgress: boolean = false;
 
   private constructor(config: DBConfig) {
     this.config = config;
@@ -56,73 +126,141 @@ export class IndexedDB {
     try {
       this.db = await this.openDatabase();
     } catch (error) {
-      const dbError = new DatabaseError(
-        'Failed to initialize IndexedDB',
-        { error, dbName: this.config.name }
-      );
-      errorLogger.error(dbError, {
+      const errorDetails = formatError(error);
+      errorLogger.error('Failed to initialize IndexedDB', {
         component: 'IndexedDB',
         operation: 'init',
         dbName: this.config.name,
-        version: this.config.version
+        version: this.config.version,
+        error: errorDetails
       });
       toast.error('Failed to initialize offline storage', {
         description: 'Please try again or contact support if the issue persists.',
       });
-      throw dbError;
+      throw error;
     }
   }
 
   /**
-   * Open the database connection
+   * Open the database connection with proper transaction handling
    */
   private openDatabase(): Promise<IDBDatabase> {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(this.config.name, this.config.version);
+      let upgradeTransaction: UpgradeTransaction | null = null;
+      const UPGRADE_TIMEOUT = 5000; // 5 seconds
+      let upgradeTimer: NodeJS.Timeout | null = null;
 
       request.onerror = () => {
         const error = new DatabaseError(
           'Failed to open IndexedDB connection',
-          { error: request.error, dbName: this.config.name }
+          { error: request.error, dbName: this.config.name, version: this.config.version }
         );
-        errorLogger.error(error, {
+        errorLogger.error('Failed to open IndexedDB connection', {
           component: 'IndexedDB',
           operation: 'openDatabase',
           dbName: this.config.name,
-          version: this.config.version
+          version: this.config.version,
+          error: formatError(error)
         });
         reject(error);
       };
 
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        const db = request.result;
+        
+        // Handle version change events
+        db.onversionchange = () => {
+          db.close();
+          this.db = null;
+          toast.error('Database was updated in another tab', {
+            description: 'Please refresh the page to continue.',
+          });
+        };
+
+        resolve(db);
+      };
 
       request.onupgradeneeded = (event: IDBVersionChangeEvent) => {
-        const db = (event.target as IDBOpenDBRequest).result;
-        const transaction = (event.target as IDBOpenDBRequest).transaction;
-        
-        if (!transaction) {
-          const error = new DatabaseError(
-            'Failed to get transaction during database upgrade',
-            { dbName: this.config.name, version: this.config.version }
-          );
-          errorLogger.error(error, {
-            component: 'IndexedDB',
-            operation: 'onupgradeneeded',
-            dbName: this.config.name,
-            version: this.config.version
-          });
-          throw error;
+        if (this.upgradeInProgress) {
+          return;
         }
 
+        this.upgradeInProgress = true;
+        const db = request.result;
+        
+        // Get the transaction from the event
+        upgradeTransaction = request.transaction as UpgradeTransaction;
+        if (!upgradeTransaction) {
+          const error = new DatabaseError(
+            'No transaction available for database upgrade',
+            { dbName: this.config.name, version: this.config.version }
+          );
+          errorLogger.error('No transaction available for database upgrade', {
+            component: 'IndexedDB',
+            operation: 'onupgradeneeded',
+            error: formatError(error)
+          });
+          this.upgradeInProgress = false;
+          reject(error);
+          return;
+        }
+
+        // Set up upgrade timeout
+        upgradeTimer = setTimeout(() => {
+          if (this.upgradeInProgress) {
+            const error = new DatabaseError(
+              'Database upgrade timed out',
+              { dbName: this.config.name, version: this.config.version }
+            );
+            errorLogger.error('Database upgrade timed out', {
+              component: 'IndexedDB',
+              operation: 'onupgradeneeded',
+              error: formatError(error)
+            });
+            this.upgradeInProgress = false;
+            reject(error);
+          }
+        }, UPGRADE_TIMEOUT);
+
+        // Handle transaction errors
+        upgradeTransaction.onerror = () => {
+          const txError = upgradeTransaction?.error;
+          const error = new DatabaseError(
+            'Transaction failed during database upgrade',
+            { 
+              error: txError,
+              dbName: this.config.name,
+              version: this.config.version
+            }
+          );
+          errorLogger.error('Transaction failed during database upgrade', {
+            component: 'IndexedDB',
+            operation: 'onupgradeneeded',
+            error: formatError(error)
+          });
+          this.upgradeInProgress = false;
+          if (upgradeTimer) clearTimeout(upgradeTimer);
+          reject(error);
+        };
+
+        // Handle transaction completion
+        upgradeTransaction.oncomplete = () => {
+          this.upgradeInProgress = false;
+          if (upgradeTimer) clearTimeout(upgradeTimer);
+        };
+        
         try {
           // Create or update object stores
           for (const [storeName, storeConfig] of Object.entries(this.config.stores)) {
             let store: IDBObjectStore;
             
+            // Create or get the store
             if (!db.objectStoreNames.contains(storeName)) {
               store = db.createObjectStore(storeName, { keyPath: storeConfig.keyPath });
             } else {
-              store = transaction.objectStore(storeName);
+              // Get existing store from the upgrade transaction
+              store = upgradeTransaction.objectStore(storeName);
             }
 
             // Create or update indexes
@@ -139,13 +277,14 @@ export class IndexedDB {
             'Failed to upgrade database schema',
             { error, dbName: this.config.name, version: this.config.version }
           );
-          errorLogger.error(dbError, {
+          errorLogger.error('Failed to upgrade database schema', {
             component: 'IndexedDB',
             operation: 'onupgradeneeded',
-            dbName: this.config.name,
-            version: this.config.version
+            error: formatError(dbError)
           });
-          throw dbError;
+          this.upgradeInProgress = false;
+          if (upgradeTimer) clearTimeout(upgradeTimer);
+          reject(dbError);
         }
       };
     });
@@ -200,11 +339,12 @@ export class IndexedDB {
               `Unsupported operation type: ${operation.type}`,
               { operation }
             );
-            errorLogger.error(error, {
+            errorLogger.error(`Unsupported operation type: ${operation.type}`, {
               component: 'IndexedDB',
               operation: 'execute',
               dbName: this.config.name,
-              operationType: operation.type
+              operationType: operation.type,
+              error: formatError(error)
             });
             reject(error);
             return;
@@ -216,12 +356,13 @@ export class IndexedDB {
             `Failed to execute ${operation.type} operation`,
             { error: request.error, operation }
           );
-          errorLogger.error(error, {
+          errorLogger.error(`Failed to execute ${operation.type} operation`, {
             component: 'IndexedDB',
             operation: 'execute',
             dbName: this.config.name,
             operationType: operation.type,
-            store: operation.store
+            store: operation.store,
+            error: formatError(error)
           });
           reject(error);
         };
@@ -230,12 +371,13 @@ export class IndexedDB {
           `Unexpected error during ${operation.type} operation`,
           { error, operation }
         );
-        errorLogger.error(dbError, {
+        errorLogger.error(`Unexpected error during ${operation.type} operation`, {
           component: 'IndexedDB',
           operation: 'execute',
           dbName: this.config.name,
           operationType: operation.type,
-          store: operation.store
+          store: operation.store,
+          error: formatError(dbError)
         });
         reject(dbError);
       }
@@ -267,10 +409,11 @@ export class IndexedDB {
           'Failed to close database connection',
           { error, dbName: this.config.name }
         );
-        errorLogger.error(dbError, {
+        errorLogger.error('Failed to close database connection', {
           component: 'IndexedDB',
           operation: 'close',
-          dbName: this.config.name
+          dbName: this.config.name,
+          error: formatError(dbError)
         });
         throw dbError;
       }
@@ -296,10 +439,11 @@ export class IndexedDB {
           'Failed to delete database',
           { error: request.error, dbName: name }
         );
-        errorLogger.error(error, {
+        errorLogger.error('Failed to delete database', {
           component: 'IndexedDB',
           operation: 'deleteDatabase',
-          dbName: name
+          dbName: name,
+          error: formatError(error)
         });
         reject(error);
       };
@@ -333,18 +477,17 @@ export class IndexedDB {
           stats[storeName] = { count: count.length, size };
           totalSize += size;
         } catch (error) {
-          errorLogger.warn(
-            new DatabaseError(
-              `Failed to get stats for store: ${storeName}`,
-              { error, storeName }
-            ),
-            {
-              component: 'IndexedDB',
-              operation: 'getStats',
-              dbName: this.config.name,
-              store: storeName
-            }
+          const dbError = new DatabaseError(
+            `Failed to get stats for store: ${storeName}`,
+            { error, storeName }
           );
+          errorLogger.warn(`Failed to get stats for store: ${storeName}`, {
+            component: 'IndexedDB',
+            operation: 'getStats',
+            dbName: this.config.name,
+            store: storeName,
+            error: formatError(dbError)
+          });
           // Continue with other stores even if one fails
           stats[storeName] = { count: 0, size: 0 };
         }
@@ -368,10 +511,11 @@ export class IndexedDB {
         'Failed to collect database stats',
         { error, dbName: this.config.name }
       );
-      errorLogger.error(dbError, {
+      errorLogger.error('Failed to collect database stats', {
         component: 'IndexedDB',
         operation: 'getStats',
-        dbName: this.config.name
+        dbName: this.config.name,
+        error: formatError(dbError)
       });
       throw dbError;
     }

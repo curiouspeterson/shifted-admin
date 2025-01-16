@@ -1,108 +1,81 @@
 /**
  * Request Form Component
- * Last Updated: 2024
+ * Last Updated: 2024-01-15
  * 
- * A form component for submitting time-off requests. Handles collection
- * and submission of request data, including dates, type, and reason.
- * Provides validation and error handling with a responsive layout.
- * 
+ * Form for submitting time-off requests with validation and error handling.
  * Features:
- * - Date range selection
- * - Request type categorization
- * - Optional reason field
- * - Form validation
- * - Error handling
- * - Loading states
- * - Responsive layout
+ * - Type-safe form handling
+ * - Zod schema validation
+ * - Loading state management
+ * - Error feedback
+ * - Success/failure callbacks
  */
 
-'use client'
+'use client';
 
-import { useState } from 'react'
+import { z } from 'zod';
+import { useForm } from '@/hooks/form/useForm';
+import { AppError } from '@/lib/errors';
 
-/**
- * Request Form Props Interface
- * @property onSave - Callback function called after successful request submission
- * @property onCancel - Callback function called when form is cancelled
- */
 interface RequestFormProps {
-  onSave: () => void
-  onCancel: () => void
+  onSave: () => void;
+  onCancel: () => void;
 }
 
-/**
- * Request Form Component
- * Form for submitting time-off requests with validation and error handling
- * 
- * @param props - Component properties
- * @param props.onSave - Success callback
- * @param props.onCancel - Cancel callback
- * @returns A form for time-off request submission
- */
+// Request form schema with validation
+const requestSchema = z.object({
+  start_date: z.string().min(1, 'Start date is required'),
+  end_date: z.string().min(1, 'End date is required'),
+  request_type: z.enum(['vacation', 'sick', 'personal', 'other']),
+  reason: z.string().optional()
+}).refine(
+  (data) => new Date(data.start_date) <= new Date(data.end_date),
+  { message: 'End date must be after or equal to start date' }
+);
+
+type RequestFormData = z.infer<typeof requestSchema>;
+
 export default function RequestForm({ onSave, onCancel }: RequestFormProps) {
-  // Form state management
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  
-  /**
-   * Form Data State
-   * Tracks all request information:
-   * - Date range (start and end dates)
-   * - Request type (vacation, sick, etc.)
-   * - Optional reason for request
-   */
-  const [formData, setFormData] = useState({
-    start_date: '',
-    end_date: '',
-    request_type: 'vacation',
-    reason: ''
-  })
-
-  /**
-   * Form Submission Handler
-   * Processes the form submission:
-   * 1. Prevents default form submission
-   * 2. Sets loading state
-   * 3. Attempts to create request via API
-   * 4. Handles success/error cases
-   * 
-   * @param e - Form submission event
-   */
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-
-    try {
-      // Create the request via API route
+  const {
+    values,
+    handleChange,
+    handleSubmit,
+    error,
+    isLoading
+  } = useForm<typeof requestSchema>({
+    schema: requestSchema,
+    defaultValues: {
+      start_date: '',
+      end_date: '',
+      request_type: 'vacation',
+      reason: ''
+    },
+    onSubmit: async (data) => {
       const response = await fetch('/api/requests', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
-      })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
 
       if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to submit request')
+        const errorData = await response.json();
+        throw new AppError({
+          code: 'API_ERROR',
+          message: errorData.error || 'Failed to submit request',
+          statusCode: response.status
+        });
       }
 
-      onSave()
-    } catch (err) {
-      console.error('Error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to submit request')
-    } finally {
-      setLoading(false)
+      onSave();
     }
-  }
+  });
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Error Display */}
       {error && (
         <div className="rounded-md bg-red-50 p-4">
-          <div className="text-sm text-red-700">{error}</div>
+          <div className="text-sm text-red-700">{error.message}</div>
         </div>
       )}
 
@@ -117,8 +90,8 @@ export default function RequestForm({ onSave, onCancel }: RequestFormProps) {
             type="date"
             id="start_date"
             name="start_date"
-            value={formData.start_date}
-            onChange={(e) => setFormData(prev => ({ ...prev, start_date: e.target.value }))}
+            value={values.start_date}
+            onChange={handleChange}
             required
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
           />
@@ -133,8 +106,8 @@ export default function RequestForm({ onSave, onCancel }: RequestFormProps) {
             type="date"
             id="end_date"
             name="end_date"
-            value={formData.end_date}
-            onChange={(e) => setFormData(prev => ({ ...prev, end_date: e.target.value }))}
+            value={values.end_date}
+            onChange={handleChange}
             required
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
           />
@@ -149,8 +122,8 @@ export default function RequestForm({ onSave, onCancel }: RequestFormProps) {
         <select
           id="request_type"
           name="request_type"
-          value={formData.request_type}
-          onChange={(e) => setFormData(prev => ({ ...prev, request_type: e.target.value }))}
+          value={values.request_type}
+          onChange={handleChange}
           required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
         >
@@ -170,8 +143,8 @@ export default function RequestForm({ onSave, onCancel }: RequestFormProps) {
           id="reason"
           name="reason"
           rows={3}
-          value={formData.reason}
-          onChange={(e) => setFormData(prev => ({ ...prev, reason: e.target.value }))}
+          value={values.reason || ''}
+          onChange={handleChange}
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
         />
       </div>
@@ -181,10 +154,10 @@ export default function RequestForm({ onSave, onCancel }: RequestFormProps) {
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={loading}
+          disabled={isLoading}
           className="inline-flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:col-start-2 sm:text-sm"
         >
-          {loading ? 'Submitting...' : 'Submit Request'}
+          {isLoading ? 'Submitting...' : 'Submit Request'}
         </button>
 
         {/* Cancel Button */}
@@ -197,5 +170,5 @@ export default function RequestForm({ onSave, onCancel }: RequestFormProps) {
         </button>
       </div>
     </form>
-  )
+  );
 } 

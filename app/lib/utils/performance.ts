@@ -6,12 +6,15 @@
  * and timing operations.
  */
 
+// Cache global performance object to avoid recursion
+const globalPerf = typeof performance !== 'undefined' ? performance : null
+
 /**
  * Get high-resolution timestamp in milliseconds
  */
 export function now(): number {
-  if (typeof performance !== 'undefined' && performance.now) {
-    return performance.now()
+  if (globalPerf?.now) {
+    return globalPerf.now()
   }
   return Date.now()
 }
@@ -40,7 +43,7 @@ export function createMeasurement() {
 /**
  * Performance measurement utilities
  */
-export const performance = {
+export const perf = {
   now,
   createMeasurement
-} 
+}

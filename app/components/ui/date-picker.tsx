@@ -1,79 +1,77 @@
 /**
  * Date Picker Component
- * Last Updated: 2024-03-20 03:55 PST
+ * Last Updated: 2024-01-15
  * 
- * This component provides a date picker input with a calendar popover.
+ * A date picker component that works with react-hook-form.
+ * Uses the Shadcn UI calendar component for the date selection.
  */
 
-'use client';
+'use client'
 
-import * as React from 'react';
-import { format } from 'date-fns';
-import { CalendarIcon } from '@heroicons/react/24/outline';
-import { Calendar } from './calendar';
-import { Popover, PopoverContent, PopoverTrigger } from './popover';
-import { Button } from './button';
-import { Input } from './input';
-import { cn } from '@/lib/utils';
+import * as React from 'react'
+import { format } from 'date-fns'
+import { Calendar as CalendarIcon } from 'lucide-react'
+import { Calendar } from '@/components/ui/calendar'
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover'
+import { Button } from '@/components/ui/button'
+import { cn } from '@/lib/utils'
+import { Control, Controller, FieldValues, Path } from 'react-hook-form'
 
-interface DatePickerProps extends React.InputHTMLAttributes<HTMLInputElement> {
-  defaultValue?: string;
+interface DatePickerProps<T extends FieldValues> {
+  name: Path<T>
+  control: Control<T>
+  error?: string
+  className?: string
 }
 
-export function DatePicker({ className, defaultValue, ...props }: DatePickerProps) {
-  const [date, setDate] = React.useState<Date | undefined>(
-    defaultValue ? new Date(defaultValue) : undefined
-  );
-  const [open, setOpen] = React.useState(false);
-
-  const handleSelect = (date: Date | undefined) => {
-    setDate(date);
-    setOpen(false);
-  };
-
-  const handleKeyDown = (event: React.KeyboardEvent) => {
-    if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      setOpen(true);
-    } else if (event.key === 'Escape') {
-      setOpen(false);
-    }
-  };
-
+export function DatePicker<T extends FieldValues>({
+  name,
+  control,
+  error,
+  className
+}: DatePickerProps<T>) {
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          aria-label="Select a date"
-          className={cn(
-            'w-full justify-start text-left font-normal',
-            !date && 'text-muted-foreground',
-            className
-          )}
-          onKeyDown={handleKeyDown}
-        >
-          <CalendarIcon className="mr-2 h-4 w-4" />
-          {date ? format(date, 'PPP') : <span>Pick a date</span>}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="start">
-        <Calendar
-          mode="single"
-          selected={date}
-          onSelect={handleSelect}
-          initialFocus
-          showOutsideDays={true}
-        />
-      </PopoverContent>
-      <Input
-        type="hidden"
-        name={props.name}
-        value={date ? format(date, 'yyyy-MM-dd') : ''}
-        {...props}
+    <div className="space-y-2">
+      <Controller
+        name={name}
+        control={control}
+        render={({ field }) => (
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button
+                variant="outline"
+                className={cn(
+                  'w-full justify-start text-left font-normal',
+                  !field.value && 'text-muted-foreground',
+                  error && 'border-red-500',
+                  className
+                )}
+              >
+                <CalendarIcon className="mr-2 h-4 w-4" />
+                {field.value ? (
+                  format(new Date(field.value), 'PPP')
+                ) : (
+                  <span>Pick a date</span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={field.value ? new Date(field.value) : undefined}
+                onSelect={date => field.onChange(date?.toISOString().split('T')[0])}
+              />
+            </PopoverContent>
+          </Popover>
+        )}
       />
-    </Popover>
-  );
+      {error && (
+        <p className="text-sm text-red-500">{error}</p>
+      )}
+    </div>
+  )
 } 

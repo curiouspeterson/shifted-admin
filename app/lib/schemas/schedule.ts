@@ -1,34 +1,55 @@
 /**
- * Schedule Schema
- * Last Updated: 2024-03-20 02:20 PST
+ * Schedule Schema Types
+ * Last Updated: 2024-01-15
  * 
- * This file defines the schedule schema using Zod validation.
+ * Defines the domain types for schedules.
  */
 
-import { z } from 'zod';
+import { z } from 'zod'
 
+// Schedule status enum
 export const ScheduleStatus = {
   DRAFT: 'draft',
   PUBLISHED: 'published',
-} as const;
+  ARCHIVED: 'archived'
+} as const
 
-export type ScheduleStatus = typeof ScheduleStatus[keyof typeof ScheduleStatus];
+export type ScheduleStatus = typeof ScheduleStatus[keyof typeof ScheduleStatus]
 
+// Base schedule fields
+const scheduleBase = {
+  name: z.string().min(1).max(255),
+  description: z.string().max(1000).optional(),
+  startDate: z.string().datetime(),
+  endDate: z.string().datetime(),
+  status: z.enum([
+    ScheduleStatus.DRAFT,
+    ScheduleStatus.PUBLISHED,
+    ScheduleStatus.ARCHIVED
+  ]),
+  isActive: z.boolean().default(false)
+}
+
+// Schedule input schema
 export const scheduleInputSchema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  description: z.string().optional(),
-  start_date: z.string().min(1, 'Start date is required'),
-  end_date: z.string().min(1, 'End date is required'),
-  status: z.enum([ScheduleStatus.DRAFT, ScheduleStatus.PUBLISHED]).default(ScheduleStatus.DRAFT),
-  is_active: z.boolean().default(true),
-}).refine(
-  (data) => {
-    const start = new Date(data.start_date);
-    const end = new Date(data.end_date);
-    return start <= end;
-  },
-  {
-    message: 'End date must be after start date',
-    path: ['end_date'],
-  }
-); 
+  ...scheduleBase,
+  createdBy: z.string().uuid().optional(),
+  updatedBy: z.string().uuid().optional()
+})
+
+// Schedule schema (includes all fields)
+export const scheduleSchema = z.object({
+  ...scheduleBase,
+  id: z.string().uuid(),
+  createdAt: z.string().datetime(),
+  updatedAt: z.string().datetime(),
+  createdBy: z.string().uuid().nullable(),
+  updatedBy: z.string().uuid().nullable(),
+  publishedAt: z.string().datetime().nullable(),
+  publishedBy: z.string().uuid().nullable(),
+  version: z.number().int().min(1)
+})
+
+// Infer types from schemas
+export type Schedule = z.infer<typeof scheduleSchema>
+export type ScheduleInput = z.infer<typeof scheduleInputSchema> 

@@ -1,129 +1,66 @@
 /**
- * Base Repository
- * Last Updated: 2024-03-20
+ * Base Repository Class
+ * Last Updated: 2024-01-15
  * 
- * This class provides a base implementation for database repositories.
- * It includes improved error handling, logging, and transaction support.
+ * Provides base database operations with proper typing and error handling.
+ * Uses type mappers for safe conversions between domain and database types.
  */
 
-import { SupabaseClient } from '@supabase/supabase-js'
-import { Database } from '@/lib/supabase/database.types'
-import { DatabaseError, ErrorCode, ErrorContext, mapDatabaseError } from './errors'
-import { TransactionManager } from './transaction'
-import { errorLogger } from '@/lib/logging/error-logger'
-import { performance } from '@/lib/utils/performance'
+import { 
+  SupabaseClient, 
+  PostgrestError,
+  PostgrestResponse,
+  PostgrestSingleResponse
+} from '@supabase/supabase-js'
+import { Database } from '@/lib/database/database.types'
+import { DatabaseError, ErrorCode } from './errors'
+import { 
+  DatabaseResult, 
+  DatabaseListResult, 
+  BaseFilters,
+  TableName,
+  Row,
+  Insert,
+  Update
+} from './types'
+import { mapDatabaseError } from './error-mapper'
+import { 
+  TypeMapper, 
+  TableWithId, 
+  ColumnKey,
+  asFilterValue,
+  asRow
+} from './type-mapping'
 
-export interface DatabaseResult<T> {
-  data: T | null
-  error: DatabaseError | null
-}
-
-export interface DatabaseListResult<T> {
-  data: T[]
-  error: DatabaseError | null
-}
-
-export interface BaseFilters {
-  limit?: number
-  offset?: number
-  orderBy?: {
-    column: string
-    ascending?: boolean
-  }
-}
-
-interface RetryOptions {
-  maxAttempts?: number
-  initialDelay?: number
-  maxDelay?: number
-  backoffFactor?: number
-}
-
-const DEFAULT_RETRY_OPTIONS: RetryOptions = {
-  maxAttempts: 3,
-  initialDelay: 100,
-  maxDelay: 1000,
-  backoffFactor: 2
-}
-
-export abstract class BaseRepository<T extends Record<string, any>> {
-  protected readonly tableName: string
-  protected readonly transactionManager: TransactionManager
-
+export abstract class BaseRepository<
+  T extends TableWithId<TableName>,
+  D,
+  I,
+  U = Partial<I>
+> {
   constructor(
     protected readonly supabase: SupabaseClient<Database>,
-    tableName: string
-  ) {
-    this.tableName = tableName
-    this.transactionManager = new TransactionManager(supabase)
-  }
+    protected readonly tableName: T,
+    protected readonly typeMapper: TypeMapper<T, D, I, U>
+  ) {}
 
   /**
-   * Execute operation with retry logic
+   * Find a record by ID with proper type safety
    */
-  protected async executeWithRetry<R>(
-    operation: () => Promise<R>,
-    context: Partial<ErrorContext>,
-    options: RetryOptions = DEFAULT_RETRY_OPTIONS
-  ): Promise<R> {
-    const { maxAttempts = 3, initialDelay = 100, maxDelay = 1000, backoffFactor = 2 } = options
-    let attempt = 1
-    let delay = initialDelay
-
-    while (true) {
-      const start = performance.now()
-      try {
-        const result = await operation()
-        return result
-      } catch (err) {
-        const duration = performance.now() - start
-        const error = mapDatabaseError(err, {
-          ...context,
-          attempt,
-          duration,
-          timestamp: new Date().toISOString()
-        })
-
-        if (!error.isRetryable() || attempt >= maxAttempts) {
-          throw error
-        }
-
-        // Log retry attempt
-        errorLogger.warn('Retrying database operation', {
-          tableName: this.tableName,
-          attempt,
-          maxAttempts,
-          delay,
-          error: error.toJSON()
-        })
-
-        // Wait before retrying
-        await new Promise(resolve => setTimeout(resolve, delay))
-        
-        // Increase delay for next attempt
-        delay = Math.min(delay * backoffFactor, maxDelay)
-        attempt++
-      }
-    }
-  }
-
-  /**
-   * Find a record by ID
-   */
-  async findById(id: string | number): Promise<DatabaseResult<T>> {
+  async findById(id: Row<T>['id']): Promise<DatabaseResult<D>> {
     try {
       const result = await this.executeWithRetry(
         async () => {
-          const { data, error } = await this.supabase
+          const response = await this.supabase
             .from(this.tableName)
             .select('*')
-            .eq('id', id)
+            .eq('id', asFilterValue(id))
             .single()
 
-          if (error) throw error
-          if (!data) throw new Error(`Record not found: ${id}`)
+          if (response.error) throw response.error
+          if (!response.data) throw new Error('Record not found')
 
-          return data
+          return this.typeMapper.toRow(asRow<T>(response.data))
         },
         {
           tableName: this.tableName,
@@ -143,7 +80,7 @@ export abstract class BaseRepository<T extends Record<string, any>> {
   /**
    * Find multiple records with optional filters
    */
-  async findMany(filters: BaseFilters = {}): Promise<DatabaseListResult<T>> {
+  async findMany(filters: BaseFilters = {}): Promise<DatabaseListResult<D>> {
     try {
       const result = await this.executeWithRetry(
         async () => {
@@ -163,16 +100,19 @@ export abstract class BaseRepository<T extends Record<string, any>> {
           }
 
           if (filters.orderBy) {
-            query = query.order(
-              filters.orderBy.column,
-              { ascending: filters.orderBy.ascending ?? true }
-            )
+            const column = filters.orderBy.column as ColumnKey<T>
+            query = query.order(column, {
+              ascending: filters.orderBy.ascending ?? true
+            })
           }
 
-          const { data, error } = await query
-          if (error) throw error
+          const response = await query
+          if (response.error) throw response.error
+          if (!response.data) return []
 
-          return data || []
+          return response.data.map(row => 
+            this.typeMapper.toRow(asRow<T>(row))
+          )
         },
         {
           tableName: this.tableName,
@@ -190,22 +130,29 @@ export abstract class BaseRepository<T extends Record<string, any>> {
   }
 
   /**
-   * Create a new record
+   * Create a new record with runtime validation
    */
-  async create(data: Partial<T>): Promise<DatabaseResult<T>> {
+  async create(data: I): Promise<DatabaseResult<D>> {
     try {
       const result = await this.executeWithRetry(
         async () => {
-          const { data: created, error } = await this.supabase
+          const dbData = this.typeMapper.toDbInsert(data)
+          
+          // Validate mapped data before insert
+          if (!this.typeMapper.validateDbData(dbData)) {
+            throw new Error('Invalid database data structure')
+          }
+          
+          const response = await this.supabase
             .from(this.tableName)
-            .insert(data)
+            .insert(dbData)
             .select()
             .single()
 
-          if (error) throw error
-          if (!created) throw new Error('Failed to create record')
+          if (response.error) throw response.error
+          if (!response.data) throw new Error('Failed to create record')
 
-          return created
+          return this.typeMapper.toRow(asRow<T>(response.data))
         },
         {
           tableName: this.tableName,
@@ -223,23 +170,30 @@ export abstract class BaseRepository<T extends Record<string, any>> {
   }
 
   /**
-   * Update an existing record
+   * Update an existing record with runtime validation
    */
-  async update(id: string | number, data: Partial<T>): Promise<DatabaseResult<T>> {
+  async update(id: Row<T>['id'], data: U): Promise<DatabaseResult<D>> {
     try {
       const result = await this.executeWithRetry(
         async () => {
-          const { data: updated, error } = await this.supabase
+          const dbData = this.typeMapper.toDbUpdate(data)
+          
+          // Validate mapped data before update
+          if (!this.typeMapper.validateDbData(dbData)) {
+            throw new Error('Invalid database data structure')
+          }
+          
+          const response = await this.supabase
             .from(this.tableName)
-            .update(data)
-            .eq('id', id)
+            .update(dbData)
+            .eq('id', asFilterValue(id))
             .select()
             .single()
 
-          if (error) throw error
-          if (!updated) throw new Error(`Record not found: ${id}`)
+          if (response.error) throw response.error
+          if (!response.data) throw new Error('Failed to update record')
 
-          return updated
+          return this.typeMapper.toRow(asRow<T>(response.data))
         },
         {
           tableName: this.tableName,
@@ -258,23 +212,23 @@ export abstract class BaseRepository<T extends Record<string, any>> {
   }
 
   /**
-   * Delete a record
+   * Delete a record by ID
    */
-  async delete(id: string | number): Promise<DatabaseResult<T>> {
+  async delete(id: Row<T>['id']): Promise<DatabaseResult<D>> {
     try {
       const result = await this.executeWithRetry(
         async () => {
-          const { data: deleted, error } = await this.supabase
+          const response = await this.supabase
             .from(this.tableName)
             .delete()
-            .eq('id', id)
+            .eq('id', asFilterValue(id))
             .select()
             .single()
 
-          if (error) throw error
-          if (!deleted) throw new Error(`Record not found: ${id}`)
+          if (response.error) throw response.error
+          if (!response.data) throw new Error('Failed to delete record')
 
-          return deleted
+          return this.typeMapper.toRow(asRow<T>(response.data))
         },
         {
           tableName: this.tableName,
@@ -289,5 +243,54 @@ export abstract class BaseRepository<T extends Record<string, any>> {
       const error = err instanceof DatabaseError ? err : mapDatabaseError(err)
       return { data: null, error }
     }
+  }
+
+  /**
+   * Execute an operation with retry logic and proper error handling
+   */
+  protected async executeWithRetry<R>(
+    operation: () => Promise<R>,
+    context: {
+      tableName: string
+      operation: string
+      id?: Row<T>['id']
+      requestId: string
+      metadata?: Record<string, unknown>
+    }
+  ): Promise<R> {
+    let attempt = 1
+    const maxAttempts = 3
+    const baseDelay = 100
+
+    while (attempt <= maxAttempts) {
+      const start = Date.now()
+      try {
+        return await operation()
+      } catch (err) {
+        const duration = Date.now() - start
+        const error = err instanceof DatabaseError ? err : mapDatabaseError(err, {
+          ...context,
+          attempt,
+          duration
+        })
+
+        if (!error.isRetryable() || attempt === maxAttempts) {
+          throw error
+        }
+
+        const delay = baseDelay * Math.pow(2, attempt - 1)
+        await new Promise(resolve => setTimeout(resolve, delay))
+        attempt++
+      }
+    }
+
+    throw new DatabaseError({
+      code: ErrorCode.UNKNOWN,
+      message: 'Max retry attempts exceeded',
+      context: {
+        ...context,
+        attempt: maxAttempts
+      }
+    })
   }
 } 

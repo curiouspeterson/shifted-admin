@@ -1,113 +1,84 @@
 /**
  * Employee Form Component
- * Last Updated: 2024
+ * Last Updated: 2024-01-15
  * 
- * A form component for creating new employee records. Handles all aspects
- * of employee data collection and submission, including validation and
- * error handling. Provides a responsive layout with proper form controls
- * for each field.
- * 
+ * Form for creating new employee records with validation and error handling.
  * Features:
- * - Complete employee data collection
- * - Form validation
- * - Error handling and display
- * - Loading states
- * - Responsive grid layout
- * - Cancel/Submit actions
+ * - Type-safe form handling
+ * - Zod schema validation
+ * - Loading state management
+ * - Error feedback
+ * - Success/failure callbacks
  */
 
-'use client'
+'use client';
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { z } from 'zod';
+import { useForm } from '@/hooks/form/useForm';
+import { AppError } from '@/lib/errors';
 
-/**
- * Employee Form Props Interface
- * @property onSave - Callback function called after successful employee creation
- * @property onCancel - Callback function called when form is cancelled
- */
 interface EmployeeFormProps {
-  onSave: () => void
-  onCancel: () => void
+  onSave: () => void;
+  onCancel: () => void;
 }
 
-/**
- * Employee Form Component
- * Form for creating new employee records with validation and error handling
- * 
- * @param props - Component properties
- * @param props.onSave - Success callback
- * @param props.onCancel - Cancel callback
- * @returns A form for employee data entry
- */
+// Employee form schema with validation
+const employeeSchema = z.object({
+  first_name: z.string().min(1, 'First name is required'),
+  last_name: z.string().min(1, 'Last name is required'),
+  email: z.string().email('Invalid email address'),
+  position: z.enum(['employee', 'shift_supervisor', 'management']),
+  hourly_rate: z.string().min(1, 'Hourly rate is required'),
+  start_date: z.string().min(1, 'Start date is required'),
+  phone: z.string().min(1, 'Phone number is required')
+});
+
+type EmployeeFormData = z.infer<typeof employeeSchema>;
+
 export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
-  const router = useRouter()
-  
-  // Form state management
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  
-  /**
-   * Form Data State
-   * Tracks all employee information fields:
-   * - Personal info (name, email, phone)
-   * - Employment details (position, rate, start date)
-   */
-  const [formData, setFormData] = useState({
-    first_name: '',
-    last_name: '',
-    email: '',
-    position: 'employee',
-    hourly_rate: '',
-    start_date: '',
-    phone: ''
-  })
-
-  /**
-   * Form Submission Handler
-   * Processes the form submission:
-   * 1. Prevents default form submission
-   * 2. Sets loading state
-   * 3. Attempts to create employee via API
-   * 4. Handles success/error cases
-   * 
-   * @param e - Form submission event
-   */
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setLoading(true)
-    setError(null)
-
-    try {
-      // Create the employee via API route
+  const {
+    values,
+    handleChange,
+    handleSubmit,
+    error,
+    isLoading
+  } = useForm<typeof employeeSchema>({
+    schema: employeeSchema,
+    defaultValues: {
+      first_name: '',
+      last_name: '',
+      email: '',
+      position: 'employee',
+      hourly_rate: '',
+      start_date: '',
+      phone: ''
+    },
+    onSubmit: async (data) => {
       const response = await fetch('/api/employees', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formData)
-      })
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
 
       if (!response.ok) {
-        const data = await response.json()
-        throw new Error(data.error || 'Failed to create employee')
+        const errorData = await response.json();
+        throw new AppError({
+          code: 'API_ERROR',
+          message: errorData.error || 'Failed to create employee',
+          statusCode: response.status
+        });
       }
 
-      onSave()
-    } catch (err) {
-      console.error('Error:', err)
-      setError(err instanceof Error ? err.message : 'Failed to create employee')
-    } finally {
-      setLoading(false)
+      onSave();
     }
-  }
+  });
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       {/* Error Display */}
       {error && (
         <div className="rounded-md bg-red-50 p-4">
-          <div className="text-sm text-red-700">{error}</div>
+          <div className="text-sm text-red-700">{error.message}</div>
         </div>
       )}
 
@@ -122,8 +93,8 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
             type="text"
             id="first_name"
             name="first_name"
-            value={formData.first_name}
-            onChange={(e) => setFormData(prev => ({ ...prev, first_name: e.target.value }))}
+            value={values.first_name}
+            onChange={handleChange}
             required
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
           />
@@ -138,8 +109,8 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
             type="text"
             id="last_name"
             name="last_name"
-            value={formData.last_name}
-            onChange={(e) => setFormData(prev => ({ ...prev, last_name: e.target.value }))}
+            value={values.last_name}
+            onChange={handleChange}
             required
             className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
           />
@@ -155,8 +126,8 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
           type="email"
           id="email"
           name="email"
-          value={formData.email}
-          onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
+          value={values.email}
+          onChange={handleChange}
           required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
         />
@@ -170,8 +141,8 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
         <select
           id="position"
           name="position"
-          value={formData.position}
-          onChange={(e) => setFormData(prev => ({ ...prev, position: e.target.value }))}
+          value={values.position}
+          onChange={handleChange}
           required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
         >
@@ -190,8 +161,8 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
           type="number"
           id="hourly_rate"
           name="hourly_rate"
-          value={formData.hourly_rate}
-          onChange={(e) => setFormData(prev => ({ ...prev, hourly_rate: e.target.value }))}
+          value={values.hourly_rate}
+          onChange={handleChange}
           required
           min="0"
           step="0.01"
@@ -208,8 +179,8 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
           type="date"
           id="start_date"
           name="start_date"
-          value={formData.start_date}
-          onChange={(e) => setFormData(prev => ({ ...prev, start_date: e.target.value }))}
+          value={values.start_date}
+          onChange={handleChange}
           required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
         />
@@ -224,8 +195,8 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
           type="tel"
           id="phone"
           name="phone"
-          value={formData.phone}
-          onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
+          value={values.phone}
+          onChange={handleChange}
           required
           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
         />
@@ -236,10 +207,10 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={loading}
+          disabled={isLoading}
           className="inline-flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:col-start-2 sm:text-sm"
         >
-          {loading ? 'Creating...' : 'Create Employee'}
+          {isLoading ? 'Creating...' : 'Create Employee'}
         </button>
 
         {/* Cancel Button */}
@@ -252,5 +223,5 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
         </button>
       </div>
     </form>
-  )
+  );
 } 

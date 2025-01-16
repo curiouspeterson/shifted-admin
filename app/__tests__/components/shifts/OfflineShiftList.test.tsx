@@ -10,79 +10,117 @@
  */
 
 import { render, screen, act, fireEvent } from '@testing-library/react'
-import { OfflineShiftList } from '@/components/shifts/OfflineShiftList'
+import OfflineShiftList from '@/components/shifts/OfflineShiftList'
 import { useOfflineData } from '@/hooks/useOfflineData'
+import { useOfflineFallback } from '@/hooks/useOfflineFallback'
+import { type Shift } from '@/lib/schemas/base/shift'
 import { describe, it, expect, beforeEach, jest } from '@jest/globals'
 import '@testing-library/jest-dom'
 
-// Mock the useOfflineData hook
+// Mock the hooks
 jest.mock('@/hooks/useOfflineData')
+jest.mock('@/hooks/useOfflineFallback')
 
 describe('OfflineShiftList', () => {
-  const mockShifts = [
-    { id: '1', date: '2024-01-15', startTime: '09:00', endTime: '17:00', employeeId: 'emp1' },
-    { id: '2', date: '2024-01-16', startTime: '10:00', endTime: '18:00', employeeId: 'emp2' }
+  const now = new Date().toISOString()
+  const mockShifts: Shift[] = [
+    {
+      id: '1',
+      name: 'Morning Shift',
+      start_time: '09:00',
+      end_time: '17:00',
+      is_active: true,
+      requires_supervisor: false,
+      min_dispatchers: 2,
+      created_at: now,
+      updated_at: now,
+      created_by: '00000000-0000-0000-0000-000000000000',
+      updated_by: '00000000-0000-0000-0000-000000000000'
+    },
+    {
+      id: '2',
+      name: 'Evening Shift',
+      start_time: '10:00',
+      end_time: '18:00',
+      is_active: true,
+      requires_supervisor: true,
+      min_dispatchers: 3,
+      created_at: now,
+      updated_at: now,
+      created_by: '00000000-0000-0000-0000-000000000000',
+      updated_by: '00000000-0000-0000-0000-000000000000'
+    }
   ]
 
+  // Type the mock functions
+  const mockSaveData = jest.fn().mockImplementation(async (data: unknown) => {}) as jest.MockedFunction<(data: unknown) => Promise<void>>
+  const mockSyncData = jest.fn().mockImplementation(async () => {}) as jest.MockedFunction<() => Promise<void>>
+  const mockRefresh = jest.fn().mockImplementation(async () => {}) as jest.MockedFunction<() => Promise<void>>
+  const mockRetry = jest.fn().mockImplementation(async () => {}) as jest.MockedFunction<() => Promise<void>>
+
   beforeEach(() => {
-    // Reset all mocks
     jest.resetAllMocks()
+    
+    // Default offline fallback mock
+    jest.mocked(useOfflineFallback).mockReturnValue({
+      isOnline: true,
+      isChecking: false,
+      retryCount: 0,
+      lastOnline: Date.now(),
+      retry: mockRetry,
+      canRetry: true
+    })
   })
 
   it('should show loading state', () => {
-    // Mock loading state
     jest.mocked(useOfflineData).mockReturnValue({
       data: null,
       isLoading: true,
       error: null,
       isSyncing: false,
       lastSynced: null,
-      saveData: jest.fn(),
-      syncData: jest.fn(),
-      refresh: jest.fn()
+      saveData: mockSaveData,
+      syncData: mockSyncData,
+      refresh: mockRefresh
     })
 
-    render(<OfflineShiftList />)
+    render(<OfflineShiftList storeId="store1" />)
     expect(screen.getByTestId('loading-spinner')).toBeInTheDocument()
   })
 
   it('should display shifts from offline storage', () => {
-    // Mock successful data load
     jest.mocked(useOfflineData).mockReturnValue({
       data: mockShifts,
       isLoading: false,
       error: null,
       isSyncing: false,
       lastSynced: Date.now(),
-      saveData: jest.fn(),
-      syncData: jest.fn(),
-      refresh: jest.fn()
+      saveData: mockSaveData,
+      syncData: mockSyncData,
+      refresh: mockRefresh
     })
 
-    render(<OfflineShiftList />)
+    render(<OfflineShiftList storeId="store1" />)
     
-    // Check if shifts are displayed
-    expect(screen.getByText('Jan 15, 2024')).toBeInTheDocument()
-    expect(screen.getByText('9:00 AM - 5:00 PM')).toBeInTheDocument()
-    expect(screen.getByText('Jan 16, 2024')).toBeInTheDocument()
-    expect(screen.getByText('10:00 AM - 6:00 PM')).toBeInTheDocument()
+    expect(screen.getByText('Morning Shift')).toBeInTheDocument()
+    expect(screen.getByText('Evening Shift')).toBeInTheDocument()
+    expect(screen.getByText(/supervisor required/i)).toBeInTheDocument()
   })
 
   it('should show sync status', () => {
-    // Mock syncing state
     jest.mocked(useOfflineData).mockReturnValue({
       data: mockShifts,
       isLoading: false,
       error: null,
       isSyncing: true,
       lastSynced: Date.now(),
-      saveData: jest.fn(),
-      syncData: jest.fn(),
-      refresh: jest.fn()
+      saveData: mockSaveData,
+      syncData: mockSyncData,
+      refresh: mockRefresh
     })
 
-    render(<OfflineShiftList />)
-    expect(screen.getByText(/syncing/i)).toBeInTheDocument()
+    render(<OfflineShiftList storeId="store1" />)
+    expect(screen.getByText(/syncing changes/i)).toBeInTheDocument()
   })
 
   it('should show last synced time', () => {
@@ -93,12 +131,12 @@ describe('OfflineShiftList', () => {
       error: null,
       isSyncing: false,
       lastSynced,
-      saveData: jest.fn(),
-      syncData: jest.fn(),
-      refresh: jest.fn()
+      saveData: mockSaveData,
+      syncData: mockSyncData,
+      refresh: mockRefresh
     })
 
-    render(<OfflineShiftList />)
+    render(<OfflineShiftList storeId="store1" />)
     expect(screen.getByText(/last synced/i)).toBeInTheDocument()
     expect(screen.getByText(new Date(lastSynced).toLocaleTimeString())).toBeInTheDocument()
   })
@@ -111,34 +149,14 @@ describe('OfflineShiftList', () => {
       error,
       isSyncing: false,
       lastSynced: null,
-      saveData: jest.fn(),
-      syncData: jest.fn(),
-      refresh: jest.fn()
+      saveData: mockSaveData,
+      syncData: mockSyncData,
+      refresh: mockRefresh
     })
 
-    render(<OfflineShiftList />)
-    expect(screen.getByText(/failed to load shifts/i)).toBeInTheDocument()
-  })
-
-  it('should trigger sync on refresh button click', () => {
-    const syncData = jest.fn()
-    jest.mocked(useOfflineData).mockReturnValue({
-      data: mockShifts,
-      isLoading: false,
-      error: null,
-      isSyncing: false,
-      lastSynced: Date.now(),
-      saveData: jest.fn(),
-      syncData,
-      refresh: jest.fn()
-    })
-
-    render(<OfflineShiftList />)
-    
-    const refreshButton = screen.getByRole('button', { name: /refresh/i })
-    fireEvent.click(refreshButton)
-    
-    expect(syncData).toHaveBeenCalled()
+    render(<OfflineShiftList storeId="store1" />)
+    expect(screen.getByText(/something went wrong/i)).toBeInTheDocument()
+    expect(screen.getByText(error.message)).toBeInTheDocument()
   })
 
   it('should handle empty state', () => {
@@ -148,29 +166,51 @@ describe('OfflineShiftList', () => {
       error: null,
       isSyncing: false,
       lastSynced: Date.now(),
-      saveData: jest.fn(),
-      syncData: jest.fn(),
-      refresh: jest.fn()
+      saveData: mockSaveData,
+      syncData: mockSyncData,
+      refresh: mockRefresh
     })
 
-    render(<OfflineShiftList />)
+    jest.mocked(useOfflineFallback).mockReturnValue({
+      isOnline: false,
+      isChecking: false,
+      retryCount: 0,
+      lastOnline: Date.now(),
+      retry: mockRetry,
+      canRetry: false
+    })
+
+    render(<OfflineShiftList storeId="store1" />)
     expect(screen.getByText(/no shifts found/i)).toBeInTheDocument()
+    expect(screen.getByText(/you're offline/i)).toBeInTheDocument()
   })
 
-  it('should show stale data warning when offline', () => {
-    const lastSynced = Date.now() - (25 * 60 * 60 * 1000) // 25 hours ago
+  it('should handle retry when offline', () => {
     jest.mocked(useOfflineData).mockReturnValue({
       data: mockShifts,
       isLoading: false,
       error: null,
       isSyncing: false,
-      lastSynced,
-      saveData: jest.fn(),
-      syncData: jest.fn(),
-      refresh: jest.fn()
+      lastSynced: Date.now(),
+      saveData: mockSaveData,
+      syncData: mockSyncData,
+      refresh: mockRefresh
     })
 
-    render(<OfflineShiftList />)
-    expect(screen.getByText(/data may be out of date/i)).toBeInTheDocument()
+    jest.mocked(useOfflineFallback).mockReturnValue({
+      isOnline: false,
+      isChecking: false,
+      retryCount: 1,
+      lastOnline: Date.now() - 60000, // 1 minute ago
+      retry: mockRetry,
+      canRetry: true
+    })
+
+    render(<OfflineShiftList storeId="store1" />)
+    
+    const retryButton = screen.getByText(/click to retry/i)
+    fireEvent.click(retryButton)
+    
+    expect(mockRetry).toHaveBeenCalled()
   })
 }) 
