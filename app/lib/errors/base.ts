@@ -1,22 +1,40 @@
 /**
- * Base Error Types
+ * Base Error Classes
  * Last Updated: 2024-01-16
  * 
- * Base error classes and types for the application.
+ * Core error classes for the application.
  */
 
 /**
- * Base application error
+ * Base application error class
  */
 export class AppError extends Error {
+  code: string
+  statusCode: number
+  details?: unknown
+
   constructor(
     message: string,
-    public code: string = 'APP_ERROR',
-    public statusCode: number = 500,
-    public details?: unknown
+    code = 'UNKNOWN_ERROR',
+    statusCode = 500,
+    details?: unknown
   ) {
     super(message)
     this.name = 'AppError'
+    this.code = code
+    this.statusCode = statusCode
+    this.details = details
+  }
+}
+
+/**
+ * Database operation error
+ */
+export class DatabaseError extends AppError {
+  constructor(message: string, options: { cause?: unknown; details?: unknown } = {}) {
+    super(message, 'DATABASE_ERROR', 500, options.details)
+    this.name = 'DatabaseError'
+    if (options.cause) this.cause = options.cause
   }
 }
 

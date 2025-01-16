@@ -12,7 +12,7 @@ import { useEffect, useReducer, useCallback } from 'react'
 import { toast, toastMessages } from '@/lib/utils/toast'
 import { indexedDB } from '@/lib/storage/indexed-db'
 import { errorLogger } from '@/lib/logging/error-logger'
-import { formatError } from '@/lib/utils/errors'
+import { formatError } from '@/lib/utils/error'
 import { DatabaseError } from '@/lib/errors/base'
 
 // Status represents the current state of the data
