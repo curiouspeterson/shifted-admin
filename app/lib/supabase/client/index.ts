@@ -1,42 +1,54 @@
 /**
- * Client-Side Supabase Configuration
- * Last Updated: 2024-03
+ * Supabase Client
+ * Last Updated: 2025-01-16
  * 
- * This file configures and exports a Supabase client instance for client-side usage.
- * It provides a typed client with public credentials for authenticated but restricted 
- * database access.
+ * Type-safe Supabase client setup for client-side usage.
+ * This module provides a singleton instance of the Supabase client
+ * with proper typing and error handling.
  */
 
 import { createBrowserClient } from '@supabase/ssr'
-import type { Database } from '../database.types'
+import { Database } from '../types/database'
 
-if (!process.env.NEXT_PUBLIC_SUPABASE_URL) {
-  throw new Error('Missing environment variable: NEXT_PUBLIC_SUPABASE_URL')
-}
-
-if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
-  throw new Error('Missing environment variable: NEXT_PUBLIC_SUPABASE_ANON_KEY')
-}
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 
 /**
- * Creates a typed Supabase client for browser usage
+ * Create a singleton instance of the Supabase client
  */
-export function createClient() {
-  return createBrowserClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      auth: {
-        persistSession: true,
-        autoRefreshToken: true,
-        detectSessionInUrl: true
-      }
-    }
-  )
-}
+export const supabase = createBrowserClient<Database>(
+  supabaseUrl,
+  supabaseAnonKey,
+  {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+    realtime: {
+      params: {
+        eventsPerSecond: 10,
+      },
+    },
+  }
+)
 
 /**
- * Pre-configured Supabase client instance
- * Use this singleton instance to avoid creating multiple connections
+ * Helper to check if running on client side
  */
-export const supabase = createClient() 
+export const isClient = typeof window !== 'undefined'
+
+/**
+ * Type-safe database types
+ */
+export type Tables<T extends keyof Database['public']['Tables']> =
+  Database['public']['Tables'][T]['Row']
+
+export type Enums<T extends keyof Database['public']['Enums']> =
+  Database['public']['Enums'][T]
+
+export type TablesInsert<T extends keyof Database['public']['Tables']> =
+  Database['public']['Tables'][T]['Insert']
+
+export type TablesUpdate<T extends keyof Database['public']['Tables']> =
+  Database['public']['Tables'][T]['Update'] 

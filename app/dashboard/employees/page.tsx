@@ -1,6 +1,6 @@
 /**
  * Employees Page
- * Last Updated: 2024-01-15
+ * Last Updated: 2024-01-16
  * 
  * Displays a list of employees and allows for employee management.
  */
@@ -9,7 +9,7 @@ import { cookies } from 'next/headers'
 import { createClient } from '@/lib/supabase/server'
 import { AddEmployeeButton } from '../../employees/add-employee-button'
 import { EmployeeList } from '../../employees/employee-list'
-import { Employee, EmployeeStatus } from '../../employees/types'
+import { Employee } from '../../employees/types'
 
 export default async function EmployeesPage() {
   const cookieStore = cookies()
@@ -17,7 +17,7 @@ export default async function EmployeesPage() {
   
   const { data: employeesRaw, error } = await supabase
     .from('employees')
-    .select('id, first_name, last_name, email, phone, position, is_active, created_at, updated_at')
+    .select('id, first_name, last_name, email, phone, position, department, is_active, created_at, updated_at')
     .order('created_at', { ascending: false })
 
   if (error) {
@@ -32,7 +32,8 @@ export default async function EmployeesPage() {
     email: emp.email,
     phone: emp.phone,
     position: emp.position,
-    status: emp.is_active ? ('active' as EmployeeStatus) : ('inactive' as EmployeeStatus),
+    department: emp.department,
+    status: emp.is_active ? 'active' : 'inactive',
     created_at: emp.created_at,
     updated_at: emp.updated_at
   })) || []

@@ -24,8 +24,7 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { createClient } from "@/lib/supabase/client"
-import { CreateEmployeeInput } from "./types"
+import { createClientComponentClient } from '@/lib/supabase/client-side'
 
 const employeeFormSchema = z.object({
   first_name: z.string().min(2, {
@@ -42,6 +41,9 @@ const employeeFormSchema = z.object({
   }).optional(),
   position: z.string().min(2, {
     message: "Position must be at least 2 characters.",
+  }),
+  department: z.string().min(2, {
+    message: "Department must be at least 2 characters.",
   }),
   is_active: z.boolean().default(true),
 })
@@ -60,14 +62,17 @@ export function AddEmployeeButton() {
       email: "",
       phone: "",
       position: "",
+      department: "",
       is_active: true,
     },
   })
 
+  const supabase = createClientComponentClient()
+
   async function onSubmit(values: EmployeeFormValues) {
     try {
       setIsLoading(true)
-      const supabase = createClient()
+      const supabase = createClientComponentClient()
       
       // Get authenticated user
       const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -80,15 +85,18 @@ export function AddEmployeeButton() {
         throw new Error("No authenticated user. Please log in again.")
       }
 
-      // Log the data being sent
+      // Prepare employee data
       const employeeData = {
-        name: `${values.first_name} ${values.last_name}`.trim(),
+        first_name: values.first_name.trim(),
+        last_name: values.last_name.trim(),
         email: values.email.trim(),
-        phone: values.phone?.trim() || '',
+        phone: values.phone?.trim() || null,
         position: values.position.trim(),
-        status: (values.is_active ? 'active' : 'inactive') as 'active' | 'inactive'
+        department: values.department.trim(),
+        is_active: values.is_active,
+        created_by: user.id,
+        updated_by: user.id
       }
-      console.log('Sending employee data:', employeeData)
 
       const { data, error: insertError } = await supabase
         .from('employees')
@@ -212,6 +220,23 @@ export function AddEmployeeButton() {
                   <FormControl>
                     <Input 
                       placeholder="Software Engineer" 
+                      className="bg-white text-black border-gray-300 focus:border-gray-400" 
+                      {...field} 
+                    />
+                  </FormControl>
+                  <FormMessage className="text-red-500" />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="department"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-black font-medium">Department</FormLabel>
+                  <FormControl>
+                    <Input 
+                      placeholder="Engineering" 
                       className="bg-white text-black border-gray-300 focus:border-gray-400" 
                       {...field} 
                     />

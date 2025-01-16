@@ -9,35 +9,44 @@
  * - Metadata configuration
  */
 
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
-import { Providers } from './providers';
-import './globals.css';
-import { SupabaseProvider } from '@/lib/supabase/provider'
+import { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import { Toaster } from '@/components/ui/sonner'
+import { ThemeProvider } from '@/components/theme-provider'
+import './globals.css'
 
-const inter = Inter({ subsets: ['latin'] });
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Shifted Admin',
-  description: 'Admin dashboard for managing shifts and employees',
-  viewport: 'width=device-width, initial-scale=1',
-  robots: 'noindex, nofollow', // Prevent indexing of admin dashboard
-};
+  title: {
+    template: '%s | Shifted Admin',
+    default: 'Shifted Admin',
+  },
+  description: 'Employee scheduling and management system',
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+  },
+}
 
 export default function RootLayout({
   children,
 }: {
-  children: React.ReactNode;
+  children: React.ReactNode
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={inter.className}>
-        <SupabaseProvider>
-          <Providers>
-            {children}
-          </Providers>
-        </SupabaseProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+          <Toaster />
+        </ThemeProvider>
       </body>
     </html>
-  );
+  )
 }

@@ -1,13 +1,13 @@
 /**
  * Toast Utilities
- * Last Updated: 2024-01-16
+ * Last Updated: 2025-01-16
  * 
  * Utility functions and constants for toast notifications.
  */
 
 import { toast as sonnerToast } from 'sonner'
 
-interface ToastOptions {
+export interface ToastOptions {
   title?: string
   description?: string
   variant?: 'default' | 'destructive' | 'success'

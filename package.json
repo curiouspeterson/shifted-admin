@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "db:types": "ts-node scripts/generate-types.ts",
+    "db:types:watch": "nodemon --watch 'supabase/migrations' --ext 'sql' --exec 'npm run db:types'",
     "test": "jest",
     "test:watch": "jest --watch"
   },

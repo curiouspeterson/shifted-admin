@@ -1,20 +1,23 @@
 /**
- * Supabase Server Client Utility
- * Last Updated: 2024-03-20
+ * Server-side Supabase Client
+ * Last Updated: 2025-01-16
  * 
- * This module provides a server-side Supabase client for use in Server Components
- * and API routes. It uses environment variables for configuration and includes
- * proper typing for the database schema.
+ * Creates a Supabase client configured for server-side usage
+ * with proper cookie handling for Next.js server components and actions.
  */
 
 import { createServerClient } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import type { Database } from './database.types'
+import type { Database } from '@/lib/database/database.types'
 import type { CookieOptions } from '@supabase/ssr'
 
-/**
- * Create a Supabase client for server-side operations
- */
+const cookieOptions: CookieOptions = {
+  path: '/',
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production',
+  sameSite: 'lax'
+}
+
 export function createClient(cookieStore = cookies()) {
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -24,39 +27,20 @@ export function createClient(cookieStore = cookies()) {
         get(name: string) {
           return cookieStore.get(name)?.value
         },
-        set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options })
+        set(name: string, value: string, options: CookieOptions = cookieOptions) {
+          try {
+            cookieStore.set({ name, value, ...options })
+          } catch (error) {
+            // Handle cookies.set error in read-only contexts
+          }
         },
-        remove(name: string, options: CookieOptions) {
-          cookieStore.delete({ name, ...options })
+        remove(name: string, options: CookieOptions = cookieOptions) {
+          try {
+            cookieStore.set({ name, value: '', ...options })
+          } catch (error) {
+            // Handle cookies.delete error in read-only contexts
+          }
         },
-      },
-    }
-  )
-}
-
-/**
- * Create a Supabase admin client for server-side operations
- * This client has elevated privileges and should only be used in trusted contexts
- */
-export function createAdminClient(cookieStore = cookies()) {
-  return createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: CookieOptions) {
-          cookieStore.set({ name, value, ...options })
-        },
-        remove(name: string, options: CookieOptions) {
-          cookieStore.delete({ name, ...options })
-        },
-      },
-      auth: {
-        persistSession: false,
       },
     }
   )

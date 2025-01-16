@@ -6,9 +6,18 @@ export interface Employee {
   email: string
   phone: string | null
   position: string
+  department: string
   status: EmployeeStatus
   created_at: string
   updated_at: string
 }
 
-export type CreateEmployeeInput = Omit<Employee, 'id' | 'created_at' | 'updated_at'> 
+export type CreateEmployeeInput = {
+  first_name: string
+  last_name: string
+  email: string
+  phone?: string | null
+  position: string
+  department: string
+  is_active?: boolean
+} 

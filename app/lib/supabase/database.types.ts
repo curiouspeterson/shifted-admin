@@ -1,6 +1,6 @@
 /**
  * Supabase Database Types
- * Last Updated: 2024-03
+ * Last Updated: 2024-03-21
  * 
  * This file defines TypeScript types for the Supabase database schema.
  * It includes table definitions, relationships, and common types used
@@ -84,19 +84,22 @@ export interface Database {
     Tables: {
       schedules: {
         Row: BaseRow & {
-          name: string
+          title: string
+          description: string | null
           start_date: string
           end_date: string
           status: ScheduleStatus
         }
         Insert: Partial<BaseRow> & {
-          name: string
+          title: string
+          description?: string | null
           start_date: string
           end_date: string
           status?: ScheduleStatus
         }
         Update: Partial<BaseRow & {
-          name: string
+          title: string
+          description: string | null
           start_date: string
           end_date: string
           status: ScheduleStatus

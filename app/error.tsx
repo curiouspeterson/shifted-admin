@@ -1,66 +1,53 @@
 /**
- * Error Handler Component
- * Last Updated: 2024-01-16
+ * Global Error Handler
+ * Last Updated: 2025-01-16
  * 
- * This component provides error handling for the application
- * following Next.js App Router best practices.
+ * Global error handler component for Next.js app router.
  */
 
 'use client'
 
 import { useEffect } from 'react'
-import { errorLogger, formatNextError } from '@/lib/logging/error-logger'
+import { AppError } from '@/lib/errors/base'
 
-interface ErrorProps {
-  error: Error & { digest?: string }
+interface Props {
+  error: Error
   reset: () => void
 }
 
-export default function Error({ error, reset }: ErrorProps) {
+/**
+ * Global error handler component
+ */
+export default function GlobalError({ error, reset }: Props) {
   useEffect(() => {
-    // Log error with proper formatting
-    errorLogger.error('Application error', {
-      error: formatNextError(error),
-      requestId: crypto.randomUUID()
-    })
+    // Log error to error reporting service
+    console.error('Global error:', error)
   }, [error])
 
   return (
-    <div className="min-h-[50vh] bg-white px-4 py-16 sm:px-6 sm:py-24 md:grid md:place-items-center lg:px-8">
-      <div className="mx-auto max-w-max">
-        <main className="sm:flex">
-          <p className="text-4xl font-bold tracking-tight text-amber-600 sm:text-5xl">Oops!</p>
-          <div className="sm:ml-6">
-            <div className="sm:border-l sm:border-gray-200 sm:pl-6">
-              <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
-                Something went wrong
-              </h1>
-              <p className="mt-1 text-base text-gray-500">
-                {error.message || 'An unexpected error occurred'}
+    <html>
+      <body>
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+          <div className="max-w-md w-full p-6 bg-white rounded-lg shadow-md">
+            <div className="text-center">
+              <h2 className="text-2xl font-bold text-gray-900 mb-4">
+                Something went wrong!
+              </h2>
+              <p className="text-gray-600 mb-6">
+                {error instanceof AppError
+                  ? error.message
+                  : 'An unexpected error occurred. Please try again later.'}
               </p>
-              {error.digest && (
-                <p className="mt-1 text-sm text-gray-500">
-                  Error ID: {error.digest}
-                </p>
-              )}
-            </div>
-            <div className="mt-10 flex space-x-3 sm:border-l sm:border-transparent sm:pl-6">
               <button
                 onClick={reset}
-                className="inline-flex items-center rounded-md border border-transparent bg-amber-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
+                className="w-full px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
               >
                 Try again
               </button>
-              <a
-                href="/"
-                className="inline-flex items-center rounded-md border border-transparent bg-amber-100 px-4 py-2 text-sm font-medium text-amber-700 hover:bg-amber-200 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:ring-offset-2"
-              >
-                Go back home
-              </a>
             </div>
           </div>
-        </main>
-      </div>
-    </div>
+        </div>
+      </body>
+    </html>
   )
 } 

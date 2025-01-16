@@ -1,13 +1,22 @@
+-- Create employees table and related policies
+-- Last Updated: 2024-01-16
+-- Description: Initial setup for employee management
+
 -- Create employees table
 CREATE TABLE IF NOT EXISTS public.employees (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    name TEXT NOT NULL,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
     phone TEXT,
     position TEXT NOT NULL,
-    status TEXT NOT NULL CHECK (status IN ('active', 'inactive')) DEFAULT 'active',
+    department TEXT NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    created_by UUID REFERENCES auth.users(id),
+    updated_by UUID REFERENCES auth.users(id),
+    version INTEGER NOT NULL DEFAULT 1
 );
 
 -- Add RLS policies
