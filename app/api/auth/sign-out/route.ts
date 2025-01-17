@@ -1,70 +1,52 @@
 /**
- * Sign Out API Route Handler
- * Last Updated: 2024-03
+ * Sign Out API Route
+ * Last Updated: 2024-03-21
  * 
- * This file implements the endpoint for user sign-out.
- * Handles session termination and cleanup using Supabase Auth.
- * 
- * Features:
- * - Session termination
- * - Rate limiting to prevent abuse
- * - Standardized error handling
- * 
- * Error Handling:
- * - 401: Not authenticated
- * - 429: Rate limit exceeded
- * - 500: Server error
+ * Handles user sign out with rate limiting.
  */
 
-import { createRouteHandler } from '../../../lib/api/handler';
-import type { ApiResponse } from '../../../lib/api/types';
-import {
-  HTTP_STATUS_OK,
-  HTTP_STATUS_UNAUTHORIZED,
-} from '../../../lib/constants/http';
-import { defaultRateLimits } from '../../../lib/api/rateLimit';
-import {
-  AuthenticationError,
-  DatabaseError,
-} from '../../../lib/errors';
+import { NextRequest } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
+import { createRateLimiter, defaultRateLimits } from '@/lib/api/rate-limit';
+import { HTTP_STATUS_BAD_REQUEST } from '@/lib/constants/http';
 
-// Custom rate limits for authentication
-const authRateLimits = {
-  signOut: {
-    ...defaultRateLimits.api,
-    limit: 30, // 30 requests per minute
-    identifier: 'auth:sign-out',
-  },
-};
+// Create rate limiter for auth endpoints
+const authRateLimiter = createRateLimiter(defaultRateLimits.auth);
 
-/**
- * POST /api/auth/sign-out
- * Signs out the current user and invalidates their session
- */
-export const POST = createRouteHandler({
-  methods: ['POST'],
-  requireAuth: true,
-  rateLimit: authRateLimits.signOut,
-  cors: true,
-  handler: async ({ supabase, session }): Promise<ApiResponse> => {
-    if (!session) {
-      throw new AuthenticationError('No active session');
-    }
+export async function POST(request: NextRequest): Promise<Response> {
+  try {
+    // Check rate limit
+    const ip = request.ip || request.headers.get('x-forwarded-for') || 'unknown';
+    await authRateLimiter.check(ip);
 
-    // Sign out the user
+    // Create Supabase client
+    const cookieStore = cookies();
+    const supabase = createClient(cookieStore);
+
+    // Sign out user
     const { error: signOutError } = await supabase.auth.signOut();
 
     if (signOutError) {
-      throw new DatabaseError('Failed to sign out', signOutError);
+      return Response.json({
+        error: {
+          message: signOutError.message,
+          code: 'auth/signout-failed'
+        }
+      }, { status: HTTP_STATUS_BAD_REQUEST });
     }
 
-    return {
-      data: null,
-      error: null,
-      status: HTTP_STATUS_OK,
-      metadata: {
-        timestamp: new Date().toISOString(),
-      },
-    };
-  },
-}); 
+    return Response.json({
+      data: { success: true },
+      error: null
+    });
+  } catch (error) {
+    console.error('Sign out error:', error);
+    return Response.json({
+      error: {
+        message: error instanceof Error ? error.message : 'Sign out failed',
+        code: 'auth/unknown-error'
+      }
+    }, { status: HTTP_STATUS_BAD_REQUEST });
+  }
+} 

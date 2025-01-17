@@ -1,8 +1,9 @@
 /**
  * Assignment Actions
- * Last Updated: 2024-01-16
+ * Last Updated: 2024-03-21
  * 
- * Server actions for managing schedule assignments
+ * Server actions for managing schedule assignments.
+ * Uses database types directly to ensure type safety.
  */
 
 'use server';

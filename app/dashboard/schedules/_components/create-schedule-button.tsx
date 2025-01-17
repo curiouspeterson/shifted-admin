@@ -1,6 +1,6 @@
 /**
  * Create Schedule Button Component
- * Last Updated: 2024-01-16
+ * Last Updated: 2024-03-21
  * 
  * A button that opens a dialog for creating a new schedule.
  */
@@ -14,8 +14,8 @@ import { scheduleInputSchema } from '@/lib/schemas/schedule';
 import { createSchedule } from '@/lib/actions/schedule';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { FormField, FormLabel, FormMessage } from '@/components/forms/base/FormField';
-import { DatePickerField } from '@/components/forms/base/DatePicker';
+import { FormField, FormLabel, FormMessage } from '@/components/forms/base/form-field';
+import { DatePicker } from '@/components/forms/base/date-picker';
 import { Input } from '@/components/ui/input';
 import { toast } from '@/lib/utils/toast';
 import type { ScheduleInput } from '@/lib/schemas/schedule';
@@ -77,18 +77,28 @@ export function CreateScheduleButton() {
 
             {/* Date Fields */}
             <div className="grid grid-cols-2 gap-4">
-              <DatePickerField
-                name="startDate"
-                label="Start Date"
-                validation={{ required: true }}
-              />
+              <FormField name="startDate">
+                <FormLabel>Start Date</FormLabel>
+                <DatePicker
+                  selected={form.getValues('startDate') ? new Date(form.getValues('startDate')) : null}
+                  onSelect={(date) => form.setValue('startDate', date?.toISOString() || '')}
+                />
+                {form.formState.errors.startDate && (
+                  <FormMessage>{form.formState.errors.startDate.message}</FormMessage>
+                )}
+              </FormField>
 
-              <DatePickerField
-                name="endDate"
-                label="End Date"
-                validation={{ required: true }}
-                minDate={form.getValues('startDate') ? new Date(form.getValues('startDate')) : undefined}
-              />
+              <FormField name="endDate">
+                <FormLabel>End Date</FormLabel>
+                <DatePicker
+                  selected={form.getValues('endDate') ? new Date(form.getValues('endDate')) : null}
+                  onSelect={(date) => form.setValue('endDate', date?.toISOString() || '')}
+                  disabled={!form.getValues('startDate')}
+                />
+                {form.formState.errors.endDate && (
+                  <FormMessage>{form.formState.errors.endDate.message}</FormMessage>
+                )}
+              </FormField>
             </div>
 
             {/* Description Field */}

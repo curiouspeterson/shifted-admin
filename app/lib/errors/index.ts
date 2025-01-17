@@ -1,6 +1,6 @@
 /**
  * Error Handling Exports
- * Last Updated: 2024-03-19 22:45 PST
+ * Last Updated: 2024-03-21
  * 
  * This file exports all error-related functionality from the errors module.
  */
@@ -15,4 +15,4 @@ export * from './base';
 export * from './utils';
 
 // Export error boundary component
-export { ErrorBoundary } from '../../../components/error-boundary'; 
+export { ErrorBoundary } from '@/components/error/error-boundary'; 

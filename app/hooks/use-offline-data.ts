@@ -1,6 +1,6 @@
 /**
  * useOfflineData Hook
- * Last Updated: 2024-01-17
+ * Last Updated: 2024-03-21
  * 
  * Unified hook for offline data management with automatic syncing,
  * optimistic updates, and user feedback.
@@ -12,7 +12,7 @@ import { useEffect, useReducer, useCallback } from 'react'
 import { toast, toastMessages } from '@/lib/utils/toast'
 import { indexedDB } from '@/lib/storage/indexed-db'
 import { errorLogger } from '@/lib/logging/error-logger'
-import { formatError } from '@/lib/utils/error'
+import { formatError } from '@/lib/utils/errors/error'
 import { DatabaseError } from '@/lib/errors/base'
 
 // Status represents the current state of the data
@@ -153,7 +153,8 @@ export function useOfflineData<T>({
       })
       
       dispatch({ type: 'LOAD_ERROR', payload: dbError })
-      toast(toastMessages.offline)
+      const { title, description, type } = toastMessages.offline
+      toast[type](title, { description })
     }
   }, [store, id])
 
@@ -169,7 +170,8 @@ export function useOfflineData<T>({
         synced: false
       })
       
-      toast(toastMessages.saveSuccess)
+      const { title, description, type } = toastMessages.saveSuccess
+      toast[type](title, { description })
       
       // Trigger sync if fetcher provided
       if (fetcher) {
@@ -186,7 +188,8 @@ export function useOfflineData<T>({
         id
       })
       
-      toast(toastMessages.saveError)
+      const { title, description, type } = toastMessages.saveError
+      toast[type](title, { description })
       
       // Reload data to ensure consistency
       void loadData()
@@ -223,7 +226,8 @@ export function useOfflineData<T>({
       dispatch({ type: 'SYNC_SUCCESS', payload: freshData, timestamp })
       onSyncComplete?.()
       
-      toast(toastMessages.syncSuccess)
+      const { title, description, type } = toastMessages.syncSuccess
+      toast[type](title, { description })
     } catch (error) {
       const dbError = error instanceof DatabaseError
         ? error
@@ -238,7 +242,8 @@ export function useOfflineData<T>({
       dispatch({ type: 'SYNC_ERROR', payload: dbError })
       onSyncError?.(dbError)
       
-      toast(toastMessages.syncError)
+      const { title, description, type } = toastMessages.syncError
+      toast[type](title, { description })
     }
   }, [store, id, fetcher, onSyncComplete, onSyncError])
 

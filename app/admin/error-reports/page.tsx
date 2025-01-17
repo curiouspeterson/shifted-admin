@@ -1,6 +1,6 @@
 /**
  * Error Reporting Dashboard
- * Last Updated: 2025-01-15
+ * Last Updated: 2024-03-21
  * 
  * This page provides an interface for viewing and analyzing error reports.
  * It integrates with our error logging system and Sentry for comprehensive error tracking.
@@ -9,10 +9,10 @@
 import React from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ErrorMetrics } from './components/errorMetrics';
-import { ErrorList } from './components/errorList';
-import { ErrorChart } from './components/errorChart';
-import { ErrorFilters } from './components/errorFilters';
+import { ErrorMetrics } from './components/error-metrics';
+import { ErrorList } from './components/error-list';
+import { ErrorChart } from './components/error-chart';
+import { ErrorFilters } from './components/error-filters';
 
 export const metadata = {
   title: 'Error Reports | Admin Dashboard',

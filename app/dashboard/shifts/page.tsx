@@ -1,6 +1,6 @@
 /**
  * Shifts Page
- * Last Updated: 2024-03-20
+ * Last Updated: 2024-03-21
  * 
  * This page demonstrates offline functionality with:
  * - Offline data persistence
@@ -19,9 +19,9 @@ import { useSyncQueue } from '@/hooks/use-sync-queue'
 import { errorLogger } from '@/lib/logging/error-logger'
 import { ShiftList } from '@/components/shifts/shift-list'
 import { ShiftForm } from '@/components/shifts/shift-form'
-import { OfflineIndicator } from '@/components/ui/OfflineIndicator'
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { ErrorBoundary } from '@/components/error/ErrorBoundary'
+import { SyncStatusIndicator } from '@/components/sync/sync-status-indicator'
+import { Spinner } from '@/components/ui/spinner'
+import { ErrorBoundary } from '@/components/error/error-boundary'
 
 interface Shift {
   id: string
@@ -29,6 +29,12 @@ interface Shift {
   endDate: string
   requirements: string[]
   status: 'pending' | 'approved' | 'rejected'
+}
+
+interface ShiftFormData {
+  startDate: string
+  endDate: string
+  requirements: string[]
 }
 
 /**
@@ -69,10 +75,10 @@ export default function ShiftsPage() {
       <div className="p-4">
         <header className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">Shifts</h1>
-          <OfflineIndicator />
+          <SyncStatusIndicator />
         </header>
 
-        <Suspense fallback={<LoadingSpinner />}>
+        <Suspense fallback={<Spinner />}>
           <ShiftsContent />
         </Suspense>
       </div>
@@ -89,21 +95,20 @@ function ShiftsContent() {
   // Use offline data hook for shifts
   const {
     data: shifts,
-    isOffline,
-    retry,
+    isLoading,
     error: offlineError
-  } = useOfflineData<Shift[]>(
-    'shifts',
-    async () => {
+  } = useOfflineData<Shift[]>({
+    store: 'shifts',
+    id: 'all',
+    fetcher: async () => {
       const res = await fetch('/api/shifts')
       if (!res.ok) throw new Error('Failed to fetch shifts')
       return res.json()
-    },
-    { revalidateOnFocus: true }
-  )
+    }
+  })
 
   // Use sync queue for offline changes
-  const { enqueue } = useSyncQueue<Shift>(
+  const { enqueue, isOnline } = useSyncQueue<Shift>(
     'shifts',
     async (op) => {
       const res = await fetch('/api/shifts', {
@@ -112,37 +117,23 @@ function ShiftsContent() {
         body: JSON.stringify(op.data)
       })
       if (!res.ok) throw new Error('Failed to sync shift')
-    },
-    { maxRetries: 3 }
-  )
-
-  // Use offline fallback for error states
-  const {
-    fallbackUI,
-    retry: retryConnection,
-    isOnline
-  } = useOfflineFallback(
-    <div className="p-4 bg-yellow-50 rounded-lg">
-      <h2 className="text-lg font-semibold text-yellow-800">Offline Mode</h2>
-      <p className="text-yellow-600">Changes will sync when back online</p>
-      <button
-        onClick={() => retryConnection()}
-        className="mt-2 px-4 py-2 bg-yellow-100 text-yellow-800 rounded hover:bg-yellow-200"
-      >
-        Retry Connection
-      </button>
-    </div>
+    }
   )
 
   // Create shift mutation
   const { mutate: createShift, isPending } = useMutation({
-    mutationFn: async (shift: Omit<Shift, 'id'>) => {
+    mutationFn: async (formData: ShiftFormData) => {
+      // Transform form data to API data
+      const shiftData: Omit<Shift, 'id'> = {
+        ...formData,
+        status: 'pending'
+      }
+
       if (!isOnline) {
         // Handle offline creation
         const newShift = {
-          ...shift,
-          id: crypto.randomUUID(),
-          status: 'pending' as const
+          ...shiftData,
+          id: crypto.randomUUID()
         }
         await enqueue('create', newShift)
         return newShift
@@ -151,12 +142,12 @@ function ShiftsContent() {
       const res = await fetch('/api/shifts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(shift)
+        body: JSON.stringify(shiftData)
       })
       if (!res.ok) throw new Error('Failed to create shift')
       return res.json()
     },
-    onMutate: async (newShift) => {
+    onMutate: async (formData) => {
       // Cancel outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['shifts'] })
 
@@ -164,10 +155,10 @@ function ShiftsContent() {
       const previousShifts = queryClient.getQueryData<Shift[]>(['shifts'])
 
       // Optimistically update
-      const optimisticShift = {
-        ...newShift,
+      const optimisticShift: Shift = {
         id: crypto.randomUUID(),
-        status: 'pending' as const
+        ...formData,
+        status: 'pending'
       }
       queryClient.setQueryData<Shift[]>(['shifts'], old => [
         ...(old || []),
@@ -198,18 +189,16 @@ function ShiftsContent() {
 
   return (
     <div className="space-y-6">
-      {fallbackUI}
-
       <ShiftForm
         onSubmit={createShift}
         isSubmitting={isPending}
-        isOffline={isOffline}
+        isOffline={!isOnline}
       />
 
       <ShiftList
         shifts={shifts || []}
-        isOffline={isOffline}
-        onRetry={retry}
+        isOffline={!isOnline}
+        isLoading={isLoading}
       />
     </div>
   )

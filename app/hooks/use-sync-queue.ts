@@ -1,6 +1,6 @@
 /**
  * Sync Queue Hook
- * Last Updated: 2024-03-20
+ * Last Updated: 2024-03-21
  * 
  * This hook manages a queue of offline changes that need to be
  * synchronized with the server when connectivity is restored.
@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { errorLogger } from '@/lib/logging/error-logger'
-import { openDB, saveToStore, loadFromStore, deleteFromStore } from '@/lib/database/indexedDB'
+import { indexedDB } from '@/lib/storage/indexed-db'
 
 interface SyncOperation<T> {
   id: string
@@ -61,6 +61,7 @@ export function useSyncQueue<T>(
 
   const [queue, setQueue] = useState<SyncOperation<T>[]>([])
   const [isSyncing, setIsSyncing] = useState(false)
+  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
 
   // Add operation to queue
   const enqueue = useCallback(async (
@@ -78,14 +79,19 @@ export function useSyncQueue<T>(
     }
 
     // Store in IndexedDB
-    await saveToStore('syncQueue', syncOp.id, syncOp)
+    await indexedDB.set('syncQueue', {
+      id: syncOp.id,
+      data: syncOp,
+      timestamp: Date.now(),
+      synced: false
+    })
     setQueue(prev => [...prev, syncOp])
     
     // Start sync if online
-    if (navigator.onLine) {
+    if (isOnline) {
       processQueue()
     }
-  }, [])
+  }, [isOnline])
 
   // Process queue
   const processQueue = useCallback(async () => {
@@ -98,7 +104,7 @@ export function useSyncQueue<T>(
       await syncFn(currentOp)
       
       // Remove from queue on success
-      await deleteFromStore('syncQueue', currentOp.id)
+      await indexedDB.delete('syncQueue', currentOp.id)
       setQueue(prev => prev.slice(1))
     } catch (err) {
       errorLogger.error('Sync operation failed', {
@@ -113,7 +119,12 @@ export function useSyncQueue<T>(
           retryCount: currentOp.retryCount + 1,
           status: 'failed' as const
         }
-        await saveToStore('syncQueue', currentOp.id, updatedOp)
+        await indexedDB.set('syncQueue', {
+          id: updatedOp.id,
+          data: updatedOp,
+          timestamp: Date.now(),
+          synced: false
+        })
         setQueue(prev => [updatedOp, ...prev.slice(1)])
         
         setTimeout(processQueue, retryDelay)
@@ -123,7 +134,12 @@ export function useSyncQueue<T>(
           ...currentOp,
           status: 'failed' as const
         }
-        await saveToStore('syncQueue', currentOp.id, failedOp)
+        await indexedDB.set('syncQueue', {
+          id: failedOp.id,
+          data: failedOp,
+          timestamp: Date.now(),
+          synced: false
+        })
         setQueue(prev => [...prev.slice(1), failedOp])
       }
     } finally {
@@ -134,12 +150,19 @@ export function useSyncQueue<T>(
   // Handle online/offline events
   useEffect(() => {
     const handleOnline = () => {
+      setIsOnline(true)
       processQueue()
     }
 
+    const handleOffline = () => {
+      setIsOnline(false)
+    }
+
     window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
     return () => {
       window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
     }
   }, [processQueue])
 
@@ -147,9 +170,9 @@ export function useSyncQueue<T>(
   useEffect(() => {
     async function loadQueue() {
       try {
-        const operations = await loadFromStore('syncQueue', key)
-        if (operations) {
-          setQueue(operations as SyncOperation<T>[])
+        const item = await indexedDB.get<SyncOperation<T>[]>('syncQueue', key)
+        if (item) {
+          setQueue(item.data)
         }
       } catch (err) {
         errorLogger.error('Failed to load sync queue', {
@@ -165,6 +188,7 @@ export function useSyncQueue<T>(
     enqueue,
     queue,
     isSyncing,
+    isOnline,
     processQueue
   }
 } 
