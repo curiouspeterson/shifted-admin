@@ -1,142 +1,133 @@
 /**
  * API Types
- * Last Updated: 2025-01-16
+ * Last Updated: 2025-01-17
  * 
- * This module defines common types used across API endpoints.
- * Provides type-safe interfaces for API responses and route contexts.
+ * Type definitions for API handlers and responses.
  */
 
-import { SupabaseClient, User, Session } from '@supabase/supabase-js';
-import type { Database } from '../database/database.types';
+import { NextRequest } from 'next/server';
 import { z } from 'zod';
+import { CacheControl } from './cache';
 
 /**
- * Cache information for API responses
+ * Base query parameters
+ */
+export interface BaseQueryParams {
+  page?: number;
+  limit?: number;
+  offset?: number;
+  sort?: string;
+  order?: 'asc' | 'desc';
+}
+
+/**
+ * Cache information
  */
 export interface CacheInfo {
-  /** Whether the response was served from cache */
   hit: boolean;
-  /** Time-to-live in seconds */
   ttl: number;
 }
 
 /**
- * Rate limit information for API responses
+ * Rate limit information
  */
 export interface RateLimit {
-  /** Maximum number of requests allowed */
   limit: number;
-  /** Number of requests remaining */
   remaining: number;
-  /** Timestamp when the rate limit resets */
   reset: number;
 }
 
 /**
- * Metadata for API responses
- * Contains additional information about the response
+ * API response metadata
  */
 export interface ResponseMetadata {
-  /** ISO timestamp of when the response was generated */
-  timestamp: string;
-  /** Unique identifier for the request */
   requestId: string;
-  /** Time taken to process the request in milliseconds */
   processingTime: number;
-  /** API version */
   version: string;
-  /** Cache status - null when caching is disabled */
+  timestamp: string;
   cache: CacheInfo | null;
-  /** Rate limit status - null when rate limiting is disabled */
-  rateLimit: RateLimit | null;
+  rateLimit: RateLimit;
 }
 
 /**
- * Supported filter operators
+ * API response structure
  */
-export type FilterOperator = 
-  | 'eq'   // equals
-  | 'neq'  // not equals
-  | 'gt'   // greater than
-  | 'gte'  // greater than or equal
-  | 'lt'   // less than
-  | 'lte'  // less than or equal
-  | 'like' // pattern matching
-  | 'in'   // value in array
-  | 'nin'; // value not in array
-
-/**
- * Valid filter values
- */
-export type FilterValue = 
-  | string 
-  | number 
-  | boolean 
-  | null 
-  | Array<string | number | boolean | null>;
-
-/**
- * Filter condition for query parameters
- */
-export interface FilterCondition {
-  /** The operator to apply */
-  operator: FilterOperator;
-  /** The value to compare against */
-  value: FilterValue;
-}
-
-/**
- * Base query parameters for API routes
- */
-export interface BaseQueryParams {
-  /** Number of items to return */
-  limit?: number;
-  /** Number of items to skip */
-  offset?: number;
-  /** Column to sort by */
-  sort?: string;
-  /** Sort direction */
-  order?: 'asc' | 'desc';
-  /** Filter conditions */
-  filter?: Record<string, FilterCondition>;
-}
-
-/**
- * Type-safe API response format
- * @template T - The type of data returned in the response
- */
-export interface ApiResponse<T = never> {
-  /** The response data, null if there was an error */
-  data: T | null;
-  /** Error message if there was an error, null otherwise */
-  error: string | null;
-  /** Metadata about the response */
+export interface ApiResponse<T = unknown> {
+  data: T;
+  error: null;
   metadata: ResponseMetadata;
 }
 
 /**
- * Context passed to route handlers
- * @template TBody - The type of the request body, must be a Zod object schema
- * @template TQuery - The type of query parameters, extends BaseQueryParams
+ * Route context with typed request body and query parameters
  */
 export interface RouteContext<
-  TBody extends z.ZodObject<any> = z.ZodObject<any>,
+  TBody extends z.ZodSchema = z.ZodObject<any>,
   TQuery extends BaseQueryParams = BaseQueryParams
 > {
-  /** Supabase client instance */
-  supabase: SupabaseClient<Database>;
-  /** Current user session */
-  session: Session | null;
-  /** Current user */
-  user: User | null;
-  /** Parsed and validated request body */
-  body: z.infer<TBody>;
-  /** Parsed query parameters */
+  req: NextRequest;
+  params?: Record<string, string>;
+  body?: z.infer<TBody>;
   query: TQuery;
-  /** Unique request identifier */
-  requestId: string;
-  /** Rate limit information */
-  rateLimit: RateLimit;
-  /** Cache information */
-  cache: CacheInfo;
+}
+
+/**
+ * Database query options
+ */
+export interface QueryOptions {
+  limit?: number;
+  offset?: number;
+  orderBy?: {
+    column: string;
+    ascending: boolean;
+  };
+  filter?: Partial<Record<string | number | symbol, string | number | boolean | undefined>>;
+}
+
+/**
+ * Database operation result
+ */
+export interface DatabaseResult<T> {
+  data: T | null;
+  error: Error | null;
+}
+
+/**
+ * Pagination metadata
+ */
+export interface PaginationMeta {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
+/**
+ * Cache configuration options
+ */
+export interface CacheConfig {
+  control: CacheControl;
+  revalidate?: number;
+  tags?: string[];
+  prefix?: string;
+  includeQuery?: boolean;
+  excludeParams?: readonly string[];
+}
+
+/**
+ * API handler options
+ */
+export interface ApiHandlerOptions<T = unknown> {
+  cache?: CacheConfig;
+  rateLimit?: {
+    windowMs: number;
+    maxRequests: number;
+    identifier?: string;
+  };
+  validate?: {
+    body?: z.ZodSchema<T>;
+    query?: z.ZodSchema;
+    params?: z.ZodSchema;
+  };
 } 

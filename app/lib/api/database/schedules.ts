@@ -39,9 +39,22 @@ export class SchedulesOperations extends BaseRepository<Schedule, ScheduleInsert
   constructor(supabase: SupabaseClient<Database>) {
     super(supabase, 'schedules');
   }
-
   protected getDefaultColumns(): Array<keyof Schedule> {
-    return [...DEFAULT_COLUMNS];
+    return [
+      'id',
+      'start_date', 
+      'end_date',
+      'status',
+      'created_at',
+      'updated_at',
+      'created_by',
+      'updated_by',
+      'published_at',
+      'published_by',
+      'title',
+      'description',
+      'metadata'
+    ];
   }
 
   async findById(id: string): Promise<DatabaseResult<Schedule>> {

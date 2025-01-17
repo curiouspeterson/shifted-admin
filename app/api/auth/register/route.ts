@@ -1,112 +1,72 @@
 /**
- * Register API Route
- * Last Updated: 2025-01-16
+ * User Registration Route Handler
+ * Last Updated: 2025-01-17
  * 
- * Handles user registration with rate limiting and validation.
+ * Handles new user registration requests.
  */
 
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { createRouteHandler, createRateLimiter } from '@/lib/api';
+import { z } from 'zod';
+import { AuthenticationError } from '@/lib/errors';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
-import { createRateLimiter, defaultRateLimits } from '@/lib/api/rate-limit';
-import { 
-  HTTP_STATUS_BAD_REQUEST,
-  HTTP_STATUS_CONFLICT,
-  HTTP_STATUS_TOO_MANY_REQUESTS,
-} from '@/lib/constants/http';
-import { errorLogger } from '@/lib/logging/error-logger';
 
-// Create rate limiter for auth endpoints
-const checkAuthRateLimit = createRateLimiter(defaultRateLimits.auth);
+// Rate limiter for registration attempts
+const rateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  maxRequests: 5, // 5 attempts per window
+  identifier: 'auth:register'
+});
 
-export async function POST(request: NextRequest): Promise<Response> {
-  try {
-    // Check rate limit
-    const ip = request.ip || request.headers.get('x-forwarded-for') || 'unknown';
-    const isAllowed = await checkAuthRateLimit(ip);
-    
-    if (!isAllowed) {
-      return Response.json({
-        error: {
-          message: 'Too many requests',
-          code: 'auth/rate-limit-exceeded'
-        }
-      }, { status: HTTP_STATUS_TOO_MANY_REQUESTS });
-    }
+// Validation schema for registration
+const registerSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+  firstName: z.string().min(2, 'First name must be at least 2 characters'),
+  lastName: z.string().min(2, 'Last name must be at least 2 characters')
+});
 
-    // Parse request body
-    const body = await request.json();
-
-    // Create Supabase client
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
-
-    // Check if user already exists
-    const { data: existingUser } = await supabase
-      .from('users')
-      .select('id')
-      .eq('email', body.email)
-      .single();
-
-    if (existingUser) {
-      return Response.json({
-        error: {
-          message: 'User already exists',
-          code: 'auth/user-exists'
-        }
-      }, { status: HTTP_STATUS_CONFLICT });
-    }
-
-    // Create user
-    const { data: newUser, error: signUpError } = await supabase.auth.signUp({
-      email: body.email,
-      password: body.password,
-      options: {
-        data: {
-          first_name: body.first_name,
-          last_name: body.last_name,
-          position: body.position,
-          role: body.role
-        }
-      }
-    });
-
-    if (signUpError) {
-      errorLogger.error('Failed to create user account', {
-        error: signUpError,
-        context: {
-          email: body.email,
-          position: body.position,
-          role: body.role
-        }
-      });
-
-      return Response.json({
-        error: {
-          message: signUpError.message,
-          code: 'auth/signup-failed'
-        }
-      }, { status: HTTP_STATUS_BAD_REQUEST });
-    }
-
-    return Response.json({
-      data: newUser,
-      error: null
-    });
-  } catch (error) {
-    errorLogger.error('Unexpected error during registration', {
-      error,
-      context: {
-        url: request.url,
-        method: request.method
-      }
-    });
-
-    return Response.json({
-      error: {
-        message: error instanceof Error ? error.message : 'Registration failed',
-        code: 'auth/unknown-error'
-      }
-    }, { status: HTTP_STATUS_BAD_REQUEST });
+export const POST = createRouteHandler(async (req: NextRequest) => {
+  // Check rate limit
+  const clientIp = req.ip || 'unknown';
+  const rateLimit = await rateLimiter.check(clientIp);
+  if (!rateLimit.success) {
+    throw new AuthenticationError('Too many registration attempts. Please try again later.');
   }
-} 
+
+  const data = await req.json();
+  
+  // Validate request body
+  const result = await registerSchema.safeParseAsync(data);
+  if (!result.success) {
+    throw new AuthenticationError('Invalid registration data');
+  }
+
+  // Create user
+  const { email, password, firstName, lastName } = result.data;
+  const cookieStore = cookies();
+  const supabase = createClient(cookieStore);
+
+  const { data: authData, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      data: {
+        first_name: firstName,
+        last_name: lastName
+      }
+    }
+  });
+
+  if (error) {
+    throw new AuthenticationError(error.message);
+  }
+
+  return NextResponse.json({ 
+    data: {
+      user: authData.user,
+      session: authData.session
+    }
+  });
+}); 

@@ -1,42 +1,54 @@
 /**
- * Cache Configuration
- * Last Updated: 2024-03-21
+ * API Cache Configuration
+ * Last Updated: 2025-01-17
  * 
- * Cache configuration and utilities for API endpoints.
- * Implements caching strategies with TypeScript support.
+ * Cache configuration and utilities for API routes.
  */
 
-export interface CacheConfig {
-  enabled: boolean;
-  ttl: number;  // Time to live in seconds
-  staleWhileRevalidate?: number;  // Time in seconds to serve stale content while revalidating
-  tags?: readonly string[];  // Cache tags for invalidation
+/**
+ * Cache control options for API responses
+ */
+export enum CacheControl {
+  NoCache = 'no-cache, no-store, must-revalidate',
+  Public = 'public, max-age=31536000, immutable',
+  Private = 'private, no-cache, no-store, must-revalidate',
+  ShortTerm = 'public, max-age=60, must-revalidate',
+  LongTerm = 'public, max-age=31536000, immutable'
 }
 
+/**
+ * Cache configuration options
+ */
+export interface CacheConfig {
+  control: CacheControl;
+  revalidate?: number;
+  tags?: string[];
+  prefix?: string;
+  includeQuery?: boolean;
+  excludeParams?: readonly string[];
+}
+
+/**
+ * Default cache configurations for different API endpoints
+ */
 export const cacheConfigs = {
   api: {
-    enabled: true,
-    ttl: 60,  // 1 minute
-    staleWhileRevalidate: 30,  // 30 seconds
-    tags: ['api'] as const
+    control: CacheControl.ShortTerm,
+    revalidate: 60,
+    prefix: 'api',
+    includeQuery: false,
+    excludeParams: ['page', 'limit', 'offset'] as const
   },
-  schedules: {
-    enabled: true,
-    ttl: 300,  // 5 minutes
-    staleWhileRevalidate: 60,  // 1 minute
-    tags: ['schedules'] as const
+  static: {
+    control: CacheControl.Public,
+    revalidate: 31536000,
+    prefix: 'static',
+    includeQuery: false
   },
-  employees: {
-    enabled: true,
-    ttl: 600,  // 10 minutes
-    staleWhileRevalidate: 120,  // 2 minutes
-    tags: ['employees'] as const
-  },
-  shifts: {
-    enabled: true,
-    ttl: 300,  // 5 minutes
-    staleWhileRevalidate: 60,  // 1 minute
-    tags: ['shifts'] as const
+  dynamic: {
+    control: CacheControl.Private,
+    prefix: 'dynamic',
+    includeQuery: true
   }
 } as const;
 

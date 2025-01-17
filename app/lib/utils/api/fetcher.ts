@@ -75,7 +75,7 @@ async function handleErrorResponse(response: Response): Promise<never> {
       throw new ApiError(
         errorData.message || 'Bad request',
         400,
-        { code: ApiErrorCode.BAD_REQUEST, details: errorData.details }
+        { code: ApiErrorCode.BAD_REQUEST, details: errorData.details as Record<string, Json> | undefined }
       )
     case 401:
       throw new ApiError(
@@ -99,7 +99,7 @@ async function handleErrorResponse(response: Response): Promise<never> {
       throw new ApiError(
         errorData.message || 'API request failed',
         response.status,
-        { code: ApiErrorCode.INTERNAL_ERROR, details: errorData.details }
+        { code: ApiErrorCode.INTERNAL_ERROR, details: errorData.details as Record<string, Json> | undefined }
       )
   }
 }

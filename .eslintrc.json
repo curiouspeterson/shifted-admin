@@ -7,22 +7,20 @@
     "@typescript-eslint"
   ],
   "rules": {
-    "@typescript-eslint/no-unused-vars": ["error", {
-      "argsIgnorePattern": "^_",
-      "varsIgnorePattern": "^_",
-      "ignoreRestSiblings": true
-    }],
-    "@typescript-eslint/no-explicit-any": ["warn", {
-      "ignoreRestArgs": true,
-      "fixToUnknown": false
-    }],
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ],
+    "@typescript-eslint/no-explicit-any": "warn",
     "no-console": ["warn", {
       "allow": ["warn", "error"]
     }],
     "react-hooks/exhaustive-deps": "warn",
-    "@typescript-eslint/no-empty-interface": ["error", {
-      "allowSingleExtends": true
-    }]
+    "react/no-unescaped-entities": "off"
   },
   "overrides": [
     {

@@ -8,8 +8,12 @@
 // Export error types and interfaces
 export * from './types';
 
-// Export error classes
-export * from './base';
+// Export base error class and others
+export { BaseError as AppError, DatabaseError, ValidationError, AuthenticationError, AuthorizationError, NetworkError, BusinessError, TimeRangeError, NotFoundError } from './base';
+export { ErrorSeverity, ErrorCategory } from './base';
+
+// Export service worker error
+export { ServiceWorkerError } from './service-worker';
 
 // Export error utilities
 export * from './utils';

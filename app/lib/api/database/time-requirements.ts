@@ -1,75 +1,28 @@
 /**
  * Time Requirements Database Operations
- * Last Updated: 2024-03
+ * Last Updated: 2025-01-17
  * 
- * This module provides type-safe database operations for the time_requirements table.
- * It includes:
- * - CRUD operations for time requirement records
- * - Error handling and type safety
- * - Query builders and filters
+ * Database operations for managing time-based staffing requirements.
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
-import type { Database } from '../../supabase/database.types';
+import type { Database } from '@/lib/supabase/database.types';
+import type { DatabaseResult, QueryOptions } from '@/lib/api/types';
 
-type TimeRequirementRow = Database['public']['Tables']['time_requirements']['Row'];
+type TimeRequirement = Database['public']['Tables']['time_requirements']['Row'];
 type TimeRequirementInsert = Database['public']['Tables']['time_requirements']['Insert'];
 type TimeRequirementUpdate = Database['public']['Tables']['time_requirements']['Update'];
 
-/**
- * Database Operation Result Type
- * Wraps database operation results with error handling
- */
-export interface DatabaseResult<T> {
-  data: T | null;
-  error: Error | null;
-}
-
-/**
- * Database Error Class
- * Custom error class for database operation failures
- */
-export class DatabaseError extends Error {
-  constructor(
-    message: string,
-    public statusCode: number = 500,
-    public originalError?: unknown
-  ) {
-    super(message);
-    this.name = 'DatabaseError';
-  }
-}
-
-/**
- * Query Options Type
- * Configuration for database queries
- */
-interface QueryOptions {
-  orderBy?: {
-    column: keyof TimeRequirementRow;
-    ascending?: boolean;
-  };
-  limit?: number;
-  offset?: number;
-  filter?: Partial<Record<keyof TimeRequirementRow, string | number | boolean>>;
-}
-
-/**
- * Time Requirements Database Operations Class
- * Provides type-safe database operations for the time_requirements table
- */
 export class TimeRequirementsOperations {
-  private readonly table = 'time_requirements';
-
-  constructor(private supabase: SupabaseClient<Database>) {}
+  constructor(private readonly supabase: SupabaseClient<Database>) {}
 
   /**
-   * Find a single time requirement by ID
+   * Find a time requirement by ID
    */
-  async findById(id: string): Promise<DatabaseResult<TimeRequirementRow>> {
+  async findById(id: string): Promise<DatabaseResult<TimeRequirement>> {
     try {
       const { data, error } = await this.supabase
-        .from(this.table)
+        .from('time_requirements')
         .select()
         .eq('id', id)
         .single();
@@ -78,38 +31,32 @@ export class TimeRequirementsOperations {
 
       return { data, error: null };
     } catch (error) {
-      console.error('Error fetching time requirement by ID:', error);
-      return {
-        data: null,
-        error: new DatabaseError(
-          'Failed to fetch time requirement',
-          500,
-          error
-        ),
-      };
+      return { data: null, error: error as Error };
     }
   }
 
   /**
-   * Find multiple time requirements with optional filtering and ordering
+   * Find multiple time requirements based on query options
    */
-  async findMany(options: QueryOptions = {}): Promise<DatabaseResult<TimeRequirementRow[]>> {
+  async findMany(options: QueryOptions): Promise<DatabaseResult<TimeRequirement[]>> {
     try {
-      let query = this.supabase.from(this.table).select();
+      let query = this.supabase
+        .from('time_requirements')
+        .select('*');
 
       // Apply filters
       if (options.filter) {
         Object.entries(options.filter).forEach(([key, value]) => {
-          if (value !== undefined && value !== null) {
-            query = query.eq(key as keyof TimeRequirementRow, value);
+          if (value !== undefined) {
+            query = query.eq(key, value);
           }
         });
       }
 
-      // Apply ordering
+      // Apply sorting
       if (options.orderBy) {
         query = query.order(options.orderBy.column, {
-          ascending: options.orderBy.ascending ?? true,
+          ascending: options.orderBy.ascending
         });
       }
 
@@ -118,7 +65,10 @@ export class TimeRequirementsOperations {
         query = query.limit(options.limit);
       }
       if (options.offset) {
-        query = query.range(options.offset, options.offset + (options.limit || 10) - 1);
+        query = query.range(
+          options.offset,
+          options.offset + (options.limit || 10) - 1
+        );
       }
 
       const { data, error } = await query;
@@ -127,25 +77,17 @@ export class TimeRequirementsOperations {
 
       return { data: data || [], error: null };
     } catch (error) {
-      console.error('Error fetching time requirements:', error);
-      return {
-        data: null,
-        error: new DatabaseError(
-          'Failed to fetch time requirements',
-          500,
-          error
-        ),
-      };
+      return { data: null, error: error as Error };
     }
   }
 
   /**
    * Create a new time requirement
    */
-  async create(data: TimeRequirementInsert): Promise<DatabaseResult<TimeRequirementRow>> {
+  async create(data: TimeRequirementInsert): Promise<DatabaseResult<TimeRequirement>> {
     try {
       const { data: created, error } = await this.supabase
-        .from(this.table)
+        .from('time_requirements')
         .insert(data)
         .select()
         .single();
@@ -154,25 +96,17 @@ export class TimeRequirementsOperations {
 
       return { data: created, error: null };
     } catch (error) {
-      console.error('Error creating time requirement:', error);
-      return {
-        data: null,
-        error: new DatabaseError(
-          'Failed to create time requirement',
-          500,
-          error
-        ),
-      };
+      return { data: null, error: error as Error };
     }
   }
 
   /**
    * Update an existing time requirement
    */
-  async update(id: string, data: TimeRequirementUpdate): Promise<DatabaseResult<TimeRequirementRow>> {
+  async update(id: string, data: TimeRequirementUpdate): Promise<DatabaseResult<TimeRequirement>> {
     try {
       const { data: updated, error } = await this.supabase
-        .from(this.table)
+        .from('time_requirements')
         .update(data)
         .eq('id', id)
         .select()
@@ -182,41 +116,27 @@ export class TimeRequirementsOperations {
 
       return { data: updated, error: null };
     } catch (error) {
-      console.error('Error updating time requirement:', error);
-      return {
-        data: null,
-        error: new DatabaseError(
-          'Failed to update time requirement',
-          500,
-          error
-        ),
-      };
+      return { data: null, error: error as Error };
     }
   }
 
   /**
    * Delete a time requirement
    */
-  async delete(id: string): Promise<DatabaseResult<void>> {
+  async delete(id: string): Promise<DatabaseResult<TimeRequirement>> {
     try {
-      const { error } = await this.supabase
-        .from(this.table)
+      const { data: deleted, error } = await this.supabase
+        .from('time_requirements')
         .delete()
-        .eq('id', id);
+        .eq('id', id)
+        .select()
+        .single();
 
       if (error) throw error;
 
-      return { data: null, error: null };
+      return { data: deleted, error: null };
     } catch (error) {
-      console.error('Error deleting time requirement:', error);
-      return {
-        data: null,
-        error: new DatabaseError(
-          'Failed to delete time requirement',
-          500,
-          error
-        ),
-      };
+      return { data: null, error: error as Error };
     }
   }
 } 

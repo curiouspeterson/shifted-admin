@@ -1,21 +1,28 @@
 /**
  * Employee Form Component
- * Last Updated: 2024-01-15
+ * Last Updated: 2025-01-17
  * 
  * Form for creating new employee records with validation and error handling.
  * Features:
- * - Type-safe form handling
+ * - Type-safe form handling with react-hook-form
  * - Zod schema validation
+ * - Shadcn UI components
  * - Loading state management
- * - Error feedback
+ * - Error feedback with toast notifications
  * - Success/failure callbacks
  */
 
 'use client';
 
 import { z } from 'zod';
-import { useForm } from '@/hooks/form';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { AppError } from '@/lib/errors';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
+import { toast } from 'sonner';
 
 interface EmployeeFormProps {
   onSave: () => void;
@@ -27,23 +34,21 @@ const employeeSchema = z.object({
   first_name: z.string().min(1, 'First name is required'),
   last_name: z.string().min(1, 'Last name is required'),
   email: z.string().email('Invalid email address'),
-  position: z.enum(['employee', 'shift_supervisor', 'management']),
-  hourly_rate: z.string().min(1, 'Hourly rate is required'),
+  position: z.enum(['employee', 'shift_supervisor', 'management'], {
+    required_error: 'Please select a position',
+  }),
+  hourly_rate: z.string().min(1, 'Hourly rate is required')
+    .regex(/^\d+(\.\d{1,2})?$/, 'Invalid hourly rate format'),
   start_date: z.string().min(1, 'Start date is required'),
   phone: z.string().min(1, 'Phone number is required')
+    .regex(/^\+?[\d\s-()]+$/, 'Invalid phone number format')
 });
 
 type EmployeeFormData = z.infer<typeof employeeSchema>;
 
 export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
-  const {
-    values,
-    handleChange,
-    handleSubmit,
-    error,
-    isLoading
-  } = useForm<typeof employeeSchema>({
-    schema: employeeSchema,
+  const form = useForm<EmployeeFormData>({
+    resolver: zodResolver(employeeSchema),
     defaultValues: {
       first_name: '',
       last_name: '',
@@ -53,7 +58,10 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
       start_date: '',
       phone: ''
     },
-    onSubmit: async (data) => {
+  });
+
+  const onSubmit = async (data: EmployeeFormData) => {
+    try {
       const response = await fetch('/api/employees', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -70,159 +78,148 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
         );
       }
 
+      toast.success('Employee created successfully');
       onSave();
+    } catch (error) {
+      if (error instanceof AppError) {
+        toast.error(error.message);
+      } else {
+        toast.error('An unexpected error occurred');
+      }
     }
-  });
+  };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Error Display */}
-      {error && (
-        <div className="rounded-md bg-red-50 p-4">
-          <div className="text-sm text-red-700">{error.message}</div>
-        </div>
-      )}
-
-      {/* Name Fields - Grid Layout */}
-      <div className="grid grid-cols-2 gap-4">
-        {/* First Name Field */}
-        <div>
-          <label htmlFor="first_name" className="block text-sm font-medium text-gray-700">
-            First Name
-          </label>
-          <input
-            type="text"
-            id="first_name"
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <div className="grid grid-cols-2 gap-4">
+          <FormField
+            control={form.control}
             name="first_name"
-            value={values.first_name}
-            onChange={handleChange}
-            required
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>First Name</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
-        </div>
 
-        {/* Last Name Field */}
-        <div>
-          <label htmlFor="last_name" className="block text-sm font-medium text-gray-700">
-            Last Name
-          </label>
-          <input
-            type="text"
-            id="last_name"
+          <FormField
+            control={form.control}
             name="last_name"
-            value={values.last_name}
-            onChange={handleChange}
-            required
-            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Last Name</FormLabel>
+                <FormControl>
+                  <Input {...field} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
           />
         </div>
-      </div>
 
-      {/* Email Field */}
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-          Email
-        </label>
-        <input
-          type="email"
-          id="email"
+        <FormField
+          control={form.control}
           name="email"
-          value={values.email}
-          onChange={handleChange}
-          required
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Email</FormLabel>
+              <FormControl>
+                <Input type="email" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </div>
 
-      {/* Position Selection */}
-      <div>
-        <label htmlFor="position" className="block text-sm font-medium text-gray-700">
-          Position
-        </label>
-        <select
-          id="position"
+        <FormField
+          control={form.control}
           name="position"
-          value={values.position}
-          onChange={handleChange}
-          required
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
-        >
-          <option value="employee">Employee</option>
-          <option value="shift_supervisor">Shift Supervisor</option>
-          <option value="management">Management</option>
-        </select>
-      </div>
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Position</FormLabel>
+              <Select onValueChange={field.onChange} defaultValue={field.value}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a position" />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value="employee">Employee</SelectItem>
+                  <SelectItem value="shift_supervisor">Shift Supervisor</SelectItem>
+                  <SelectItem value="management">Management</SelectItem>
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-      {/* Hourly Rate Field */}
-      <div>
-        <label htmlFor="hourly_rate" className="block text-sm font-medium text-gray-700">
-          Hourly Rate
-        </label>
-        <input
-          type="number"
-          id="hourly_rate"
+        <FormField
+          control={form.control}
           name="hourly_rate"
-          value={values.hourly_rate}
-          onChange={handleChange}
-          required
-          min="0"
-          step="0.01"
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Hourly Rate</FormLabel>
+              <FormControl>
+                <Input type="number" min="0" step="0.01" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </div>
 
-      {/* Start Date Field */}
-      <div>
-        <label htmlFor="start_date" className="block text-sm font-medium text-gray-700">
-          Start Date
-        </label>
-        <input
-          type="date"
-          id="start_date"
+        <FormField
+          control={form.control}
           name="start_date"
-          value={values.start_date}
-          onChange={handleChange}
-          required
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Start Date</FormLabel>
+              <FormControl>
+                <Input type="date" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </div>
 
-      {/* Phone Number Field */}
-      <div>
-        <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
-          Phone Number
-        </label>
-        <input
-          type="tel"
-          id="phone"
+        <FormField
+          control={form.control}
           name="phone"
-          value={values.phone}
-          onChange={handleChange}
-          required
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 text-gray-900 sm:text-sm"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Phone Number</FormLabel>
+              <FormControl>
+                <Input type="tel" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
         />
-      </div>
 
-      {/* Form Actions */}
-      <div className="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">
-        {/* Submit Button */}
-        <button
-          type="submit"
-          disabled={isLoading}
-          className="inline-flex w-full justify-center rounded-md border border-transparent bg-indigo-600 px-4 py-2 text-base font-medium text-white shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:col-start-2 sm:text-sm"
-        >
-          {isLoading ? 'Creating...' : 'Create Employee'}
-        </button>
+        <div className="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">
+          <Button
+            type="submit"
+            disabled={form.formState.isSubmitting}
+            className="sm:col-start-2"
+          >
+            {form.formState.isSubmitting ? 'Creating...' : 'Create Employee'}
+          </Button>
 
-        {/* Cancel Button */}
-        <button
-          type="button"
-          onClick={onCancel}
-          className="mt-3 inline-flex w-full justify-center rounded-md border border-gray-300 bg-white px-4 py-2 text-base font-medium text-gray-700 shadow-sm hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 sm:col-start-1 sm:mt-0 sm:text-sm"
-        >
-          Cancel
-        </button>
-      </div>
-    </form>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            className="sm:col-start-1"
+          >
+            Cancel
+          </Button>
+        </div>
+      </form>
+    </Form>
   );
 } 

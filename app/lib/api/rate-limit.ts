@@ -1,98 +1,64 @@
 /**
- * Rate Limiting Utilities
- * Last Updated: 2024-03-21
+ * API Rate Limiting
+ * Last Updated: 2025-01-17
  * 
- * Rate limiting implementation using Supabase for distributed rate limiting.
- * Supports different limits for various API endpoints and authentication.
+ * Rate limiting configurations and defaults for API routes.
  */
 
-import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
+import { RateLimitOptions } from './rate-limiter';
 
-export interface RateLimitConfig {
-  window: number;  // Time window in seconds
-  max: number;     // Maximum requests in window
-}
-
+/**
+ * Default rate limit configurations for different API endpoints
+ */
 export const defaultRateLimits = {
   api: {
-    window: 60,    // 1 minute
-    max: 100       // 100 requests per minute
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 60,     // 60 requests per minute
   },
   auth: {
-    window: 300,   // 5 minutes
-    max: 10        // 10 requests per 5 minutes
+    windowMs: 15 * 60 * 1000, // 15 minutes
+    maxRequests: 5,           // 5 requests per 15 minutes
+  },
+  public: {
+    windowMs: 60 * 1000,  // 1 minute
+    maxRequests: 120,     // 120 requests per minute
   }
 } as const;
 
 /**
- * Creates a rate limiter with the specified configuration
+ * Rate limit configurations for specific endpoints
  */
-export function createRateLimiter(config: RateLimitConfig) {
-  return async function checkRateLimit(identifier: string): Promise<boolean> {
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
-    const now = Math.floor(Date.now() / 1000);
-    const windowStart = now - config.window;
-    
-    try {
-      // Clean up old entries and get current count
-      const { data, error } = await supabase
-        .from('rate_limits')
-        .select('count')
-        .eq('identifier', identifier)
-        .gte('timestamp', new Date(windowStart * 1000).toISOString())
-        .limit(1)
-        .single();
-      
-      if (error) {
-        console.error('Rate limit check failed:', error);
-        return true; // Default to allowing the request if the check fails
-      }
-      
-      return (data?.count || 0) < config.max;
-    } catch (error) {
-      console.error('Rate limit check failed:', error);
-      return true; // Default to allowing the request if the check fails
-    }
-  };
-}
+export const rateLimitConfigs: Record<string, RateLimitOptions> = {
+  // Authentication endpoints
+  'auth:login': {
+    ...defaultRateLimits.auth,
+    identifier: 'auth:login'
+  },
+  'auth:register': {
+    ...defaultRateLimits.auth,
+    identifier: 'auth:register'
+  },
+  'auth:reset-password': {
+    ...defaultRateLimits.auth,
+    identifier: 'auth:reset-password'
+  },
 
-/**
- * Gets rate limit metrics for monitoring
- */
-export async function getRateLimitMetrics(identifier: string): Promise<{
-  remaining: number;
-  reset: number;
-} | null> {
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
-  const now = Math.floor(Date.now() / 1000);
-  
-  try {
-    const { data, error } = await supabase
-      .from('rate_limits')
-      .select('timestamp')
-      .eq('identifier', identifier)
-      .gte('timestamp', now - defaultRateLimits.api.window)
-      .order('timestamp', { ascending: false });
-    
-    if (error) {
-      console.error('Failed to get rate limit metrics:', error);
-      return null;
-    }
-    
-    const used = data?.length || 0;
-    const remaining = defaultRateLimits.api.max - used;
-    const oldestTimestamp = data?.[0]?.timestamp || now;
-    const reset = oldestTimestamp + defaultRateLimits.api.window;
-    
-    return {
-      remaining: Math.max(0, remaining),
-      reset
-    };
-  } catch (error) {
-    console.error('Failed to get rate limit metrics:', error);
-    return null;
+  // Public API endpoints
+  'api:public': {
+    ...defaultRateLimits.public,
+    identifier: 'api:public'
+  },
+
+  // Protected API endpoints
+  'api:protected': {
+    ...defaultRateLimits.api,
+    identifier: 'api:protected'
+  },
+
+  // Admin API endpoints
+  'api:admin': {
+    ...defaultRateLimits.api,
+    maxRequests: 30, // Lower limit for admin endpoints
+    identifier: 'api:admin'
   }
-} 
+} as const; 

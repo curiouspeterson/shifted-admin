@@ -1,6 +1,6 @@
 /**
  * API Error Handling
- * Last Updated: 2025-01-16
+ * Last Updated: 2025-01-17
  * 
  * Error handling utilities for API requests and responses.
  * Includes type-safe error codes and response structures.
@@ -8,6 +8,7 @@
 
 import { BaseError, ErrorSeverity, ErrorCategory, ErrorContext } from './base'
 import { Json } from '@/lib/types/json'
+import { z } from 'zod'
 
 /**
  * API error codes
@@ -22,7 +23,8 @@ export enum ApiErrorCode {
   BAD_REQUEST = 'BAD_REQUEST',
   SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE',
   INVALID_RESPONSE = 'INVALID_RESPONSE',
-  REQUEST_FAILED = 'REQUEST_FAILED'
+  REQUEST_FAILED = 'REQUEST_FAILED',
+  RATE_LIMIT_EXCEEDED = 'RATE_LIMIT_EXCEEDED'
 }
 
 /**
@@ -30,6 +32,15 @@ export enum ApiErrorCode {
  */
 export interface ApiErrorContext extends ErrorContext {
   statusCode: number;
+}
+
+/**
+ * Validation error details
+ */
+export interface ValidationErrorDetail {
+  path: (string | number)[];
+  message: string;
+  code: z.ZodIssueCode;
 }
 
 /**
@@ -42,6 +53,9 @@ export interface ApiErrorDetails extends Record<string, unknown> {
   requestId?: string;
   cause?: unknown;
   stack?: string;
+  validation?: ValidationErrorDetail[];
+  component?: 'headers' | 'query' | 'params' | 'body';
+  status?: number;
 }
 
 /**
@@ -52,6 +66,17 @@ export interface ApiErrorResponse {
   message: string;
   details?: ApiErrorDetails;
   timestamp: string;
+}
+
+/**
+ * Format validation error details
+ */
+function formatValidationError(error: z.ZodError): ValidationErrorDetail[] {
+  return error.errors.map(err => ({
+    path: err.path,
+    message: err.message,
+    code: err.code
+  }));
 }
 
 /**
@@ -74,6 +99,14 @@ export function createApiError(
  * Format an error for API response
  */
 export function formatApiError(error: unknown): ApiErrorResponse {
+  if (error instanceof z.ZodError) {
+    return createApiError(
+      ApiErrorCode.VALIDATION_ERROR,
+      'Validation error',
+      { validation: formatValidationError(error) }
+    );
+  }
+
   if (error instanceof BaseError) {
     return createApiError(
       error.code as ApiErrorCode,

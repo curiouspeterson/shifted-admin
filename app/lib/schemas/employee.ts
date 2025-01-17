@@ -1,68 +1,77 @@
 /**
- * Employee Schema Types
- * Last Updated: 2025-01-16
+ * Employee Schemas
+ * Last Updated: 2025-01-17
  * 
- * Defines the domain types and validation schemas for employees.
- * Ensures type safety and validation aligned with the database schema.
+ * Validation schemas for employee-related data using Zod.
  */
 
-import { z } from 'zod';
-import type { Database } from '@/lib/database/database.types';
+import { z } from 'zod'
 
-// Employee role type from database
-export type EmployeeRole = Database['public']['Enums']['employee_role'];
+const phoneRegex = /^\+?[1-9]\d{1,14}$/
 
-// Employee status type from database
-export type EmployeeStatus = Database['public']['Enums']['employee_status'];
+/**
+ * Employee roles enum
+ */
+export const employeeRoles = {
+  ADMIN: 'admin',
+  MANAGER: 'manager',
+  EMPLOYEE: 'employee',
+} as const;
 
-// Employee role enum values as const tuple
-export const employeeRoles = ['employee', 'supervisor', 'admin'] as const;
+/**
+ * Employee statuses enum
+ */
+export const employeeStatuses = {
+  ACTIVE: 'active',
+  INACTIVE: 'inactive',
+  PENDING: 'pending',
+  TERMINATED: 'terminated',
+} as const;
 
-// Employee status enum values as const tuple
-export const employeeStatuses = ['active', 'inactive'] as const;
-
-// Base employee fields
-const employeeBase = {
-  first_name: z.string().min(1).max(100),
-  last_name: z.string().min(1).max(100),
-  email: z.string().email(),
-  phone: z.string().nullable(),
-  role: z.enum(employeeRoles),
-  status: z.enum(employeeStatuses),
-  department: z.string().min(1).max(100).nullable(),
-  position: z.string().min(1).max(100).nullable(),
-  metadata: z.record(z.unknown()).nullable()
-};
-
-// Employee input schema
-export const employeeInputSchema = z.object({
-  ...employeeBase,
-  user_id: z.string().uuid(),
-  created_by: z.string().uuid().nullable(),
-  updated_by: z.string().uuid().nullable()
-});
-
-// Employee schema (includes all fields)
+/**
+ * Base employee schema
+ */
 export const employeeSchema = z.object({
-  ...employeeBase,
-  id: z.string().uuid(),
-  user_id: z.string().uuid(),
+  id: z.string().uuid('Invalid employee ID'),
+  first_name: z.string()
+    .min(2, 'First name must be at least 2 characters')
+    .max(50, 'First name must be less than 50 characters')
+    .regex(/^[a-zA-Z\s-']+$/, 'First name can only contain letters, spaces, hyphens, and apostrophes'),
+  last_name: z.string()
+    .min(2, 'Last name must be at least 2 characters')
+    .max(50, 'Last name must be less than 50 characters')
+    .regex(/^[a-zA-Z\s-']+$/, 'Last name can only contain letters, spaces, hyphens, and apostrophes'),
+  email: z.string()
+    .email('Invalid email address')
+    .min(5, 'Email must be at least 5 characters')
+    .max(100, 'Email must be less than 100 characters')
+    .toLowerCase(),
+  phone: z.string()
+    .regex(phoneRegex, 'Invalid phone number format. Please use international format: +1234567890')
+    .nullable(),
+  position: z.string()
+    .min(2, 'Position must be at least 2 characters')
+    .max(50, 'Position must be less than 50 characters'),
+  department: z.string()
+    .min(2, 'Department must be at least 2 characters')
+    .max(50, 'Department must be less than 50 characters'),
+  role: z.enum([employeeRoles.ADMIN, employeeRoles.MANAGER, employeeRoles.EMPLOYEE]),
+  status: z.enum([employeeStatuses.ACTIVE, employeeStatuses.INACTIVE, employeeStatuses.PENDING, employeeStatuses.TERMINATED]),
+  is_active: z.boolean().default(true),
   created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
-  created_by: z.string().uuid().nullable(),
-  updated_by: z.string().uuid().nullable(),
-  metadata: z.record(z.unknown()).nullable()
+  updated_at: z.string().datetime()
 });
 
-// Employee update schema
-export const employeeUpdateSchema = z.object({
-  ...employeeBase,
-  user_id: z.string().uuid().optional(),
-  created_by: z.string().uuid().nullable().optional(),
-  updated_by: z.string().uuid().nullable().optional()
-}).partial();
+export const employeeFormSchema = employeeSchema.omit({
+  id: true,
+  created_at: true,
+  updated_at: true
+});
 
-// Infer types from schemas
+export const updateEmployeeFormSchema = employeeFormSchema.extend({
+  id: z.string().uuid('Invalid employee ID')
+});
+
 export type Employee = z.infer<typeof employeeSchema>;
-export type EmployeeInput = z.infer<typeof employeeInputSchema>;
-export type EmployeeUpdate = z.infer<typeof employeeUpdateSchema>; 
+export type EmployeeFormData = z.infer<typeof employeeFormSchema>;
+export type UpdateEmployeeFormData = z.infer<typeof updateEmployeeFormSchema>; 

@@ -1,17 +1,13 @@
 /**
  * Service Worker Utilities
- * Last Updated: 2024-01-15
+ * Last Updated: 2025-01-17
  * 
- * This module provides utilities for managing the service worker lifecycle:
- * - Registration and activation
- * - Update handling
- * - Error handling with structured logging
- * - Status checks and cleanup
+ * Utilities for working with service workers in offline mode.
  */
 
 import { toast } from 'sonner';
 import { errorLogger, ErrorSeverity } from '@/lib/logging/error-logger';
-import { ServiceWorkerError } from '@/lib/errors/base';
+import { ServiceWorkerError } from '@/lib/errors';
 
 export interface ServiceWorkerConfig {
   onSuccess?: (registration: ServiceWorkerRegistration) => void;

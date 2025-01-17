@@ -1,7 +1,14 @@
+/**
+ * IndexedDB Utilities
+ * Last Updated: 2025-01-17
+ * 
+ * Utilities for working with IndexedDB in offline mode.
+ */
+
+import { DatabaseError } from '@/lib/errors';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { errorLogger } from '@/lib/logging/error-logger';
-import { DatabaseError } from '@/lib/errors/base';
 
 /**
  * IndexedDB Utility Class

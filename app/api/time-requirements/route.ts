@@ -1,36 +1,23 @@
 /**
  * Time-Based Requirements API Route Handler
- * Last Updated: 2024-03-21
+ * Last Updated: 2025-01-17
  * 
  * This file implements the API endpoints for managing staffing requirements
  * based on time periods. Currently supports:
  * - GET: Retrieve all active time-based staffing requirements
  * - POST: Create a new time-based requirement
  * - PATCH: Update an existing time-based requirement
- * 
- * Time-based requirements define the minimum staffing levels and supervisor
- * requirements for specific time periods, independent of shift definitions.
- * These are used to validate schedule coverage and ensure proper staffing
- * levels throughout the day.
- * 
- * Error Handling:
- * - 400: Invalid request data or time range
- * - 401: Authentication required
- * - 403: Insufficient permissions (supervisor role required for mutations)
- * - 404: Time requirement not found
- * - 429: Rate limit exceeded
- * - 500: Database or server error
  */
 
 import { z } from 'zod';
+import { NextRequest, NextResponse } from 'next/server';
 import { createRouteHandler } from '@/lib/api/route-handler';
-import type { RouteContext, ApiResponse } from '@/lib/api/types';
+import type { ApiResponse } from '@/lib/api/types';
 import { TimeRequirementsOperations } from '@/lib/api/database/time-requirements';
 import {
   HTTP_STATUS_OK,
   HTTP_STATUS_CREATED,
-  HTTP_STATUS_BAD_REQUEST,
-  HTTP_STATUS_NOT_FOUND,
+  HTTP_STATUS_METHOD_NOT_ALLOWED,
 } from '@/lib/constants/http';
 import { defaultRateLimits } from '@/lib/api/rate-limit';
 import { cacheConfigs } from '@/lib/api/cache';
@@ -49,27 +36,24 @@ import {
   ValidationError,
   AuthorizationError,
 } from '@/lib/errors';
+import { env } from '@/lib/env';
+import { createClient } from '@supabase/supabase-js';
 
 type TimeRequirementRow = Database['public']['Tables']['time_requirements']['Row'];
 type TimeRequirementSortColumn = NonNullable<z.infer<typeof timeRequirementSortSchema>['sort']>;
 
 // Custom rate limits for time requirements
 const timeRequirementsRateLimits = {
-  // List time requirements (100 requests per minute)
   list: {
     ...defaultRateLimits.api,
     limit: 100,
     identifier: 'time-requirements:list',
   },
-  
-  // Create time requirement (30 requests per minute)
   create: {
     ...defaultRateLimits.api,
     limit: 30,
-    identifier: 'time-requirements:create',
+    identifier: 'time-requirements:create', 
   },
-
-  // Update time requirement (40 requests per minute)
   update: {
     ...defaultRateLimits.api,
     limit: 40,
@@ -79,188 +63,208 @@ const timeRequirementsRateLimits = {
 
 // Cache configuration for time requirements
 const timeRequirementsCacheConfig = {
-  // List operation (5 minutes cache)
   list: {
-    ...cacheConfigs.medium,
+    ...cacheConfigs.api,
     prefix: 'api:time-requirements:list',
     includeQuery: true,
-    excludeParams: ['offset'] as string[],
+    excludeParams: ['offset'] as const,
   },
 };
 
-// Middleware configuration
-const middlewareConfig = {
-  maxSize: 100 * 1024, // 100KB
-  requireContentType: true,
-  allowedContentTypes: ['application/json'],
-};
+// Base metadata for responses
+const getBaseMetadata = (cache?: { hit: boolean; ttl: number } | null) => ({
+  requestId: crypto.randomUUID(),
+  processingTime: 0,
+  version: '1.0',
+  timestamp: new Date().toISOString(),
+  cache: cache ?? null,
+  rateLimit: {
+    limit: 100,
+    remaining: 99,
+    reset: Math.floor(Date.now() / 1000) + 60
+  }
+});
+
+// Initialize Supabase client
+const supabase = createClient<Database>(
+  env.DATABASE_URL,
+  env.DATABASE_AUTH_TOKEN
+);
+
+// Map day of week strings to numbers
+const dayOfWeekMap = {
+  monday: 1,
+  tuesday: 2,
+  wednesday: 3,
+  thursday: 4,
+  friday: 5,
+  saturday: 6,
+  sunday: 7
+} as const;
 
 // GET /api/time-requirements
-export const GET = createRouteHandler({
-  methods: ['GET'],
-  requireAuth: true,
-  querySchema: listTimeRequirementsQuerySchema,
-  rateLimit: timeRequirementsRateLimits.list,
-  middleware: middlewareConfig,
-  cache: timeRequirementsCacheConfig.list,
-  cors: true,
-  handler: async ({ supabase, query, sanitizedQuery, cache }: RouteContext<ListTimeRequirementsQuery>): Promise<ApiResponse> => {
-    // Initialize database operations
-    const timeRequirements = new TimeRequirementsOperations(supabase);
+export const GET = createRouteHandler(async (req: NextRequest) => {
+  const { searchParams } = new URL(req.url);
+  const query = Object.fromEntries(searchParams);
+  
+  const parsedQuery = listTimeRequirementsQuerySchema.safeParse(query);
+  if (!parsedQuery.success) {
+    throw new ValidationError('Invalid query parameters', {
+      validation: parsedQuery.error.errors
+    });
+  }
 
-    // Build query options using sanitized query parameters
-    const options = {
-      limit: query?.limit,
-      offset: query?.offset,
-      orderBy: query?.sort
-        ? { column: query.sort as TimeRequirementSortColumn, ascending: query.order !== 'desc' }
-        : undefined,
-      filter: {
-        ...(query?.schedule_id && { schedule_id: query.schedule_id }),
-        ...(query?.day_of_week !== undefined && { day_of_week: query.day_of_week }),
-        ...(query?.requires_supervisor !== undefined && { requires_supervisor: query.requires_supervisor }),
-      },
-    };
-
-    // Fetch time requirements
-    const result = await timeRequirements.findMany(options);
-
-    if (result.error) {
-      throw new DatabaseError('Failed to fetch time requirements', result.error);
+  const timeRequirements = new TimeRequirementsOperations(supabase);
+  
+  const options = {
+    limit: parsedQuery.data.limit,
+    offset: parsedQuery.data.offset,
+    orderBy: parsedQuery.data.sort ? {
+      column: parsedQuery.data.sort,
+      ascending: parsedQuery.data.order !== 'desc'
+    } : undefined,
+    filter: {
+      schedule_id: parsedQuery.data.schedule_id || undefined,
+      day_of_week: parsedQuery.data.day_of_week ? dayOfWeekMap[parsedQuery.data.day_of_week] : undefined,
+      requires_supervisor: parsedQuery.data.requires_supervisor || undefined
     }
+  };
 
-    const requirements_data = result.data || [];
+  const result = await timeRequirements.findMany(options);
+  
+  if (result.error) {
+    throw new DatabaseError('Failed to fetch time requirements', { 
+      cause: result.error 
+    });
+  }
 
-    return {
-      data: requirements_data,
-      error: null,
-      status: HTTP_STATUS_OK,
-      metadata: {
-        count: requirements_data.length,
-        timestamp: new Date().toISOString(),
-        ...(cache && {
-          cached: true,
-          cacheHit: cache.hit,
-          cacheTtl: cache.ttl,
-        }),
-      },
-    };
-  },
+  return NextResponse.json({
+    data: result.data || [],
+    error: null,
+    metadata: getBaseMetadata(null)
+  });
+}, {
+  rateLimit: timeRequirementsRateLimits.list,
+  cache: timeRequirementsCacheConfig.list
 });
 
 // POST /api/time-requirements
-export const POST = createRouteHandler({
-  methods: ['POST'],
-  requireAuth: true,
-  requireSupervisor: true,
-  bodySchema: createTimeRequirementSchema,
-  rateLimit: timeRequirementsRateLimits.create,
-  middleware: middlewareConfig,
-  cors: true,
-  handler: async ({ supabase, session, body }): Promise<ApiResponse> => {
-    // Validate time range
-    const startTime = new Date(`1970-01-01T${body!.start_time}`);
-    const endTime = new Date(`1970-01-01T${body!.end_time}`);
-    
-    if (endTime <= startTime) {
-      throw new TimeRangeError('End time must be after start time');
-    }
-
-    // Initialize database operations
-    const timeRequirements = new TimeRequirementsOperations(supabase);
-
-    // Create time requirement with current timestamp
-    const result = await timeRequirements.create({
-      ...body!,
-      requires_supervisor: body!.requires_supervisor ?? false,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+export const POST = createRouteHandler(async (req: NextRequest) => {
+  const body = await req.json();
+  const parsedBody = createTimeRequirementSchema.safeParse(body);
+  
+  if (!parsedBody.success) {
+    throw new ValidationError('Invalid request body', {
+      validation: parsedBody.error.errors
     });
+  }
 
-    if (result.error) {
-      throw new DatabaseError('Failed to create time requirement', result.error);
-    }
+  const { startTime, endTime } = parsedBody.data;
+  const start = new Date(`1970-01-01T${startTime}`);
+  const end = new Date(`1970-01-01T${endTime}`);
+  
+  if (end <= start) {
+    throw new TimeRangeError('End time must be after start time', {
+      validation: [{
+        code: 'invalid_time_range',
+        message: 'End time must be after start time',
+        path: ['startTime', 'endTime']
+      }]
+    });
+  }
 
-    if (!result.data) {
-      throw new DatabaseError('No data returned from database');
-    }
+  const timeRequirements = new TimeRequirementsOperations(supabase);
 
-    return {
-      data: result.data,
-      error: null,
-      status: HTTP_STATUS_CREATED,
-      metadata: {
-        timestamp: new Date().toISOString(),
-      },
-    };
-  },
+  const result = await timeRequirements.create({
+    schedule_id: parsedBody.data.scheduleId,
+    day_of_week: dayOfWeekMap[parsedBody.data.dayOfWeek],
+    start_time: parsedBody.data.startTime,
+    end_time: parsedBody.data.endTime,
+    min_staff: parsedBody.data.minStaff,
+    requires_supervisor: parsedBody.data.requiresSupervisor,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  });
+
+  if (result.error) {
+    throw new DatabaseError('Failed to create time requirement', {
+      cause: result.error
+    });
+  }
+
+  return NextResponse.json({
+    data: result.data,
+    error: null,
+    metadata: getBaseMetadata(null)
+  }, { status: HTTP_STATUS_CREATED });
+}, {
+  rateLimit: timeRequirementsRateLimits.create
 });
 
 // PATCH /api/time-requirements/[id]
-export const PATCH = createRouteHandler({
-  methods: ['PATCH'],
-  requireAuth: true,
-  requireSupervisor: true,
-  bodySchema: updateTimeRequirementSchema,
-  rateLimit: timeRequirementsRateLimits.update,
-  middleware: middlewareConfig,
-  cors: true,
-  handler: async ({ supabase, session, params, body }): Promise<ApiResponse> => {
-    if (!params?.id) {
-      throw new ValidationError('Time requirement ID is required');
+export const PATCH = createRouteHandler(async (req: NextRequest, context?: { params?: Record<string, string> }) => {
+  if (!context?.params?.id) {
+    throw new ValidationError('Time requirement ID is required', {
+      validation: [{
+        code: 'missing_parameter',
+        message: 'Time requirement ID is required',
+        path: ['id']
+      }]
+    });
+  }
+
+  const body = await req.json();
+  const parsedBody = updateTimeRequirementSchema.safeParse(body);
+  
+  if (!parsedBody.success) {
+    throw new ValidationError('Invalid request body', {
+      validation: parsedBody.error.errors
+    });
+  }
+
+  const timeRequirements = new TimeRequirementsOperations(supabase);
+  
+  const existing = await timeRequirements.findById(context.params.id);
+  if (!existing.data) {
+    throw new NotFoundError('Time requirement not found');
+  }
+
+  if (parsedBody.data.startTime && parsedBody.data.endTime) {
+    const start = new Date(`1970-01-01T${parsedBody.data.startTime}`);
+    const end = new Date(`1970-01-01T${parsedBody.data.endTime}`);
+    
+    if (end <= start) {
+      throw new TimeRangeError('End time must be after start time', {
+        validation: [{
+          code: 'invalid_time_range',
+          message: 'End time must be after start time',
+          path: ['startTime', 'endTime']
+        }]
+      });
     }
+  }
 
-    if (!session) {
-      throw new AuthorizationError('Authentication required');
-    }
+  const result = await timeRequirements.update(context.params.id, {
+    schedule_id: parsedBody.data.scheduleId,
+    day_of_week: parsedBody.data.dayOfWeek ? dayOfWeekMap[parsedBody.data.dayOfWeek] : undefined,
+    start_time: parsedBody.data.startTime,
+    end_time: parsedBody.data.endTime,
+    min_staff: parsedBody.data.minStaff,
+    requires_supervisor: parsedBody.data.requiresSupervisor,
+    updated_at: new Date().toISOString()
+  });
 
-    if (!body) {
-      throw new ValidationError('Request body is required');
-    }
+  if (result.error) {
+    throw new DatabaseError('Failed to update time requirement', {
+      cause: result.error
+    });
+  }
 
-    // Initialize database operations
-    const timeRequirements = new TimeRequirementsOperations(supabase);
-
-    // Check if time requirement exists
-    const existing = await timeRequirements.findById(params.id);
-    if (!existing.data) {
-      throw new NotFoundError('Time requirement not found');
-    }
-
-    // Validate time range if both times are provided
-    if (body.start_time && body.end_time) {
-      const startTime = new Date(`1970-01-01T${body.start_time}`);
-      const endTime = new Date(`1970-01-01T${body.end_time}`);
-      
-      if (endTime <= startTime) {
-        throw new TimeRangeError('End time must be after start time');
-      }
-    }
-
-    // Update time requirement with transformed data
-    const updateData = {
-      ...body,
-      requires_supervisor: body.requires_supervisor ?? existing.data.requires_supervisor,
-      updated_at: new Date().toISOString(),
-    };
-
-    const result = await timeRequirements.update(params.id, updateData);
-
-    if (result.error) {
-      throw new DatabaseError('Failed to update time requirement', result.error);
-    }
-
-    if (!result.data) {
-      throw new DatabaseError('No data returned from database');
-    }
-
-    return {
-      data: result.data,
-      error: null,
-      status: HTTP_STATUS_OK,
-      metadata: {
-        timestamp: new Date().toISOString(),
-      },
-    };
-  },
-}); 
+  return NextResponse.json({
+    data: result.data,
+    error: null,
+    metadata: getBaseMetadata(null)
+  });
+}, {
+  rateLimit: timeRequirementsRateLimits.update
+});

@@ -145,17 +145,17 @@ export const assignmentSortSchema = z.object({
 // Sorting schema for time requirements
 export const timeRequirementSortSchema = z.object({
   sort: z.enum([
+    'id',
+    'created_at',
+    'updated_at',
+    'schedule_id',
     'start_time',
     'end_time',
     'day_of_week',
     'min_staff',
-    'requires_supervisor',
-    'schedule_id',
-    'created_at',
-    'updated_at',
-    'id',
-  ] as const).optional(),
-  order: z.enum(['asc', 'desc']).optional(),
+    'requires_supervisor'
+  ]).optional(),
+  order: z.enum(['asc', 'desc']).optional()
 });
 
 /**
@@ -283,41 +283,61 @@ export const updateEmployeeSchema = createEmployeeSchema.partial();
 
 // GET /api/time-requirements query parameters
 export const listTimeRequirementsQuerySchema = z.object({
-  ...paginationSchema.shape,
-  ...timeRequirementSortSchema.shape,
   schedule_id: z.string().uuid().nullish(),
-  day_of_week: z.nativeEnum(DayOfWeek).nullish(),
+  day_of_week: z.enum([
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+    'sunday'
+  ]).nullish(),
   requires_supervisor: z.boolean().nullish(),
-});
+  limit: z.coerce.number().min(1).max(100).optional(),
+  offset: z.coerce.number().min(0).optional(),
+}).merge(timeRequirementSortSchema);
 
 // POST /api/time-requirements request body
-export const createTimeRequirementSchema = timeRequirementInputSchema;
+export const createTimeRequirementSchema = z.object({
+  startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/),
+  scheduleId: z.string().uuid(),
+  dayOfWeek: z.enum([
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+    'sunday'
+  ]),
+  minStaff: z.number().int().min(1),
+  requiresSupervisor: z.boolean(),
+  metadata: z.record(z.unknown()).nullish(),
+  notes: z.string().max(1000).nullish(),
+  createdBy: z.string().uuid().optional()
+});
 
 // PATCH /api/time-requirements/[id] request body
-const partialTimeRequirementSchema = z.object({
+export const updateTimeRequirementSchema = z.object({
+  startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/).optional(),
   scheduleId: z.string().uuid().optional(),
   dayOfWeek: z.enum([
-    DayOfWeek.MONDAY,
-    DayOfWeek.TUESDAY,
-    DayOfWeek.WEDNESDAY,
-    DayOfWeek.THURSDAY,
-    DayOfWeek.FRIDAY,
-    DayOfWeek.SATURDAY,
-    DayOfWeek.SUNDAY
+    'monday',
+    'tuesday',
+    'wednesday',
+    'thursday',
+    'friday',
+    'saturday',
+    'sunday'
   ]).optional(),
-  startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/, {
-    message: 'Time must be in 24-hour format (HH:MM:SS)'
-  }).optional(),
-  endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/, {
-    message: 'Time must be in 24-hour format (HH:MM:SS)'
-  }).optional(),
   minStaff: z.number().int().min(1).optional(),
   requiresSupervisor: z.boolean().optional(),
-  notes: z.string().max(1000).nullish(),
-  metadata: z.record(z.unknown()).nullish()
-}).superRefine(validateTimeRange);
-
-export const updateTimeRequirementSchema = partialTimeRequirementSchema;
+  metadata: z.record(z.unknown()).nullish(),
+  notes: z.string().max(1000).nullish()
+});
 
 /**
  * API Response Schemas

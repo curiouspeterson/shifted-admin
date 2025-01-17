@@ -1,6 +1,6 @@
 /**
  * Employee Management API Routes
- * Last Updated: 2024-03
+ * Last Updated: January 17, 2025
  * 
  * This file implements the main endpoints for employee management:
  * - GET: List employees with filtering, sorting, and pagination
@@ -22,16 +22,17 @@
  */
 
 import { z } from 'zod';
-import { createRouteHandler } from '@/lib/api/handler';
-import type { ApiResponse, RouteContext } from '@/lib/api/types';
+import { NextRequest, NextResponse } from 'next/server';
+import { createRouteHandler } from '@/lib/api';
+import type { ApiHandlerOptions } from '@/lib/api/types';
 import { EmployeesOperations } from '@/lib/api/database/employees';
 import {
   HTTP_STATUS_OK,
   HTTP_STATUS_CREATED,
   HTTP_STATUS_CONFLICT,
 } from '@/lib/constants/http';
-import { defaultRateLimits } from '@/lib/api/rate-limit';
-import { cacheConfigs } from '@/lib/api/cache';
+import { defaultRateLimits } from '@/lib/api';
+import { CacheControl } from '@/lib/api/cache';
 import {
   listEmployeesQuerySchema,
   createEmployeeSchema,
@@ -53,15 +54,15 @@ type CreateEmployee = z.infer<typeof createEmployeeSchema>;
 const employeeRateLimits = {
   // List employees (100 requests per minute)
   list: {
-    ...defaultRateLimits.api,
-    limit: 100,
+    windowMs: 60000,
+    maxRequests: 100,
     identifier: 'employees:list',
   },
   
   // Create employee (30 requests per minute)
   create: {
-    ...defaultRateLimits.api,
-    limit: 30,
+    windowMs: 60000,
+    maxRequests: 30,
     identifier: 'employees:create',
   },
 } as const;
@@ -70,51 +71,38 @@ const employeeRateLimits = {
 const employeeCacheConfig = {
   // List operation (2 minutes cache)
   list: {
-    ...cacheConfigs.short,
+    control: CacheControl.ShortTerm,
+    revalidate: 120,
     prefix: 'api:employees:list',
     includeQuery: true,
-    excludeParams: ['offset'] as string[],
+    excludeParams: ['offset'] as const,
   },
-};
-
-// Middleware configuration
-const middlewareConfig = {
-  maxSize: 100 * 1024, // 100KB
-  requireContentType: true,
-  allowedContentTypes: ['application/json'],
 };
 
 /**
  * GET /api/employees
  * List employees with optional filtering and pagination
  */
-export const GET = createRouteHandler({
-  methods: ['GET'],
-  requireAuth: true,
-  querySchema: listEmployeesQuerySchema,
-  rateLimit: employeeRateLimits.list,
-  middleware: middlewareConfig,
-  cache: employeeCacheConfig.list,
-  cors: true,
-  handler: async ({ 
-    supabase, 
-    query, 
-    cache 
-  }: RouteContext<ListEmployeesQuery>): Promise<ApiResponse> => {
+export const GET = createRouteHandler(
+  async (req: NextRequest) => {
+    const url = new URL(req.url);
+    const query = Object.fromEntries(url.searchParams);
+    const supabase = req.supabase;
+
     // Initialize database operations
     const employees = new EmployeesOperations(supabase);
 
     // Build query options using sanitized query parameters
     const options = {
-      limit: query?.limit,
-      offset: query?.offset,
-      orderBy: query?.sort
+      limit: query.limit ? parseInt(query.limit) : undefined,
+      offset: query.offset ? parseInt(query.offset) : undefined,
+      orderBy: query.sort
         ? { column: query.sort as EmployeeSortColumn, ascending: query.order !== 'desc' }
         : undefined,
       filter: {
-        ...(query?.status && { status: query.status }),
-        ...(query?.role && { role: query.role }),
-        ...(query?.department && { department: query.department }),
+        ...(query.status && { status: query.status }),
+        ...(query.role && { role: query.role }),
+        ...(query.department && { department: query.department }),
       },
     };
 
@@ -122,51 +110,37 @@ export const GET = createRouteHandler({
     const result = await employees.findMany(options);
 
     if (result.error) {
-      throw new DatabaseError('Failed to fetch employees', result.error);
+      throw new DatabaseError('Failed to fetch employees', { 
+        cause: result.error 
+      });
     }
 
-    const employees_data = result.data || [];
-
-    return {
-      data: employees_data,
+    return NextResponse.json({ 
+      data: result.data || [],
       error: null,
-      status: HTTP_STATUS_OK,
-      metadata: {
-        count: employees_data.length,
-        timestamp: new Date().toISOString(),
-        ...(cache && {
-          cached: true,
-          cacheHit: cache.hit,
-          cacheTtl: cache.ttl,
-        }),
-      },
-    };
+    }, { status: HTTP_STATUS_OK });
   },
-});
+  {
+    validate: {
+      query: listEmployeesQuerySchema,
+    },
+    cache: employeeCacheConfig.list,
+    rateLimit: employeeRateLimits.list,
+  } as ApiHandlerOptions
+);
 
 /**
  * POST /api/employees
  * Create a new employee record
  */
-export const POST = createRouteHandler({
-  methods: ['POST'],
-  requireAuth: true,
-  requireSupervisor: true,
-  bodySchema: createEmployeeSchema,
-  rateLimit: employeeRateLimits.create,
-  middleware: middlewareConfig,
-  cors: true,
-  handler: async ({ 
-    supabase, 
-    session, 
-    body 
-  }: RouteContext<unknown, CreateEmployee>): Promise<ApiResponse> => {
+export const POST = createRouteHandler(
+  async (req: NextRequest) => {
+    const supabase = req.supabase;
+    const session = req.session;
+    const body = await req.json();
+
     if (!session) {
       throw new AuthorizationError('Authentication required');
-    }
-
-    if (!body) {
-      throw new ValidationError('Request body is required');
     }
 
     // Only supervisors and admins can create employees
@@ -196,20 +170,20 @@ export const POST = createRouteHandler({
     });
 
     if (result.error) {
-      throw new DatabaseError('Failed to create employee record', result.error);
+      throw new DatabaseError('Failed to create employee record', { 
+        cause: result.error 
+      });
     }
 
-    if (!result.data) {
-      throw new DatabaseError('No data returned from employee creation');
-    }
-
-    return {
+    return NextResponse.json({
       data: result.data,
       error: null,
-      status: HTTP_STATUS_CREATED,
-      metadata: {
-        timestamp: new Date().toISOString(),
-      },
-    };
+    }, { status: HTTP_STATUS_CREATED });
   },
-});
+  {
+    validate: {
+      body: createEmployeeSchema,
+    },
+    rateLimit: employeeRateLimits.create,
+  } as ApiHandlerOptions
+);
