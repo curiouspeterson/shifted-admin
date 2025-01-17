@@ -2,11 +2,11 @@
 
 /**
  * Modal Component
- * Last Updated: 2024-03
+ * Last Updated: 2024-01-16
  * 
  * A reusable modal dialog component built on top of our Dialog component.
  * Features:
- * - Centered placement
+ * - Configurable placement
  * - Backdrop overlay
  * - Consistent sizing
  * - Standardized header styling
@@ -21,6 +21,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { cn } from '@/lib/utils';
+
+type ModalPlacement = 'center' | 'top' | 'bottom';
 
 /**
  * Modal Props Interface
@@ -31,7 +34,14 @@ interface ModalProps {
   title: string;
   children: React.ReactNode;
   className?: string;
+  placement?: ModalPlacement;
 }
+
+const placementStyles: Record<ModalPlacement, string> = {
+  center: 'sm:my-16',
+  top: 'sm:mt-16',
+  bottom: 'sm:mb-16 sm:mt-auto',
+};
 
 /**
  * Modal Component
@@ -43,10 +53,16 @@ export function Modal({
   title,
   children,
   className,
+  placement = 'center',
 }: ModalProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className={className}>
+      <DialogContent 
+        className={cn(
+          placementStyles[placement],
+          className
+        )}
+      >
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>

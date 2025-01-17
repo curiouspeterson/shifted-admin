@@ -1,132 +1,109 @@
 /**
  * Create Schedule Button Component
- * Last Updated: 2024
+ * Last Updated: 2024-01-16
  * 
- * This component provides a button that opens a dialog for creating a new schedule.
- * It handles form validation, date selection, and schedule creation through server actions.
+ * A button that opens a dialog for creating a new schedule.
  */
 
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { useTransition, useState } from 'react';
+import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
+import { scheduleInputSchema } from '@/lib/schemas/schedule';
+import { createSchedule } from '@/lib/actions/schedule';
 import { Button } from '@/components/ui/button';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { FormField, FormLabel, FormMessage } from '@/components/forms/base/FormField';
+import { DatePickerField } from '@/components/forms/base/DatePicker';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { createSchedule } from '@/lib/actions/schedule.client';
-import { scheduleSchema } from '@/lib/schemas/schedule';
-
-type FormValues = z.infer<typeof scheduleSchema>;
+import { toast } from '@/lib/utils/toast';
+import type { ScheduleInput } from '@/lib/schemas/schedule';
 
 export function CreateScheduleButton() {
-  const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [isPending, startTransition] = useTransition();
-
-  const form = useForm<FormValues>({
-    resolver: zodResolver(scheduleSchema),
+  const form = useForm<ScheduleInput>({
+    resolver: zodResolver(scheduleInputSchema),
     defaultValues: {
-      name: '',
-      start_date: '',
-      end_date: '',
+      title: '',
+      description: '',
       status: 'draft',
-      is_active: true,
+      isActive: true,
     },
   });
 
-  const onSubmit = async (data: FormValues) => {
-    startTransition(async () => {
-      try {
-        const result = await createSchedule(data);
-        if (result.error) {
-          throw new Error(result.error);
-        }
-        setOpen(false);
-        router.refresh();
-        router.push(`/dashboard/schedules/${result.data.id}`);
-      } catch (error) {
-        console.error('Failed to create schedule:', error);
-        // Handle error (show toast, etc.)
-      }
-    });
+  const onSubmit = async (data: ScheduleInput) => {
+    try {
+      // Transform data to match API expectations
+      const apiData = {
+        name: data.title, // Map title to name for API
+        description: data.description,
+        start_date: new Date(data.startDate).toISOString().split('T')[0],
+        end_date: new Date(data.endDate).toISOString().split('T')[0],
+        status: data.status,
+        is_active: data.isActive,
+      };
+
+      await createSchedule(apiData);
+      setOpen(false);
+      form.reset();
+      toast.success('Schedule created successfully');
+    } catch (error) {
+      toast.error('Failed to create schedule');
+    }
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button>Create Schedule</Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Create New Schedule</DialogTitle>
-          <DialogDescription>
-            Create a new schedule by filling out the form below.
-          </DialogDescription>
-        </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-          <div>
-            <Label htmlFor="name">Name</Label>
-            <Input
-              id="name"
-              {...form.register('name')}
-              placeholder="Enter schedule name"
-            />
-            {form.formState.errors.name && (
-              <p className="text-sm text-red-500">
-                {form.formState.errors.name.message}
-              </p>
-            )}
-          </div>
-          <div>
-            <Label htmlFor="start_date">Start Date</Label>
-            <Input
-              id="start_date"
-              type="date"
-              {...form.register('start_date')}
-            />
-            {form.formState.errors.start_date && (
-              <p className="text-sm text-red-500">
-                {form.formState.errors.start_date.message}
-              </p>
-            )}
-          </div>
-          <div>
-            <Label htmlFor="end_date">End Date</Label>
-            <Input
-              id="end_date"
-              type="date"
-              {...form.register('end_date')}
-            />
-            {form.formState.errors.end_date && (
-              <p className="text-sm text-red-500">
-                {form.formState.errors.end_date.message}
-              </p>
-            )}
-          </div>
-          <div>
-            <Label htmlFor="description">Description (Optional)</Label>
-            <Input
-              id="description"
-              {...form.register('description')}
-              placeholder="Enter schedule description"
-            />
-          </div>
-          <Button type="submit" disabled={isPending}>
-            {isPending ? 'Creating...' : 'Create Schedule'}
-          </Button>
-        </form>
-      </DialogContent>
-    </Dialog>
+    <>
+      <Button onClick={() => setOpen(true)}>
+        Create Schedule
+      </Button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Schedule</DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
+            {/* Schedule Title Field */}
+            <div>
+              <FormLabel htmlFor="title">Schedule Title</FormLabel>
+              <Input id="title" {...form.register('title')} placeholder="Enter schedule title" />
+              {form.formState.errors.title && (
+                <FormMessage>{form.formState.errors.title.message}</FormMessage>
+              )}
+            </div>
+
+            {/* Date Fields */}
+            <div className="grid grid-cols-2 gap-4">
+              <DatePickerField
+                name="startDate"
+                label="Start Date"
+                validation={{ required: true }}
+              />
+
+              <DatePickerField
+                name="endDate"
+                label="End Date"
+                validation={{ required: true }}
+                minDate={form.getValues('startDate') ? new Date(form.getValues('startDate')) : undefined}
+              />
+            </div>
+
+            {/* Description Field */}
+            <div>
+              <FormLabel htmlFor="description">Description</FormLabel>
+              <Input id="description" {...form.register('description')} placeholder="Enter schedule description" />
+              {form.formState.errors.description && (
+                <FormMessage>{form.formState.errors.description.message}</FormMessage>
+              )}
+            </div>
+
+            <Button type="submit">Create Schedule</Button>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 } 

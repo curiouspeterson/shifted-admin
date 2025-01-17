@@ -13,15 +13,15 @@
 
 import { Suspense } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { useOfflineData } from '@/hooks/useOfflineData'
-import { useOfflineFallback } from '@/hooks/useOfflineFallback'
-import { useSyncQueue } from '@/hooks/useSyncQueue'
+import { useOfflineData } from '@/hooks/use-offline-data'
+import { useOfflineFallback } from '@/hooks/use-offline-fallback'
+import { useSyncQueue } from '@/hooks/use-sync-queue'
 import { errorLogger } from '@/lib/logging/error-logger'
-import { ShiftList } from '@/components/shifts/ShiftList'
-import { ShiftForm } from '@/components/shifts/ShiftForm'
+import { ShiftList } from '@/components/shifts/shift-list'
+import { ShiftForm } from '@/components/shifts/shift-form'
 import { OfflineIndicator } from '@/components/ui/OfflineIndicator'
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { ErrorBoundary } from '@/components/ui/ErrorBoundary'
+import { ErrorBoundary } from '@/components/error/ErrorBoundary'
 
 interface Shift {
   id: string

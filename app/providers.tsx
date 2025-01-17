@@ -14,8 +14,7 @@
 import React from 'react';
 import { ThemeProvider } from 'next-themes';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { ErrorBoundary } from '@/components/error/ErrorBoundary';
-import { ErrorFallback } from '@/components/error/ErrorFallback';
+import { ErrorBoundary, ErrorFallback } from '@/components/error/ErrorBoundary';
 
 // Create a client
 const queryClient = new QueryClient({
@@ -34,7 +33,15 @@ export interface ProvidersProps {
 
 export function Providers({ children }: ProvidersProps) {
   return (
-    <ErrorBoundary fallback={<ErrorFallback />}>
+    <ErrorBoundary
+      fallback={({ error, reset }) => (
+        <ErrorFallback
+          error={error}
+          reset={reset}
+          message="An unexpected error occurred in the application."
+        />
+      )}
+    >
       <QueryClientProvider client={queryClient}>
         <ThemeProvider
           attribute="class"

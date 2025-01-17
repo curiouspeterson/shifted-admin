@@ -1,18 +1,22 @@
 /**
- * Supabase Module Exports
- * Last Updated: 2024-03
+ * Supabase Module
+ * Last Updated: 2024-01-16
  * 
- * This file serves as the main entry point for all Supabase-related functionality.
- * It re-exports types, clients, hooks, and utilities for easy access.
+ * Provides utilities for interacting with Supabase
  */
 
-// Type exports
-export type * from './database.types'
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import type { Database } from '../database/database.types';
 
-// Client exports
-export { createClient as createBrowserClient } from './client'
-export { createClient as createServerClient } from './server'
-export { createClient as createMiddlewareClient } from './middleware'
+export function createServerClient() {
+  return createServerComponentClient<Database>({ cookies });
+}
 
-// Hook exports
-export { useSession, useRealtimeSubscription, useQuery } from './hooks' 
+export function createBrowserClient() {
+  return createClientComponentClient<Database>();
+}
+
+export type { Database };
+export * from './cookies';

@@ -1,9 +1,9 @@
 /**
  * Date Picker Component
- * Last Updated: 2024-01-15
+ * Last Updated: 2024-01-16
  * 
- * A date picker component that works with react-hook-form.
- * Uses the Shadcn UI calendar component for the date selection.
+ * A customized date picker component that integrates with form libraries
+ * and supports proper date formatting and validation.
  */
 
 'use client'
@@ -11,67 +11,53 @@
 import * as React from 'react'
 import { format } from 'date-fns'
 import { Calendar as CalendarIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
 import { Calendar } from '@/components/ui/calendar'
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
-import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { Control, Controller, FieldValues, Path } from 'react-hook-form'
 
-interface DatePickerProps<T extends FieldValues> {
-  name: Path<T>
-  control: Control<T>
-  error?: string
+export interface DatePickerProps {
+  selected?: Date
+  onSelect?: (date: Date | null) => void
   className?: string
+  disabled?: boolean
 }
 
-export function DatePicker<T extends FieldValues>({
-  name,
-  control,
-  error,
-  className
-}: DatePickerProps<T>) {
+export function DatePicker({
+  selected,
+  onSelect,
+  className,
+  disabled = false,
+}: DatePickerProps) {
   return (
-    <div className="space-y-2">
-      <Controller
-        name={name}
-        control={control}
-        render={({ field }) => (
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button
-                variant="outline"
-                className={cn(
-                  'w-full justify-start text-left font-normal',
-                  !field.value && 'text-muted-foreground',
-                  error && 'border-red-500',
-                  className
-                )}
-              >
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {field.value ? (
-                  format(new Date(field.value), 'PPP')
-                ) : (
-                  <span>Pick a date</span>
-                )}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar
-                mode="single"
-                selected={field.value ? new Date(field.value) : undefined}
-                onSelect={date => field.onChange(date?.toISOString().split('T')[0])}
-              />
-            </PopoverContent>
-          </Popover>
-        )}
-      />
-      {error && (
-        <p className="text-sm text-red-500">{error}</p>
-      )}
-    </div>
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className={cn(
+            'w-full justify-start text-left font-normal',
+            !selected && 'text-muted-foreground',
+            className
+          )}
+          disabled={disabled}
+        >
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {selected ? format(selected, 'PPP') : <span>Pick a date</span>}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          selected={selected}
+          onSelect={onSelect}
+          initialFocus
+          required={false}
+        />
+      </PopoverContent>
+    </Popover>
   )
 } 

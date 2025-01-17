@@ -13,7 +13,7 @@ import useSWR from 'swr'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import LoadingSpinner from '@/components/LoadingSpinner'
+import LoadingSpinner from '@/components/loading-spinner'
 import RequestForm from '@/components/request/RequestForm'
 
 export default function RequestsPage() {

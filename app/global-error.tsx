@@ -1,70 +1,40 @@
-/**
- * Global Error Handler
- * Last Updated: 2024-01-16
- * 
- * This component handles errors at the root level of the application.
- * It is used when the error.tsx component itself throws an error.
- */
+"use client";
 
-'use client'
+import NextError from "next/error";
+import { useEffect } from "react";
 
-import { useEffect } from 'react'
-import { errorLogger, formatNextError } from '@/lib/logging/error-logger'
-
-interface GlobalErrorProps {
-  error: Error & { digest?: string }
-  reset: () => void
-}
-
-export default function GlobalError({ error, reset }: GlobalErrorProps) {
+export default function GlobalError({
+  error,
+  reset,
+}: {
+  error: Error & { digest?: string };
+  reset: () => void;
+}) {
   useEffect(() => {
-    // Log error with proper formatting
-    errorLogger.error('Critical application error', {
-      error: formatNextError(error),
-      requestId: crypto.randomUUID()
-    })
-  }, [error])
+    // Log the error to console in development
+    console.error("Global error:", error);
+  }, [error]);
 
   return (
     <html>
       <body>
-        <div className="min-h-screen bg-white px-4 py-16 sm:px-6 sm:py-24 md:grid md:place-items-center lg:px-8">
-          <div className="mx-auto max-w-max">
-            <main className="sm:flex">
-              <p className="text-4xl font-bold tracking-tight text-red-600 sm:text-5xl">500</p>
-              <div className="sm:ml-6">
-                <div className="sm:border-l sm:border-gray-200 sm:pl-6">
-                  <h1 className="text-4xl font-bold tracking-tight text-gray-900 sm:text-5xl">
-                    Critical Error
-                  </h1>
-                  <p className="mt-1 text-base text-gray-500">
-                    A critical error has occurred. Our team has been notified.
-                  </p>
-                  {error.digest && (
-                    <p className="mt-1 text-sm text-gray-500">
-                      Error ID: {error.digest}
-                    </p>
-                  )}
-                </div>
-                <div className="mt-10 flex space-x-3 sm:border-l sm:border-transparent sm:pl-6">
-                  <button
-                    onClick={reset}
-                    className="inline-flex items-center rounded-md border border-transparent bg-red-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-                  >
-                    Try again
-                  </button>
-                  <a
-                    href="/"
-                    className="inline-flex items-center rounded-md border border-transparent bg-red-100 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2"
-                  >
-                    Go back home
-                  </a>
-                </div>
-              </div>
-            </main>
+        <div className="min-h-screen flex items-center justify-center bg-gray-100">
+          <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4">
+              Something went wrong!
+            </h2>
+            <p className="text-gray-600 mb-4">
+              {error.message || "An unexpected error occurred"}
+            </p>
+            <button
+              onClick={reset}
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
+            >
+              Try again
+            </button>
           </div>
         </div>
       </body>
     </html>
-  )
-} 
+  );
+}

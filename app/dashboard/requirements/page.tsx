@@ -23,7 +23,7 @@
 import { Suspense } from 'react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { StaffingRequirementsEditor } from '@/components/StaffingRequirementsEditor';
+import { StaffingRequirementsEditor } from '@/components/staffing-requirements-editor';
 import { TimeBasedRequirement } from '@/lib/types/scheduling';
 import { revalidatePath } from 'next/cache';
 

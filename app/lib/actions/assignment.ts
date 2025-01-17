@@ -1,120 +1,87 @@
 /**
  * Assignment Actions
- * Last Updated: 2024-01-15
+ * Last Updated: 2024-01-16
  * 
- * Server actions for managing schedule assignments.
+ * Server actions for managing schedule assignments
  */
 
-'use server'
+'use server';
 
-import { cookies } from 'next/headers'
-import { revalidatePath } from 'next/cache'
-import { z } from 'zod'
-import { createClient } from '@/lib/supabase/server'
-import { toDbAssignment, toDomainAssignment } from '@/lib/database/mappers/assignment'
+import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
+import { cookies } from 'next/headers';
+import type { Database } from '../database/database.types';
+import type { AssignmentFormData } from '../schemas/forms';
 
-// Assignment input schema
-const assignmentSchema = z.object({
-  scheduleId: z.string().min(1, 'Schedule ID is required'),
-  employeeId: z.string().min(1, 'Employee is required'),
-  shiftId: z.string().min(1, 'Shift is required'),
-  startTime: z.string()
-    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/, 'Invalid time format')
-    .refine(time => !isNaN(Date.parse(time)), 'Invalid time'),
-  endTime: z.string()
-    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/, 'Invalid time format')
-    .refine(time => !isNaN(Date.parse(time)), 'Invalid time'),
-  notes: z.string()
-    .max(1000, 'Notes must be 1000 characters or less')
-    .optional()
-    .nullable()
-})
+type Assignment = Database['public']['Tables']['schedule_assignments']['Row'];
+type AssignmentInsert = Database['public']['Tables']['schedule_assignments']['Insert'];
 
-type AssignmentInput = z.infer<typeof assignmentSchema>
+export type AssignmentResponse = {
+  data: Assignment | null;
+  error?: string;
+};
 
-/**
- * Creates a new schedule assignment
- */
-export async function createAssignment(data: AssignmentInput) {
-  const cookieStore = cookies()
-  const supabase = createClient(cookieStore)
+export async function createAssignment(formData: AssignmentFormData): Promise<AssignmentResponse> {
+  try {
+    const supabase = createServerComponentClient<Database>({ cookies });
 
-  // Validate input
-  const validatedData = assignmentSchema.parse(data)
+    // Check for existing assignment
+    const { data: existing } = await supabase
+      .from('schedule_assignments')
+      .select()
+      .eq('schedule_id', formData.schedule_id)
+      .eq('employee_id', formData.employee_id)
+      .eq('date', formData.date)
+      .single();
 
-  // Convert to database format
-  const dbData = toDbAssignment(validatedData)
+    if (existing) {
+      return { data: null, error: 'Assignment already exists for this employee on this date' };
+    }
 
-  // Insert into database
-  const { data: assignment, error } = await supabase
-    .from('assignments')
-    .insert(dbData)
-    .select('*')
-    .single()
+    // Get shift details
+    const { data: shift } = await supabase
+      .from('shifts')
+      .select('start_time, end_time')
+      .eq('id', formData.shift_id)
+      .single();
 
-  if (error) {
-    throw new Error(error.message)
+    if (!shift) {
+      return { data: null, error: 'Shift not found' };
+    }
+
+    // Create assignment with shift times
+    const assignmentData: AssignmentInsert = {
+      schedule_id: formData.schedule_id,
+      employee_id: formData.employee_id,
+      shift_id: formData.shift_id,
+      date: formData.date,
+      is_supervisor_shift: formData.is_supervisor_shift,
+      overtime_hours: formData.overtime_hours,
+      overtime_status: formData.overtime_status,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      created_by: formData.created_by,
+      updated_by: formData.updated_by,
+      version: formData.version
+    };
+
+    const { data: newAssignment, error } = await supabase
+      .from('schedule_assignments')
+      .insert([assignmentData])
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Database error:', error);
+      return { data: null, error: error.message };
+    }
+
+    if (!newAssignment) {
+      return { data: null, error: 'Failed to create assignment' };
+    }
+
+    return { data: newAssignment };
+  } catch (error) {
+    console.error('Error creating assignment:', error);
+    return { data: null, error: 'Failed to create assignment' };
   }
-
-  // Convert to domain format
-  const domainAssignment = toDomainAssignment(assignment)
-
-  // Revalidate schedule page
-  revalidatePath(`/dashboard/schedules/${data.scheduleId}`)
-
-  return domainAssignment
 }
-
-/**
- * Updates an existing schedule assignment
- */
-export async function updateAssignment(id: string, data: AssignmentInput) {
-  const cookieStore = cookies()
-  const supabase = createClient(cookieStore)
-
-  // Validate input
-  const validatedData = assignmentSchema.parse(data)
-
-  // Convert to database format
-  const dbData = toDbAssignment(validatedData)
-
-  // Update in database
-  const { data: assignment, error } = await supabase
-    .from('assignments')
-    .update(dbData)
-    .eq('id', id)
-    .select('*')
-    .single()
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  // Convert to domain format
-  const domainAssignment = toDomainAssignment(assignment)
-
-  // Revalidate schedule page
-  revalidatePath(`/dashboard/schedules/${data.scheduleId}`)
-
-  return domainAssignment
-}
-
-/**
- * Deletes a schedule assignment
- */
-export async function deleteAssignment(id: string, scheduleId: string) {
-  const cookieStore = cookies()
-  const supabase = createClient(cookieStore)
-
-  const { error } = await supabase
-    .from('assignments')
-    .delete()
-    .eq('id', id)
-
-  if (error) {
-    throw new Error(error.message)
-  }
-
-  // Revalidate schedule page
-  revalidatePath(`/dashboard/schedules/${scheduleId}`)
-} 

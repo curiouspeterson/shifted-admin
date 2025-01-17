@@ -30,6 +30,13 @@ A comprehensive web application for managing employee schedules in 24/7 dispatch
 ### Environment Variables
 Create a `.env.local` file with:
 
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+JWT_SECRET=
+SUPABASE_ACCESS_TOKEN=
+SUPABASE_DB_PASSWORD=
+
 ```
 
 ## Architecture
@@ -42,13 +49,112 @@ Create a `.env.local` file with:
 - Client-side state management with Zustand
 
 ### Backend
-- Supabase for database and authentication
+- Supabase for database postgres and authentication.
 - Row-level security policies
 - Optimized database indexes
 - Server actions for API endpoints
 
-## Project Structure
 ```
+
+## Project Structure
+
+/
+├── app/
+│   ├── __tests__/
+│   │   └── sw.test.ts
+│   ├── components/
+│   │   ├── error-boundary/
+│   │   ├── forms/
+│   │   │   ├── base/
+│   │   │   │   ├── FormInput.tsx
+│   │   │   │   ├── DateField.tsx
+│   │   │   │   ├── FormDatePicker.tsx
+│   │   │   │   └── TextareaField.tsx
+│   │   │   ├── AssignmentForm.tsx
+│   │   │   ├── ScheduleForm.tsx
+│   │   │   └── index.ts
+│   │   ├── ui/
+│   │   │   ├── calendar.tsx
+│   │   │   ├── form.tsx
+│   │   │   └── table.tsx
+│   │   └── theme-provider.tsx
+│   ├── dashboard/
+│   │   └── schedules/
+│   │       └── _components/
+│   │           └── create-schedule-button.tsx
+│   ├── employees/
+│   │   └── employee-list.tsx
+│   ├── lib/
+│   │   ├── api/
+│   │   │   ├── database/
+│   │   │   │   ├── base/
+│   │   │   │   │   ├── repository.ts
+│   │   │   │   │   └── transaction.ts
+│   │   │   │   └── schedules.ts
+│   │   │   ├── docs.ts
+│   │   │   └── repositories/
+│   │   │       ├── schedule.ts
+│   │   │       └── index.ts
+│   │   ├── errors/
+│   │   │   ├── base/
+│   │   │   ├── types/
+│   │   │   ├── utils/
+│   │   │   └── index.ts
+│   │   ├── logging/
+│   │   │   └── errorLogger.ts
+│   │   ├── offline/
+│   │   │   └── utils/
+│   │   │       ├── background-sync.ts
+│   │   │       ├── indexed-db.ts
+│   │   │       ├── network.ts
+│   │   │       └── service-worker.ts
+│   │   ├── schemas/
+│   │   │   ├── base/
+│   │   │   │   └── index.ts
+│   │   │   ├── forms/
+│   │   │   │   └── index.ts
+│   │   │   └── index.ts
+│   │   ├── supabase/
+│   │   │   ├── database.types.ts
+│   │   │   └── README.md
+│   │   └── utils/
+│   │       ├── core/
+│   │       │   └── index.ts
+│   │       └── index.ts
+│   ├── providers/
+│   │   └── query-provider.tsx
+│   ├── styles/
+│   │   └── globals.css
+│   └── layout.tsx
+├── documentation/
+│   ├── implementation-status.md
+│   ├── known-issues.md
+│   └── new-plan.md
+├── public/
+│   ├── sw.js
+│   └── workbox-*.js
+├── scripts/
+│   └── generate-types.ts
+├── supabase/
+│   ├── functions/
+│   ├── migrations/
+│   ├── seed/
+│   ├── types/
+│   ├── .gitignore
+│   └── README.md
+├── .cursorrules
+├── .eslintrc.json
+├── .gitignore
+├── jest.config.js
+├── jest.setup.js
+├── jest.setup.ts
+├── middleware.ts
+├── next.config.js
+├── package.json
+├── postcss.config.js
+├── README.md
+├── tsconfig.json
+└── tsconfig.test.json
 
 ## Features in Development
 - Schedule optimization algorithm

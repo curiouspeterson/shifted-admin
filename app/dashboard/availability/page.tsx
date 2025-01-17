@@ -9,7 +9,7 @@
 
 import { useState } from 'react'
 import useSWR from 'swr'
-import LoadingSpinner from '@/components/LoadingSpinner'
+import LoadingSpinner from '@/components/loading-spinner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
 export default function AvailabilityPage() {

@@ -1,3 +1,10 @@
+/**
+ * Edit Employee Form Component
+ * Last Updated: 2024-01-16
+ * 
+ * Client-side form component for editing employee details
+ */
+
 "use client"
 
 import { useState } from "react"
@@ -23,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
-import { createClient } from "@/lib/supabase/client"
+import { createClientComponentClient } from "@/lib/supabase/client-side"
 
 const employeeFormSchema = z.object({
   first_name: z.string().min(2, {
@@ -76,7 +83,7 @@ export function EditEmployeeForm({ employee }: EditEmployeeFormProps) {
   async function onSubmit(data: EmployeeFormValues) {
     try {
       setIsLoading(true)
-      const supabase = createClient()
+      const supabase = createClientComponentClient()
       const { error } = await supabase
         .from("employees")
         .update(data)

@@ -1,6 +1,6 @@
 /**
  * Schedule Schema Types
- * Last Updated: 2024-01-15
+ * Last Updated: 2024-01-16
  * 
  * Defines the domain types for schedules.
  */
@@ -18,7 +18,7 @@ export type ScheduleStatus = typeof ScheduleStatus[keyof typeof ScheduleStatus]
 
 // Base schedule fields
 const scheduleBase = {
-  name: z.string().min(1).max(255),
+  title: z.string().min(1).max(255),
   description: z.string().max(1000).optional(),
   startDate: z.string().datetime(),
   endDate: z.string().datetime(),

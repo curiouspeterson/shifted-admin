@@ -1,6 +1,6 @@
 /**
  * Table Component
- * Last Updated: 2025-01-15
+ * Last Updated: 2024-01-16
  * 
  * This component provides a styled table using shadcn/ui.
  * Features:

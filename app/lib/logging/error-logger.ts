@@ -1,10 +1,18 @@
 /**
  * Error Logger Module
- * Last Updated: 2024-01-16
+ * Last Updated: 2024-01-17
  * 
  * Provides structured error logging with proper formatting
  * for different types of errors.
  */
+
+export enum ErrorSeverity {
+  DEBUG = 'debug',
+  INFO = 'info',
+  WARN = 'warn',
+  ERROR = 'error',
+  CRITICAL = 'critical'
+}
 
 type LogLevel = 'error' | 'warn' | 'info' | 'debug'
 
@@ -126,4 +134,4 @@ class ErrorLogger {
 
 // Export singleton instance
 export const errorLogger = ErrorLogger.getInstance()
-export const { formatNextError } = errorLogger 
+export const { formatError, formatNextError } = errorLogger 

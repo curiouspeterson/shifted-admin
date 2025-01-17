@@ -1,89 +1,105 @@
 /**
  * Schedule Timeline Component
- * Last Updated: 2024-01-16
+ * Last Updated: 2024
  * 
- * A server component that displays a timeline view of shifts and assignments
- * for a specific date in the schedule.
+ * A client-side component that provides a visual timeline representation of shifts
+ * for a specific date. Shows shift blocks positioned on a 24-hour timeline with
+ * hourly markers and shift details.
+ * 
+ * Features:
+ * - 24-hour timeline with hour markers
+ * - Visual shift blocks showing duration
+ * - Shift name and assigned staff count
+ * - Responsive layout
+ * - Time-based positioning
  */
 
-import { Card } from '@/components/ui/card'
-import type { Assignment } from '@/lib/types/scheduling'
+'use client';
 
+import React from 'react';
+import { Card, CardHeader, CardContent } from '@/components/ui/card';
+import type { Assignment } from '@/app/lib/types/scheduling';
+
+/**
+ * Props for the ScheduleTimeline component
+ * @property date - The date for which to show the timeline
+ * @property shifts - Object mapping shift IDs to arrays of assignments
+ */
 interface ScheduleTimelineProps {
-  date: string
-  shifts: Record<string, Assignment[]>
+  date: string;
+  shifts: {
+    [shiftId: string]: Assignment[];
+  };
 }
 
-export function ScheduleTimeline({ date, shifts }: ScheduleTimelineProps) {
-  // Convert shifts object to sorted array of entries
-  const sortedShifts = Object.entries(shifts || {}).sort(([a], [b]) => {
-    const timeA = a.split('-')[0] // Get start time of shift A
-    const timeB = b.split('-')[0] // Get start time of shift B
-    return timeA.localeCompare(timeB)
-  })
+/**
+ * ScheduleTimeline Component
+ * Displays a visual timeline of shifts for a specific date, with
+ * shift blocks positioned according to their start and end times.
+ */
+export default function ScheduleTimeline({ date, shifts }: ScheduleTimelineProps) {
+  // Set up timeline boundaries for the given date
+  const timelineStart = new Date(`${date}T00:00:00`);
+  const timelineEnd = new Date(`${date}T23:59:59`);
 
-  if (sortedShifts.length === 0) {
-    return (
-      <Card className="p-4">
-        <p className="text-sm text-gray-500">No shifts scheduled for this date.</p>
-      </Card>
-    )
-  }
+  /**
+   * Calculates the percentage position on the timeline for a given time
+   * @param time - Time in HH:MM format
+   * @returns Percentage position (0-100) on the timeline
+   */
+  const getTimelinePosition = (time: string) => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return ((hours * 60 + minutes) / (24 * 60)) * 100;
+  };
 
   return (
-    <Card className="divide-y">
-      {sortedShifts.map(([shiftId, assignments]) => {
-        const [startTime, endTime] = shiftId.split('-')
-        
-        return (
-          <div key={shiftId} className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-medium">
-                  {startTime} - {endTime}
-                </h4>
-                <p className="text-sm text-gray-500">
-                  {assignments.length} {assignments.length === 1 ? 'employee' : 'employees'} assigned
-                </p>
-              </div>
-              
-              <div className="flex -space-x-2">
-                {assignments.map((assignment) => (
-                  assignment.employee_id && (
-                    <div
-                      key={assignment.id}
-                      className="relative inline-block h-8 w-8 rounded-full bg-gray-100 ring-2 ring-white"
-                    >
-                      <span className="absolute inset-0 flex items-center justify-center text-xs font-medium">
-                        {assignment.employee_id.slice(0, 2).toUpperCase()}
-                      </span>
-                    </div>
-                  )
-                ))}
-              </div>
+    <Card className="w-full">
+      <CardHeader>
+        <h3 className="text-lg font-medium">Schedule Timeline</h3>
+      </CardHeader>
+      <CardContent>
+        <div className="relative h-[200px] border-l border-r border-gray-200">
+          {/* Hour markers for the 24-hour timeline */}
+          {Array.from({ length: 24 }).map((_, hour) => (
+            <div
+              key={hour}
+              className="absolute top-0 h-full border-l border-gray-200"
+              style={{ left: `${(hour / 24) * 100}%` }}
+            >
+              <span className="absolute -top-6 -ml-3 text-xs text-gray-500">
+                {`${hour.toString().padStart(2, '0')}:00`}
+              </span>
             </div>
+          ))}
+
+          {/* Shift blocks showing assignments */}
+          {Object.entries(shifts).map(([shiftId, assignments]) => {
+            if (!assignments?.[0]?.shift) return null;
             
-            {assignments.length > 0 && (
-              <div className="mt-2">
-                <ul className="space-y-1">
-                  {assignments.map((assignment) => (
-                    assignment.employee_id && (
-                      <li key={assignment.id} className="text-sm">
-                        {assignment.employee?.first_name} {assignment.employee?.last_name}
-                        {assignment.overtime_hours && (
-                          <span className="ml-2 text-gray-500">
-                            ({assignment.overtime_hours}h overtime)
-                          </span>
-                        )}
-                      </li>
-                    )
-                  ))}
-                </ul>
+            const { start_time, end_time } = assignments[0].shift;
+            const startPos = getTimelinePosition(start_time);
+            const endPos = getTimelinePosition(end_time);
+            const width = endPos - startPos;
+
+            return (
+              <div
+                key={shiftId}
+                className="absolute h-10 bg-blue-500 rounded-md opacity-75"
+                style={{
+                  left: `${startPos}%`,
+                  width: `${width}%`,
+                  top: '50%',
+                  transform: 'translateY(-50%)'
+                }}
+              >
+                <div className="p-2 text-xs text-white">
+                  {assignments[0].shift.name} ({assignments.length})
+                </div>
               </div>
-            )}
-          </div>
-        )
-      })}
+            );
+          })}
+        </div>
+      </CardContent>
     </Card>
-  )
+  );
 } 

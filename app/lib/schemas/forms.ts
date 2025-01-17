@@ -1,70 +1,75 @@
 /**
  * Forms Schema Module
- * Last Updated: 2024
+ * Last Updated: 2024-01-16
  * 
  * Defines Zod schemas for form validation in the application.
  * These schemas are used to validate user input in forms for creating
- * and updating schedules and assignments. They extend the base schemas
- * but omit server-controlled fields and add form-specific validations.
- * 
- * Features:
- * - Schedule form validation
- * - Assignment form validation
- * - Form error handling
- * - Type inference helpers
+ * and updating schedules and assignments.
  */
 
 import { z } from 'zod';
-import { scheduleSchema, assignmentSchema } from './schedule';
 
 /**
  * Schedule Form Schema
  * Extends the base schedule schema for form validation.
  * Omits server-controlled fields and adds form-specific fields.
- * 
- * Required fields:
- * - name: Schedule name (min 1 character)
- * - start_date: Start date in YYYY-MM-DD format
- * - end_date: End date in YYYY-MM-DD format
- * - status: Schedule status (draft/published/archived)
- * 
- * Optional fields:
- * - description: Schedule description
  */
 export const scheduleFormSchema = z.object({
-  name: z.string().min(1, 'Schedule name is required'),
+  title: z.string().min(1, 'Schedule title is required'),
+  startDate: z.date({
+    required_error: 'Start date is required',
+  }),
+  endDate: z.date({
+    required_error: 'End date is required',
+  }),
   description: z.string().optional(),
-  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
-  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
   status: z.enum(['draft', 'published', 'archived']),
+}).refine((data) => {
+  return data.endDate >= data.startDate;
+}, {
+  message: 'End date must be after start date',
+  path: ['endDate'],
 });
 
 /**
  * Assignment Form Schema
  * Extends the base assignment schema for form validation.
  * Omits server-controlled fields and adds form-specific validations.
- * 
- * Required fields:
- * - schedule_id: UUID of the schedule
- * - employee_id: UUID of the assigned employee
- * - shift_id: UUID of the assigned shift
- * - date: Assignment date in YYYY-MM-DD format
- * - is_supervisor_shift: Whether this is a supervisor shift
- * 
- * Optional fields:
- * - overtime_hours: Number of overtime hours (nullable)
- * - overtime_status: Status of overtime request (nullable)
  */
 export const assignmentFormSchema = z.object({
-  schedule_id: z.string().uuid('Invalid schedule ID'),
-  employee_id: z.string().uuid('Invalid employee ID'),
-  shift_id: z.string().uuid('Invalid shift ID'),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, {
-    message: 'Date must be in YYYY-MM-DD format',
-  }),
-  is_supervisor_shift: z.boolean(),
-  overtime_hours: z.number().min(0).nullable(),
-  overtime_status: z.enum(['none', 'pending', 'approved', 'rejected']).nullable(),
+  schedule_id: z.string(),
+  employee_id: z.string().min(1, 'Employee is required'),
+  shift_id: z.string().min(1, 'Shift is required'),
+  date: z.string().min(1, 'Date is required'),
+  is_supervisor_shift: z.boolean().default(false),
+  overtime_hours: z.number().nullable().default(null),
+  overtime_status: z.enum(['none', 'pending', 'rejected', 'approved']).nullable().default(null),
+  created_by: z.string().nullable().default(null),
+  updated_by: z.string().nullable().default(null),
+  version: z.number().default(1)
+});
+
+/**
+ * Assignment Response Schema
+ * Defines the structure of assignment responses from the server
+ */
+export const assignmentResponseSchema = z.object({
+  data: z.object({
+    id: z.string(),
+    schedule_id: z.string(),
+    employee_id: z.string(),
+    shift_id: z.string(),
+    date: z.string(),
+    is_supervisor_shift: z.boolean().nullable(),
+    overtime_hours: z.number().nullable(),
+    overtime_status: z.string().nullable(),
+    created_at: z.string().nullable(),
+    updated_at: z.string().nullable(),
+    created_by: z.string().nullable(),
+    updated_by: z.string().nullable(),
+    version: z.number()
+  }).nullable(),
+  error: z.string().optional()
 });
 
 /**
@@ -73,15 +78,13 @@ export const assignmentFormSchema = z.object({
  */
 export type ScheduleFormData = z.infer<typeof scheduleFormSchema>;
 export type AssignmentFormData = z.infer<typeof assignmentFormSchema>;
+export type AssignmentResponse = z.infer<typeof assignmentResponseSchema>;
 
 /**
  * Form Error Schema
  * Defines the structure of form validation errors
- * 
- * @property message - Main error message
- * @property errors - Optional record of field-specific error messages
  */
 export const formErrorSchema = z.object({
   message: z.string(),
   errors: z.record(z.string()).optional(),
-}); 
+});

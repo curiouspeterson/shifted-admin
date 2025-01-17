@@ -1,24 +1,17 @@
 /**
  * Authentication Callback Route Handler
- * Last Updated: 2024
+ * Last Updated: 2024-01-16
  * 
  * This file implements the OAuth callback endpoint for Supabase authentication.
  * It handles the exchange of authorization codes for session tokens after successful
  * authentication with an OAuth provider or email confirmation.
- * 
- * Features:
- * - Code exchange for session tokens
- * - Automatic redirection after authentication
- * - Error handling with user-friendly redirects
- * - Cookie management for session persistence
- * - Support for custom redirect URLs via 'next' parameter
  */
 
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
-import type { Database } from '@/app/lib/supabase/database.types'
-import { createMiddlewareCookieHandler } from '@/app/lib/supabase/cookies'
+import type { Database } from '@/lib/database/database.types'
+import { getSupabaseCookies } from '@/lib/supabase/cookies'
 
 /**
  * GET /auth/callback
@@ -56,7 +49,17 @@ export async function GET(request: NextRequest) {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
-        cookies: createMiddlewareCookieHandler(request, response)
+        cookies: {
+          get(name: string) {
+            return request.cookies.get(name)?.value
+          },
+          set(name: string, value: string, options: any) {
+            response.cookies.set({ name, value, ...options })
+          },
+          remove(name: string, options: any) {
+            response.cookies.delete({ name, ...options })
+          },
+        },
       }
     )
 

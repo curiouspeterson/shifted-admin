@@ -8,7 +8,7 @@
 import React from 'react'
 import { useQuery } from '@/lib/supabase/hooks'
 import { CardSkeleton } from '../loading'
-import { ErrorBoundary } from '../error-boundary'
+import { ErrorBoundary } from '@/components/error/ErrorBoundary'
 import type { Database } from '@/lib/supabase/database.types'
 
 type Tables = Database['public']['Tables']

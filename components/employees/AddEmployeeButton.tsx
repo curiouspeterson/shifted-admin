@@ -8,7 +8,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { EmployeeForm } from './EmployeeForm'
+import { EmployeeForm } from './employee-form'
 import { useRouter } from 'next/navigation'
 
 export function AddEmployeeButton() {

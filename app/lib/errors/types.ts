@@ -1,14 +1,11 @@
 /**
  * Error Types
- * Last Updated: 2024-03-19 20:00 PST
+ * Last Updated: 2024-01-17
  * 
  * This file defines the base error types and interfaces used throughout the application.
  */
 
-/**
- * Error severity levels
- */
-export type ErrorSeverity = 'info' | 'warning' | 'error' | 'critical';
+import { ErrorSeverity } from '../logging/error-logger';
 
 /**
  * Error metadata interface

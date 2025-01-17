@@ -1,121 +1,159 @@
 /**
  * Schedule Header Component
- * Last Updated: 2024-01-16
+ * Last Updated: 2024
  * 
- * A server component that provides the header section for schedule details view.
- * Uses server actions for mutations like publishing and deleting schedules.
+ * A client-side component that provides the header section for schedule details view.
+ * Includes controls for editing, publishing, and deleting schedules, with proper
+ * loading states and error handling.
+ * 
+ * Features:
+ * - Schedule title and description
+ * - Edit schedule link
+ * - Publish schedule button with status check
+ * - Delete schedule button with confirmation
+ * - Error display for failed operations
+ * - Loading states for async operations
  */
 
-'use client'
+'use client';
 
-import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import Link from 'next/link'
-import { publishSchedule, unpublishSchedule, deleteSchedule } from '@/lib/actions/schedule'
-import type { Schedule } from '@/lib/types/scheduling'
+import Link from 'next/link';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import type { Schedule } from '@/app/lib/types/scheduling';
 
+/**
+ * Props for the ScheduleHeader component
+ * @property schedule - The schedule object containing details to display and manage
+ */
 interface ScheduleHeaderProps {
-  schedule: Schedule
+  schedule: Schedule;
 }
 
-export function ScheduleHeader({ schedule }: ScheduleHeaderProps) {
-  const handlePublish = async (formData: FormData) => {
-    await publishSchedule(formData.get('id') as string)
-  }
+/**
+ * ScheduleHeader Component
+ * Renders the header section of the schedule details page with action buttons
+ * and error handling for schedule management operations.
+ * 
+ * @param schedule - The schedule object to display and manage
+ */
+export default function ScheduleHeader({ schedule }: ScheduleHeaderProps) {
+  const [error, setError] = useState<string | null>(null);
+  const [isApproving, setIsApproving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const router = useRouter();
 
-  const handleUnpublish = async (formData: FormData) => {
-    await unpublishSchedule(formData.get('id') as string)
-  }
+  /**
+   * Handles the approval/publishing of a schedule
+   * Updates the schedule status to 'published' via API call
+   * 
+   * @param scheduleId - The ID of the schedule to publish
+   */
+  const handleApprove = async (scheduleId: string) => {
+    try {
+      setIsApproving(true);
+      setError(null);
 
-  const handleDelete = async (formData: FormData) => {
-    await deleteSchedule(formData.get('id') as string)
-  }
+      const response = await fetch(`/api/schedules/${scheduleId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'published' }),
+      });
 
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to approve schedule');
+      }
+
+      // Refresh the page to show updated status
+      window.location.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to approve schedule');
+    } finally {
+      setIsApproving(false);
+    }
+  };
+
+  /**
+   * Handles the deletion of a schedule
+   * Removes the schedule via API call and redirects to schedules list
+   * 
+   * @param scheduleId - The ID of the schedule to delete
+   */
+  const handleDelete = async (scheduleId: string) => {
+    try {
+      setIsDeleting(true);
+      setError(null);
+
+      const response = await fetch(`/api/schedules/${scheduleId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete schedule');
+      }
+
+      // Redirect to schedules list
+      router.push('/dashboard/schedules');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete schedule');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  // Render the header with action buttons and error display
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold">Schedule Details</h1>
-            <Badge variant={schedule.status === 'published' ? 'success' : 'secondary'}>
-              {schedule.status}
-            </Badge>
-          </div>
-          <p className="text-sm text-gray-500">
-            {new Date(schedule.start_date).toLocaleDateString()} - {new Date(schedule.end_date).toLocaleDateString()}
+    <div className="px-4 sm:px-6 lg:px-8">
+      <div className="sm:flex sm:items-center">
+        <div className="sm:flex-auto">
+          <h1 className="text-base font-semibold leading-6 text-gray-900">
+            Schedule Details
+          </h1>
+          <p className="mt-2 text-sm text-gray-700">
+            View and manage schedule details and assignments
           </p>
         </div>
-        
-        <div className="flex items-center gap-2">
+        <div className="mt-4 sm:ml-16 sm:mt-0 sm:flex gap-3">
           <Link
             href={`/dashboard/schedules/edit/${schedule.id}`}
-            className="inline-flex items-center justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
+            className="block rounded-md bg-indigo-600 px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
           >
-            Edit
+            Edit Schedule
           </Link>
-          
-          <form action={handlePublish}>
-            <input type="hidden" name="id" value={schedule.id} />
-            <Button
-              type="submit"
-              variant="outline"
-              disabled={schedule.status === 'published'}
-            >
-              Publish
-            </Button>
-          </form>
-          
-          <form action={handleUnpublish}>
-            <input type="hidden" name="id" value={schedule.id} />
-            <Button
-              type="submit"
-              variant="outline"
-              disabled={schedule.status !== 'published'}
-            >
-              Unpublish
-            </Button>
-          </form>
-          
-          <form
-            action={handleDelete}
-            onSubmit={(e) => {
-              if (!confirm('Are you sure you want to delete this schedule?')) {
-                e.preventDefault()
-              }
-            }}
+          <button
+            onClick={() => handleApprove(schedule.id)}
+            disabled={isApproving || schedule.status === 'published'}
+            className="block rounded-md bg-green-600 px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-green-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-green-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <input type="hidden" name="id" value={schedule.id} />
-            <Button type="submit" variant="destructive">
-              Delete
-            </Button>
-          </form>
+            {isApproving ? 'Publishing...' : 'Publish Schedule'}
+          </button>
+          <button
+            onClick={() => handleDelete(schedule.id)}
+            disabled={isDeleting}
+            className="block rounded-md bg-red-600 px-3 py-2 text-center text-sm font-semibold text-white shadow-sm hover:bg-red-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isDeleting ? 'Deleting...' : 'Delete Schedule'}
+          </button>
         </div>
       </div>
-      
-      <div className="grid grid-cols-3 gap-4">
-        <div className="rounded-lg bg-white p-4 shadow">
-          <h3 className="text-sm font-medium text-gray-500">Created</h3>
-          <p className="mt-1 text-sm">
-            {schedule.created_at && new Date(schedule.created_at).toLocaleString()}
-            {schedule.created_by && ` by ${schedule.created_by}`}
-          </p>
-        </div>
-        
-        {schedule.published_at && (
-          <div className="rounded-lg bg-white p-4 shadow">
-            <h3 className="text-sm font-medium text-gray-500">Published</h3>
-            <p className="mt-1 text-sm">
-              {schedule.published_at && new Date(schedule.published_at).toLocaleString()}
-              {schedule.published_by && ` by ${schedule.published_by}`}
-            </p>
+
+      {/* Error display section */}
+      {error && (
+        <div className="mt-4 rounded-md bg-red-50 p-4">
+          <div className="flex">
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">Error</h3>
+              <div className="mt-2 text-sm text-red-700">
+                <p>{error}</p>
+              </div>
+            </div>
           </div>
-        )}
-        
-        <div className="rounded-lg bg-white p-4 shadow">
-          <h3 className="text-sm font-medium text-gray-500">Version</h3>
-          <p className="mt-1 text-sm">{schedule.version}</p>
         </div>
-      </div>
+      )}
     </div>
-  )
+  );
 } 

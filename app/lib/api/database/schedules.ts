@@ -1,246 +1,176 @@
 /**
- * Schedules Database Operations
- * Last Updated: 2024
+ * Schedules Repository Implementation
+ * Last Updated: 2024-01-16
  * 
- * This module provides type-safe database operations for the schedules table.
- * It includes:
- * - CRUD operations for schedule records
- * - Error handling and type safety
- * - Query builders and filters
+ * Provides optimized database operations for schedules
+ * with explicit column selection and type safety.
  */
 
-import { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
-import type { Database } from '../../supabase/database.types';
+import { SupabaseClient, PostgrestError, PostgrestSingleResponse } from '@supabase/supabase-js';
+import { BaseRepository } from './base/repository';
+import type { Database } from '@/lib/database/database.types';
+import { DatabaseError } from '@/lib/errors/database';
 
-type Tables = Database['public']['Tables'];
-type ScheduleRow = Tables['schedules']['Row'];
-type ScheduleInsert = Tables['schedules']['Insert'];
-type ScheduleUpdate = Tables['schedules']['Update'];
+type Schedule = Database['public']['Tables']['schedules']['Row'];
+type ScheduleInsert = Database['public']['Tables']['schedules']['Insert'];
+type ScheduleUpdate = Database['public']['Tables']['schedules']['Update'];
 
-/**
- * Database Operation Result Type
- * Wraps database operation results with error handling
- */
-export interface DatabaseResult<T> {
-  data: T | null;
-  error: DatabaseError | null;
-}
+const DEFAULT_COLUMNS = [
+  'id',
+  'title',
+  'description',
+  'start_date',
+  'end_date',
+  'status',
+  'metadata',
+  'created_at',
+  'updated_at',
+  'created_by',
+  'updated_by'
+] as const;
 
-/**
- * Database Error Class
- * Custom error class for database operation failures
- */
-export class DatabaseError extends Error {
-  constructor(
-    message: string,
-    public statusCode: number = 500,
-    public originalError?: PostgrestError | Error | unknown
-  ) {
-    super(message);
-    this.name = 'DatabaseError';
+export class SchedulesRepository extends BaseRepository<Schedule, ScheduleInsert, ScheduleUpdate> {
+  constructor(supabase: SupabaseClient<Database>) {
+    super(supabase, 'schedules');
   }
-}
 
-/**
- * Query Options Type
- * Configuration for database queries
- */
-interface QueryOptions {
-  orderBy?: {
-    column: keyof ScheduleRow;
-    ascending?: boolean;
-  };
-  limit?: number;
-  offset?: number;
-  filter?: Partial<Record<keyof ScheduleRow, string>>;
-  include?: {
-    assignments?: boolean;
-    requirements?: boolean;
-  };
-}
+  protected getDefaultColumns(): Array<keyof Schedule> {
+    return [...DEFAULT_COLUMNS];
+  }
 
-/**
- * Schedules Database Operations Class
- * Provides type-safe database operations for the schedules table
- */
-export class SchedulesOperations {
-  private readonly table = 'schedules' as keyof Tables;
-
-  constructor(private supabase: SupabaseClient<Database>) {}
-
-  /**
-   * Find a single schedule by ID
-   */
-  async findById(id: string, include?: QueryOptions['include']): Promise<DatabaseResult<ScheduleRow>> {
+  async findById(id: string): Promise<Schedule | null> {
     try {
-      const { data, error } = await this.supabase
+      const response = await this.supabase
         .from(this.table)
-        .select(this.buildSelect(include))
+        .select(this.getDefaultColumns().join(','))
         .eq('id', id)
-        .single() as { data: ScheduleRow | null; error: PostgrestError | null };
+        .single() as PostgrestSingleResponse<Schedule>;
 
-      if (error) throw error;
+      const { data, error } = response;
 
-      return { data, error: null };
+      if (error) {
+        throw new DatabaseError(
+          'Failed to fetch schedule by ID',
+          error,
+          { id }
+        );
+      }
+
+      return data;
     } catch (error) {
-      console.error('Error fetching schedule by ID:', error);
-      return {
-        data: null,
-        error: new DatabaseError(
-          'Failed to fetch schedule',
-          500,
-          error
-        ),
-      };
+      if (error instanceof DatabaseError) {
+        throw error;
+      }
+      throw new DatabaseError(
+        'Failed to fetch schedule',
+        error instanceof PostgrestError ? error : undefined,
+        { id }
+      );
     }
   }
 
-  /**
-   * Find multiple schedules with optional filtering and ordering
-   */
-  async findMany(options: QueryOptions = {}): Promise<DatabaseResult<ScheduleRow[]>> {
+  async create(data: ScheduleInsert): Promise<Schedule> {
     try {
-      let query = this.supabase
-        .from(this.table)
-        .select(this.buildSelect(options.include));
-
-      // Apply filters
-      if (options.filter) {
-        Object.entries(options.filter).forEach(([key, value]) => {
-          if (value !== undefined && value !== null) {
-            query = query.eq(key, value);
-          }
-        });
-      }
-
-      // Apply ordering
-      if (options.orderBy) {
-        query = query.order(options.orderBy.column, {
-          ascending: options.orderBy.ascending ?? true,
-        });
-      }
-
-      // Apply pagination
-      if (options.limit) {
-        query = query.limit(options.limit);
-      }
-      if (options.offset) {
-        query = query.range(options.offset, options.offset + (options.limit || 10) - 1);
-      }
-
-      const { data, error } = await query as { data: ScheduleRow[] | null; error: PostgrestError | null };
-
-      if (error) throw error;
-
-      return { data: data || [], error: null };
-    } catch (error) {
-      console.error('Error fetching schedules:', error);
-      return {
-        data: null,
-        error: new DatabaseError(
-          'Failed to fetch schedules',
-          500,
-          error
-        ),
-      };
-    }
-  }
-
-  /**
-   * Create a new schedule
-   */
-  async create(data: ScheduleInsert): Promise<DatabaseResult<ScheduleRow>> {
-    try {
-      const { data: created, error } = await this.supabase
+      const response = await this.supabase
         .from(this.table)
         .insert(data)
-        .select()
-        .single() as { data: ScheduleRow | null; error: PostgrestError | null };
+        .select(this.getDefaultColumns().join(','))
+        .single() as PostgrestSingleResponse<Schedule>;
 
-      if (error) throw error;
+      const { data: created, error } = response;
 
-      return { data: created, error: null };
-    } catch (error) {
-      console.error('Error creating schedule:', error);
-      return {
-        data: null,
-        error: new DatabaseError(
+      if (error) {
+        throw new DatabaseError(
           'Failed to create schedule',
-          500,
-          error
-        ),
-      };
+          error,
+          { data }
+        );
+      }
+
+      if (!created) {
+        throw new DatabaseError(
+          'Failed to create schedule - no data returned',
+          undefined,
+          { data }
+        );
+      }
+
+      return created;
+    } catch (error) {
+      if (error instanceof DatabaseError) {
+        throw error;
+      }
+      throw new DatabaseError(
+        'Failed to create schedule',
+        error instanceof PostgrestError ? error : undefined,
+        { data }
+      );
     }
   }
 
-  /**
-   * Update an existing schedule
-   */
-  async update(id: string, data: ScheduleUpdate): Promise<DatabaseResult<ScheduleRow>> {
+  async update(id: string, data: ScheduleUpdate): Promise<Schedule> {
     try {
-      const { data: updated, error } = await this.supabase
+      const response = await this.supabase
         .from(this.table)
         .update(data)
         .eq('id', id)
-        .select()
-        .single() as { data: ScheduleRow | null; error: PostgrestError | null };
+        .select(this.getDefaultColumns().join(','))
+        .single() as PostgrestSingleResponse<Schedule>;
 
-      if (error) throw error;
+      const { data: updated, error } = response;
 
-      return { data: updated, error: null };
-    } catch (error) {
-      console.error('Error updating schedule:', error);
-      return {
-        data: null,
-        error: new DatabaseError(
+      if (error) {
+        throw new DatabaseError(
           'Failed to update schedule',
-          500,
-          error
-        ),
-      };
+          error,
+          { id, data }
+        );
+      }
+
+      if (!updated) {
+        throw new DatabaseError(
+          'Failed to update schedule - no data returned',
+          undefined,
+          { id, data }
+        );
+      }
+
+      return updated;
+    } catch (error) {
+      if (error instanceof DatabaseError) {
+        throw error;
+      }
+      throw new DatabaseError(
+        'Failed to update schedule',
+        error instanceof PostgrestError ? error : undefined,
+        { id, data }
+      );
     }
   }
 
-  /**
-   * Delete a schedule
-   * Returns null on successful deletion
-   */
-  async delete(id: string): Promise<DatabaseResult<null>> {
+  async delete(id: string): Promise<void> {
     try {
       const { error } = await this.supabase
         .from(this.table)
         .delete()
-        .eq('id', id) as { data: null; error: PostgrestError | null };
+        .eq('id', id);
 
-      if (error) throw error;
-
-      return { data: null, error: null };
-    } catch (error) {
-      console.error('Error deleting schedule:', error);
-      return {
-        data: null,
-        error: new DatabaseError(
+      if (error) {
+        throw new DatabaseError(
           'Failed to delete schedule',
-          500,
-          error
-        ),
-      };
+          error,
+          { id }
+        );
+      }
+    } catch (error) {
+      if (error instanceof DatabaseError) {
+        throw error;
+      }
+      throw new DatabaseError(
+        'Failed to delete schedule',
+        error instanceof PostgrestError ? error : undefined,
+        { id }
+      );
     }
-  }
-
-  /**
-   * Build select query string based on include options
-   */
-  private buildSelect(include?: QueryOptions['include']): string {
-    const parts = ['*'];
-
-    if (include?.assignments) {
-      parts.push('assignments(*)');
-    }
-    if (include?.requirements) {
-      parts.push('requirements(*)');
-    }
-
-    return parts.join(',');
   }
 } 

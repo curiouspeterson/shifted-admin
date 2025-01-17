@@ -13,7 +13,7 @@
  * - Automatic integration with Next.js
  */
 
-import LoadingSpinner from '@/components/LoadingSpinner'
+import LoadingSpinner from '@/components/loading-spinner'
 
 /**
  * Loading Component
