@@ -1,225 +1,142 @@
 /**
- * Employee Management API Routes
- * Last Updated: January 17, 2025
+ * Employee List Route Handler
+ * Last Updated: 2025-01-17
  * 
- * This file implements the main endpoints for employee management:
- * - GET: List employees with filtering, sorting, and pagination
- * - POST: Create new employee records
- * 
- * Features:
- * - Role-based access control (supervisor/admin only for mutations)
- * - Input validation using Zod schemas
- * - Pagination and filtering
- * - Response caching for list operations
- * 
- * Error Handling:
- * - 400: Invalid request data
- * - 401: Not authenticated
- * - 403: Insufficient permissions
- * - 409: Conflicting data (e.g., duplicate email)
- * - 429: Rate limit exceeded
- * - 500: Server error
+ * Handles employee list operations with rate limiting, validation, and pagination.
  */
 
-import { z } from 'zod';
-import { NextResponse } from 'next/server';
-import { createRouteHandler } from '@/lib/api';
-import type { ApiHandlerOptions, ExtendedNextRequest, QueryOptions, RouteContext } from '@/lib/api/types';
-import { EmployeesOperations } from '@/lib/api/database/employees';
-import {
-  HTTP_STATUS_OK,
-  HTTP_STATUS_CREATED,
-  HTTP_STATUS_CONFLICT,
-} from '@/lib/constants/http';
-import { CacheControl } from '@/lib/api/cache';
-import {
-  listEmployeesQuerySchema,
-  createEmployeeSchema,
-  employeeSortSchema,
-} from '@/lib/schemas/api';
-import {
-  ValidationError,
-  AuthorizationError,
-  DatabaseError,
-} from '@/lib/errors';
-import type { DatabaseErrorDetail } from '@/lib/errors/database';
-import type { ValidationErrorDetail } from '@/lib/errors/validation';
-import { createClient } from '@/lib/supabase/server';
-import type { Database } from '@/lib/supabase/database.types';
+import { RateLimiter } from '@/lib/rate-limiting'
+import { createRouteHandler, type ApiResponse } from '@/lib/api'
+import { createClient } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
 
-const DEFAULT_PAGE_SIZE = 10;
+// Rate limiter: 100 requests per minute
+const rateLimiter = new RateLimiter({
+  points: 100,
+  duration: 60, // 1 minute
+  blockDuration: 300, // 5 minutes
+  keyPrefix: 'employees-list'
+})
 
-type EmployeeSortColumn = keyof Database['public']['Tables']['employees']['Row'];
-type QueryOptionsWithEmployeeSort = {
-  limit: number;
-  offset: number;
-  orderBy?: {
-    column: EmployeeSortColumn;
-    ascending?: boolean | undefined;
-  } | undefined;
-  filter?: Record<string, string | undefined> | undefined;
-};
+// Validation schemas
+const queryParamsSchema = z.object({
+  limit: z.coerce.number().min(1).max(100).default(20),
+  offset: z.coerce.number().min(0).default(0),
+  orderBy: z.object({
+    column: z.enum(['first_name', 'last_name', 'email', 'role', 'status', 'created_at']),
+    ascending: z.boolean()
+  }).optional(),
+  search: z.string().optional(),
+  role: z.enum(['admin', 'manager', 'employee']).optional(),
+  status: z.enum(['active', 'inactive']).optional()
+})
 
-// Custom rate limits for employee operations
-const employeeRateLimits = {
-  // List employees (100 requests per minute)
-  list: {
-    windowMs: 60000,
-    maxRequests: 100,
-    identifier: 'employees:list',
+interface Employee {
+  id: string
+  firstName: string
+  lastName: string
+  email: string
+  phone?: string
+  role: 'admin' | 'manager' | 'employee'
+  status: 'active' | 'inactive'
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}
+
+interface EmployeeListResponse {
+  employees: Employee[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export const GET = createRouteHandler({
+  rateLimit: rateLimiter,
+  validate: {
+    query: queryParamsSchema
   },
-  
-  // Create employee (30 requests per minute)
-  create: {
-    windowMs: 60000,
-    maxRequests: 30,
-    identifier: 'employees:create',
-  },
-} as const;
+  handler: async (req) => {
+    const { searchParams } = new URL(req.url)
+    const orderByValue = searchParams.get('orderBy')
+    const ascendingValue = searchParams.get('ascending')
+    
+    const hasValidOrderBy = searchParams.has('orderBy') && 
+      orderByValue !== null && 
+      orderByValue !== ''
 
-// Cache configuration for employees
-const employeeCacheConfig = {
-  // List operation (2 minutes cache)
-  list: {
-    control: CacheControl.ShortTerm,
-    revalidate: 120,
-    prefix: 'api:employees:list',
-    includeQuery: true,
-    excludeParams: ['offset'] as const,
-  },
-};
+    const isAscending = ascendingValue !== null && 
+      ascendingValue !== '' && 
+      ascendingValue === 'true'
 
-/**
- * GET /api/employees
- * List employees with optional filtering and pagination
- */
-export const GET = createRouteHandler(
-  async (req: ExtendedNextRequest) => {
-    try {
-      const context: RouteContext = {
-        req,
-        supabase: req.supabase,
-        user: req.user,
-        session: req.session
-      };
+    const queryParams = queryParamsSchema.parse({
+      limit: searchParams.get('limit'),
+      offset: searchParams.get('offset'),
+      orderBy: hasValidOrderBy ? {
+        column: orderByValue,
+        ascending: isAscending
+      } : undefined,
+      search: searchParams.get('search'),
+      role: searchParams.get('role'),
+      status: searchParams.get('status')
+    })
 
-      const searchParams = Object.fromEntries(new URL(req.url).searchParams);
-      
-      const filter: Record<string, string | undefined> = {};
-      if (searchParams['status']) filter['status'] = searchParams['status'];
-      if (searchParams['role']) filter['role'] = searchParams['role'];
-      if (searchParams['department']) filter['department'] = searchParams['department'];
-      
-      const queryParams: QueryOptionsWithEmployeeSort = {
-        limit: searchParams['limit'] ? parseInt(searchParams['limit'] as string, 10) : DEFAULT_PAGE_SIZE,
-        offset: searchParams['offset'] ? parseInt(searchParams['offset'] as string, 10) : 0,
-        orderBy: searchParams['sort'] ? {
-          column: searchParams['sort'] as EmployeeSortColumn,
-          ascending: searchParams['order'] ? searchParams['order'] === 'asc' : undefined
-        } : undefined,
-        filter
-      };
+    const supabase = createClient(cookies())
+    let query = supabase.from('employees').select('*', { count: 'exact' })
 
-      const { data: employees, error } = await context.supabase
-        .from('employees')
-        .select('*')
-        .range(queryParams.offset, queryParams.offset + queryParams.limit - 1)
-        .order(queryParams.orderBy?.column || 'created_at', {
-          ascending: queryParams.orderBy?.ascending ?? true
-        });
+    // Apply filters
+    if (queryParams.search) {
+      query = query.or(
+        `first_name.ilike.%${queryParams.search}%,` +
+        `last_name.ilike.%${queryParams.search}%,` +
+        `email.ilike.%${queryParams.search}%`
+      )
+    }
 
-      if (error) {
-        throw new DatabaseError('Failed to fetch employees', {
-          code: 'QUERY_ERROR',
-          table: 'employees'
-        });
+    if (queryParams.role) {
+      query = query.eq('role', queryParams.role)
+    }
+
+    if (queryParams.status) {
+      query = query.eq('status', queryParams.status)
+    }
+
+    // Apply pagination and ordering
+    const { data, count, error } = await query
+      .range(queryParams.offset, queryParams.offset + queryParams.limit - 1)
+      .order(queryParams.orderBy?.column || 'created_at', {
+        ascending: queryParams.orderBy?.ascending ?? true
+      })
+
+    if (error !== null) {
+      return NextResponse.json<ApiResponse<EmployeeListResponse>>(
+        { error: error.message },
+        { status: 400 }
+      )
+    }
+
+    const total = typeof count === 'number' ? count : 0
+
+    return NextResponse.json<ApiResponse<EmployeeListResponse>>({
+      data: {
+        employees: data.map(item => ({
+          id: item.id,
+          firstName: item.first_name,
+          lastName: item.last_name,
+          email: item.email,
+          phone: item.phone,
+          role: item.role,
+          status: item.status,
+          notes: item.notes,
+          createdAt: item.created_at,
+          updatedAt: item.updated_at
+        })),
+        total,
+        limit: queryParams.limit,
+        offset: queryParams.offset
       }
-
-      return NextResponse.json({ data: employees });
-
-    } catch (error) {
-      if (error instanceof ValidationError) {
-        const validationError: ValidationErrorDetail = {
-          path: ['query'],
-          message: error.message,
-          code: 'INVALID_QUERY_PARAMS'
-        };
-        throw new ValidationError('Invalid query parameters', [validationError]);
-      }
-
-      if (error instanceof DatabaseError) {
-        throw error;
-      }
-
-      throw new DatabaseError('Failed to process request', {
-        code: 'UNKNOWN_ERROR',
-        table: 'employees'
-      });
-    }
-  },
-  {
-    validate: {
-      query: listEmployeesQuerySchema,
-    },
-    cache: employeeCacheConfig.list,
-    rateLimit: employeeRateLimits.list,
-  } as ApiHandlerOptions
-);
-
-/**
- * POST /api/employees
- * Create a new employee record
- */
-export const POST = createRouteHandler(
-  async (req: ExtendedNextRequest) => {
-    const { supabase, session } = req;
-    const body = await req.json();
-
-    if (!session) {
-      throw new AuthorizationError('Authentication required');
-    }
-
-    // Only supervisors and admins can create employees
-    if (!session.user.user_metadata.role || 
-        !['supervisor', 'admin'].includes(session.user.user_metadata.role)) {
-      throw new AuthorizationError('Only supervisors and admins can create employees');
-    }
-
-    // Initialize database operations
-    const employees = new EmployeesOperations(supabase);
-
-    // Check if employee with same user ID exists
-    const { data: existing } = await employees.findByUserId(body.user_id);
-    if (existing) {
-      throw new ValidationError('Employee record already exists for this user', {
-        code: 'USER_EXISTS',
-        status: HTTP_STATUS_CONFLICT,
-      });
-    }
-
-    // Create employee record
-    const result = await employees.create({
-      ...body,
-      status: 'active',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    });
-
-    if (result.error) {
-      throw new DatabaseError('Failed to create employee record', { 
-        cause: result.error 
-      });
-    }
-
-    return NextResponse.json({
-      data: result.data,
-      error: null,
-    }, { status: HTTP_STATUS_CREATED });
-  },
-  {
-    validate: {
-      body: createEmployeeSchema,
-    },
-    rateLimit: employeeRateLimits.create,
-  } as ApiHandlerOptions
-);
+    })
+  }
+})

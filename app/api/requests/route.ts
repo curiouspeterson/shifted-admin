@@ -1,235 +1,202 @@
 /**
- * Time-Off Requests API Route Handler
- * Last Updated: 2024-03
+ * Requests List Route Handler
+ * Last Updated: 2025-01-17
  * 
- * This file implements the API endpoints for managing employee time-off requests:
- * - GET: List all time-off requests for the authenticated employee
- * - POST: Create a new time-off request
- * 
- * Features:
- * - Role-based access control (employee access)
- * - Input validation using Zod schemas
- * - Response caching for list operations
- * - Database type safety
- * 
- * Error Handling:
- * - 400: Invalid request data
- * - 401: Not authenticated
- * - 404: Employee not found
- * - 429: Rate limit exceeded
- * - 500: Server error
+ * Handles request list operations with rate limiting, validation, and pagination.
  */
 
-import { z } from 'zod';
-import { createRouteHandler } from '@/lib/api/handler';
-import type { ApiResponse, RouteContext } from '@/lib/api/types';
-import { HTTP_STATUS_OK, HTTP_STATUS_CREATED } from '@/lib/constants/http';
-import { defaultRateLimits } from '@/lib/api/rate-limit';
-import { cacheConfigs } from '@/lib/api/cache';
-import {
-  ValidationError,
-  AuthorizationError,
-  DatabaseError,
-  NotFoundError,
-} from '@/lib/errors';
-import type { Database } from '@/lib/supabase/database.types';
+import { RateLimiter } from '@/lib/rate-limiting'
+import { createRouteHandler, type ApiResponse } from '@/lib/api'
+import { createClient } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
 
-// Database types for type safety
-type TimeOffRequest = Database['public']['Tables']['time_off_requests']['Row'];
-type TimeOffRequestInsert = Database['public']['Tables']['time_off_requests']['Insert'];
+// Rate limiter: 100 requests per minute
+const rateLimiter = new RateLimiter({
+  points: 100,
+  duration: 60, // 1 minute
+  blockDuration: 300, // 5 minutes
+  keyPrefix: 'requests-list'
+})
 
-// Request validation schemas
-const timeOffRequestSchema = z.object({
-  id: z.string().uuid(),
-  employee_id: z.string().uuid(),
-  start_date: z.string().datetime(),
-  end_date: z.string().datetime(),
+// Validation schemas
+const queryParamsSchema = z.object({
+  limit: z.coerce.number().min(1).max(100).default(20),
+  offset: z.coerce.number().min(0).default(0),
+  orderBy: z.object({
+    column: z.enum(['title', 'description', 'status', 'priority', 'created_at']),
+    ascending: z.boolean()
+  }).optional(),
+  search: z.string().optional(),
+  status: z.enum(['pending', 'approved', 'rejected']).optional(),
+  priority: z.enum(['low', 'medium', 'high']).optional()
+})
+
+const requestSchema = z.object({
+  title: z.string().min(1),
+  description: z.string().min(1),
   status: z.enum(['pending', 'approved', 'rejected']),
-  reason: z.string().nullable(),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
-});
+  priority: z.enum(['low', 'medium', 'high']),
+  assignedTo: z.string().uuid().optional(),
+  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  notes: z.string().optional()
+})
 
-const timeOffRequestInputSchema = z.object({
-  start_date: z.string().datetime(),
-  end_date: z.string().datetime(),
-  reason: z.string().optional(),
-});
+interface Request {
+  id: string
+  title: string
+  description: string
+  status: 'pending' | 'approved' | 'rejected'
+  priority: 'low' | 'medium' | 'high'
+  assignedTo?: string
+  dueDate?: string
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}
 
-// Custom rate limits for request operations
-const requestRateLimits = {
-  // List requests (100 requests per minute)
-  list: {
-    ...defaultRateLimits.api,
-    limit: 100,
-    identifier: 'requests:list',
-  },
-  // Create request (20 requests per minute)
-  create: {
-    ...defaultRateLimits.api,
-    limit: 20,
-    identifier: 'requests:create',
-  },
-} as const;
+interface RequestListResponse {
+  requests: Request[]
+  total: number
+  limit: number
+  offset: number
+}
 
-// Cache configuration for requests
-const requestCacheConfig = {
-  // List operation (30 seconds cache)
-  list: {
-    ...cacheConfigs.short,
-    ttl: 30,
-    prefix: 'api:requests:list',
-  },
-};
-
-// Middleware configuration
-const middlewareConfig = {
-  maxSize: 100 * 1024, // 100KB
-  requireContentType: true,
-  allowedContentTypes: ['application/json'],
-};
-
-/**
- * GET /api/requests
- * List all time-off requests for the authenticated employee
- */
 export const GET = createRouteHandler({
-  methods: ['GET'],
-  requireAuth: true,
-  rateLimit: requestRateLimits.list,
-  middleware: middlewareConfig,
-  cache: requestCacheConfig.list,
-  cors: true,
-  handler: async ({ 
-    supabase,
-    session,
-    cache,
-  }: RouteContext): Promise<ApiResponse> => {
-    if (!session) {
-      throw new AuthorizationError('Authentication required');
+  rateLimit: rateLimiter,
+  validate: {
+    query: queryParamsSchema
+  },
+  handler: async (req) => {
+    const { searchParams } = new URL(req.url)
+    const orderByValue = searchParams.get('orderBy')
+    const ascendingValue = searchParams.get('ascending')
+    
+    const hasValidOrderBy = searchParams.has('orderBy') && 
+      orderByValue !== null && 
+      orderByValue !== ''
+
+    const isAscending = ascendingValue !== null && 
+      ascendingValue !== '' && 
+      ascendingValue === 'true'
+
+    const queryParams = queryParamsSchema.parse({
+      limit: searchParams.get('limit'),
+      offset: searchParams.get('offset'),
+      orderBy: hasValidOrderBy ? {
+        column: orderByValue,
+        ascending: isAscending
+      } : undefined,
+      search: searchParams.get('search'),
+      status: searchParams.get('status'),
+      priority: searchParams.get('priority')
+    })
+
+    const supabase = createClient(cookies())
+    let query = supabase.from('requests').select('*', { count: 'exact' })
+
+    // Apply filters
+    if (queryParams.search) {
+      query = query.or(
+        `title.ilike.%${queryParams.search}%,` +
+        `description.ilike.%${queryParams.search}%`
+      )
     }
 
-    // Get employee ID for the authenticated user
-    const { data: employee, error: employeeError } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('user_id', session.user.id)
-      .single();
-
-    if (employeeError || !employee) {
-      throw new NotFoundError('Employee record not found');
+    if (queryParams.status) {
+      query = query.eq('status', queryParams.status)
     }
 
-    // Fetch time-off requests for the employee
-    const { data: requests, error } = await supabase
-      .from('time_off_requests')
-      .select('*')
-      .eq('employee_id', employee.id)
-      .order('created_at', { ascending: false });
-
-    if (error) {
-      throw new DatabaseError('Failed to fetch requests', error);
+    if (queryParams.priority) {
+      query = query.eq('priority', queryParams.priority)
     }
 
-    // Validate request data
-    const validatedRequests = requests?.map(request => {
-      try {
-        return timeOffRequestSchema.parse(request);
-      } catch (err) {
-        throw new ValidationError('Invalid request data format', err);
+    // Apply pagination and ordering
+    const { data, count, error } = await query
+      .range(queryParams.offset, queryParams.offset + queryParams.limit - 1)
+      .order(queryParams.orderBy?.column || 'created_at', {
+        ascending: queryParams.orderBy?.ascending ?? true
+      })
+
+    if (error !== null) {
+      return NextResponse.json<ApiResponse<RequestListResponse>>(
+        { error: error.message },
+        { status: 400 }
+      )
+    }
+
+    const total = typeof count === 'number' ? count : 0
+
+    return NextResponse.json<ApiResponse<RequestListResponse>>({
+      data: {
+        requests: data.map(item => ({
+          id: item.id,
+          title: item.title,
+          description: item.description,
+          status: item.status,
+          priority: item.priority,
+          assignedTo: item.assigned_to,
+          dueDate: item.due_date,
+          notes: item.notes,
+          createdAt: item.created_at,
+          updatedAt: item.updated_at
+        })),
+        total,
+        limit: queryParams.limit,
+        offset: queryParams.offset
       }
-    }) || [];
+    })
+  }
+})
 
-    return {
-      data: validatedRequests,
-      error: null,
-      status: HTTP_STATUS_OK,
-      metadata: {
-        count: validatedRequests.length,
-        timestamp: new Date().toISOString(),
-        ...(cache && {
-          cached: true,
-          cacheHit: cache.hit,
-          cacheTtl: cache.ttl,
-        }),
-      },
-    };
-  },
-});
-
-/**
- * POST /api/requests
- * Create a new time-off request for the authenticated employee
- */
 export const POST = createRouteHandler({
-  methods: ['POST'],
-  requireAuth: true,
-  rateLimit: requestRateLimits.create,
-  middleware: middlewareConfig,
-  cors: true,
-  handler: async ({ 
-    supabase,
-    session,
-    body,
-  }: RouteContext): Promise<ApiResponse> => {
-    if (!session) {
-      throw new AuthorizationError('Authentication required');
-    }
-
-    if (!body) {
-      throw new ValidationError('Request body is required');
-    }
-
-    // Get employee ID for the authenticated user
-    const { data: employee, error: employeeError } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('user_id', session.user.id)
-      .single();
-
-    if (employeeError || !employee) {
-      throw new NotFoundError('Employee record not found');
-    }
-
-    // Validate request body
-    let validatedData;
-    try {
-      validatedData = timeOffRequestInputSchema.parse(body);
-    } catch (err) {
-      throw new ValidationError('Invalid request data', err);
-    }
-
-    // Prepare new request data
-    const now = new Date().toISOString();
-    const newRequest: TimeOffRequestInsert = {
-      ...validatedData,
-      employee_id: employee.id,
-      status: 'pending',
-      created_at: now,
-      updated_at: now,
-    };
-
-    // Create time-off request
-    const { data: request, error } = await supabase
-      .from('time_off_requests')
-      .insert(newRequest)
-      .select()
-      .single();
-
-    if (error) {
-      throw new DatabaseError('Failed to create request', error);
-    }
-
-    // Validate created request
-    const validatedRequest = timeOffRequestSchema.parse(request);
-
-    return {
-      data: validatedRequest,
-      error: null,
-      status: HTTP_STATUS_CREATED,
-      metadata: {
-        timestamp: new Date().toISOString(),
-      },
-    };
+  rateLimit: rateLimiter,
+  validate: {
+    body: requestSchema
   },
-}); 
+  handler: async (req) => {
+    const body = await req.json()
+    const { title, description, status, priority, assignedTo, dueDate, notes } = requestSchema.parse(body)
+
+    const supabase = createClient(cookies())
+    
+    const { data, error } = await supabase
+      .from('requests')
+      .insert({
+        title,
+        description,
+        status,
+        priority,
+        assigned_to: assignedTo,
+        due_date: dueDate,
+        notes,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single()
+
+    if (error !== null || data === null) {
+      return NextResponse.json<ApiResponse<Request>>(
+        { error: error !== null ? error.message : 'Failed to create request' },
+        { status: 400 }
+      )
+    }
+
+    return NextResponse.json<ApiResponse<Request>>({
+      data: {
+        id: data.id,
+        title: data.title,
+        description: data.description,
+        status: data.status,
+        priority: data.priority,
+        assignedTo: data.assigned_to,
+        dueDate: data.due_date,
+        notes: data.notes,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      }
+    })
+  }
+}) 
