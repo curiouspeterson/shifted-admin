@@ -1,6 +1,6 @@
 /**
  * Sign In Route Handler
- * Last Updated: 2024-03-19
+ * Last Updated: 2025-03-19
  * 
  * Handles user sign in with rate limiting and validation.
  */
@@ -52,7 +52,8 @@ export const POST = createRouteHandler<LoginResponse, LoginRequest>({
         throw new AuthError('No session created')
       }
 
-      return NextResponse.json<ApiResponse<LoginResponse>>({
+      // Create response data
+      const responseData = {
         data: {
           user: {
             id: user.id,
@@ -62,21 +63,32 @@ export const POST = createRouteHandler<LoginResponse, LoginRequest>({
           },
           token: session.access_token
         }
+      } satisfies ApiResponse<LoginResponse>
+
+      // Return a fresh response
+      return new NextResponse(JSON.stringify(responseData), {
+        status: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store, no-cache, must-revalidate'
+        }
       })
     } catch (error) {
       console.error('Sign in failed:', error)
       
-      if (error instanceof AuthError) {
-        return NextResponse.json<ApiResponse<LoginResponse>>(
-          { error: error.message },
-          { status: 401 }
-        )
-      }
+      // Create error response
+      const errorData = {
+        error: error instanceof AuthError ? error.message : 'An unexpected error occurred'
+      } satisfies ApiResponse<LoginResponse>
 
-      return NextResponse.json<ApiResponse<LoginResponse>>(
-        { error: 'An unexpected error occurred' },
-        { status: 500 }
-      )
+      // Return a fresh error response
+      return new NextResponse(JSON.stringify(errorData), {
+        status: error instanceof AuthError ? 401 : 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store, no-cache, must-revalidate'
+        }
+      })
     }
   }
 }) 

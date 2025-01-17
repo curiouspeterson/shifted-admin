@@ -1,7 +1,7 @@
 /**
  * Sign In Form Component
  * Last Updated: 2025-03-19
- * 
+ *
  * A dedicated client-side form component for handling authentication.
  * Follows 2025 best practices for React component organization.
  */
@@ -9,37 +9,62 @@
 'use client'
 
 import * as React from 'react'
-import { useRouter } from 'next/navigation'
 import { useAuth } from '@/providers/auth-provider'
-import { ClientButton } from '@/components/ui'
+import { Button } from '@/components/ui/button'
 import { Input } from '@/components/client-wrappers/input-client'
+import { loginRequestSchema } from '@/lib/validations/auth'
 
 export function SignInForm() {
-  const router = useRouter()
-  const { signIn, isLoading, error } = useAuth()
+  const { signIn, isLoading, error: authError } = useAuth()
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
+  const [validationError, setValidationError] = React.useState<string | null>(null)
+
+  const validateForm = React.useCallback(() => {
+    try {
+      loginRequestSchema.parse({ email, password })
+      setValidationError(null)
+      return true
+    } catch (err) {
+      if (err instanceof Error) {
+        setValidationError(err.message)
+      } else {
+        setValidationError('Invalid form data')
+      }
+      return false
+    }
+  }, [email, password])
 
   const handleSubmit = React.useCallback(async (e: React.FormEvent) => {
     e.preventDefault()
+    setValidationError(null)
+
+    if (!validateForm()) {
+      return
+    }
+
     try {
       await signIn(email, password)
-      // After successful sign in, redirect to dashboard
-      router.push('/dashboard')
     } catch (err) {
       console.error('Sign in failed:', err)
       // Error will be handled by error boundary
       throw err
     }
-  }, [email, password, signIn, router])
+  }, [email, password, signIn, validateForm])
 
   const handleEmailChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setEmail(e.target.value)
+    setValidationError(null)
   }, [])
 
   const handlePasswordChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setPassword(e.target.value)
+    setValidationError(null)
   }, [])
+
+  const hasValidationError = Boolean(validationError)
+  const errorMessage = validationError || (authError?.message ?? '')
+  const showError = errorMessage.length > 0
 
   return (
     <form onSubmit={handleSubmit} className="mt-8 space-y-6">
@@ -52,6 +77,8 @@ export function SignInForm() {
             placeholder="Email address"
             value={email}
             onChange={handleEmailChange}
+            aria-invalid={hasValidationError}
+            aria-describedby={hasValidationError ? 'form-error' : undefined}
           />
         </div>
         <div>
@@ -62,25 +89,27 @@ export function SignInForm() {
             placeholder="Password"
             value={password}
             onChange={handlePasswordChange}
+            aria-invalid={hasValidationError}
+            aria-describedby={hasValidationError ? 'form-error' : undefined}
           />
         </div>
       </div>
 
-      {error && (
-        <div className="text-red-500 text-sm">
-          {error.message}
+      {showError && (
+        <div id="form-error" className="text-red-500 text-sm" role="alert">
+          {errorMessage}
         </div>
       )}
 
       <div>
-        <ClientButton
+        <Button
           type="submit"
-          disabled={isLoading}
-          loading={isLoading}
-          className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+          disabled={isLoading || !email || !password}
+          isLoading={isLoading}
+          className="w-full"
         >
-          {isLoading ? 'Signing in...' : 'Sign in'}
-        </ClientButton>
+          Sign in
+        </Button>
       </div>
     </form>
   )

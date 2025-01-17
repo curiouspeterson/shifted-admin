@@ -25,29 +25,46 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+function getStoredToken(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return localStorage.getItem('auth_token')
+  } catch (err) {
+    console.error('Failed to access localStorage:', err)
+    return null
+  }
+}
+
+function setStoredToken(token: string): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem('auth_token', token)
+  } catch (err) {
+    console.error('Failed to store token:', err)
+  }
+}
+
+function removeStoredToken(): void {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.removeItem('auth_token')
+  } catch (err) {
+    console.error('Failed to remove token:', err)
+  }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false) // Start with false to avoid flash
   const [error, setError] = useState<Error | null>(null)
   const router = useRouter()
 
+  // Check auth status on mount
   useEffect(() => {
-    // Check for existing auth token on mount
-    const checkAuth = async () => {
-      try {
-        const token = localStorage.getItem('auth_token')
-        if (typeof token === 'string' && token.length > 0) {
-          // Validate token here
-          setIsAuthenticated(true)
-        }
-      } catch (err) {
-        console.error('Auth check failed:', err)
-      } finally {
-        setIsLoading(false)
-      }
+    const token = getStoredToken()
+    if (token !== null && token.length > 0) {
+      setIsAuthenticated(true)
     }
-
-    checkAuth()
   }, [])
 
   const signIn = async (email: string, password: string) => {
@@ -75,7 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const token = validatedData.token
 
       // Store token and update state
-      localStorage.setItem('auth_token', token)
+      setStoredToken(token)
       setIsAuthenticated(true)
       router.push('/dashboard')
     } catch (err) {
@@ -89,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       setIsLoading(true)
-      localStorage.removeItem('auth_token')
+      removeStoredToken()
       setIsAuthenticated(false)
       router.push('/sign-in')
     } catch (err) {
