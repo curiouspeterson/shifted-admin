@@ -1,6 +1,6 @@
 /**
  * Sign In Components Module
- * Last Updated: 2024
+ * Last Updated: 2024-01-22
  * 
  * Provides reusable components for the sign-in functionality.
  * These components handle form submission, loading states,
@@ -19,6 +19,8 @@
 
 import * as React from 'react'
 import { signIn } from '../actions'
+import { Button } from '@/components/client-wrappers/button-client'
+import { useFormStatus } from 'react-dom'
 
 /**
  * Sign In Form Component
@@ -30,19 +32,26 @@ import { signIn } from '../actions'
  */
 export function SignInForm({ redirectedFrom }: { redirectedFrom?: string }): React.ReactElement {
   const [error, setError] = React.useState<string | null>(null)
+  const { pending } = useFormStatus()
 
   async function handleSubmit(formData: FormData): Promise<void> {
-    const emailValue = formData.get('email')
-    const passwordValue = formData.get('password')
-    
-    if (typeof emailValue !== 'string' || typeof passwordValue !== 'string') {
-      setError('Invalid form data')
-      return
-    }
+    try {
+      setError(null)
+      
+      const emailValue = formData.get('email')
+      const passwordValue = formData.get('password')
+      
+      if (typeof emailValue !== 'string' || typeof passwordValue !== 'string') {
+        setError('Invalid form data')
+        return
+      }
 
-    const result = await signIn(emailValue, passwordValue)
-    if (result.error !== undefined && result.error !== '') {
-      setError(result.error)
+      const result = await signIn(emailValue, passwordValue)
+      if (result.error !== undefined && result.error !== '') {
+        setError(result.error)
+      }
+    } catch (err) {
+      setError('An unexpected error occurred')
     }
   }
 
@@ -95,13 +104,14 @@ export function SignInForm({ redirectedFrom }: { redirectedFrom?: string }): Rea
       </div>
 
       <div>
-        <button
+        <Button
           type="submit"
-          className="group relative flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+          className="w-full"
+          disabled={pending}
         >
           Sign in
-        </button>
+        </Button>
       </div>
     </form>
   )
-} 
+}

@@ -21,7 +21,7 @@ const shiftBase = {
   requiresSupervisor: z.boolean().default(false),
   notes: z.string().max(1000).optional(),
   metadata: z.record(z.unknown()).optional()
-};
+} as const;
 
 // Helper function to validate shift times
 export const validateShiftTimes = (data: {
@@ -37,9 +37,11 @@ export const validateShiftTimes = (data: {
   return end > start;
 };
 
-// Shift input schema
+// Shift input schema with required boolean fields
 export const shiftInputSchema = z.object({
   ...shiftBase,
+  crossesMidnight: z.boolean().default(false),
+  requiresSupervisor: z.boolean().default(false),
   createdBy: z.string().uuid().optional(),
   updatedBy: z.string().uuid().optional()
 });

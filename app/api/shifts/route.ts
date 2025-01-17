@@ -13,7 +13,6 @@
  * - Shift validation and conflict detection
  */
 
-import { z } from 'zod';
 import { NextResponse } from 'next/server';
 import { createRouteHandler } from '@/lib/api';
 import type { ApiResponse } from '@/lib/api';
@@ -31,13 +30,6 @@ import type { Json } from '@/lib/types/json';
 // Type definitions
 type ShiftRow = Database['public']['Tables']['shifts']['Row'];
 type ShiftInsert = Database['public']['Tables']['shifts']['Insert'];
-
-// Ensure all boolean fields are required in the request
-const strictCreateShiftSchema = createShiftSchema.transform((data) => ({
-  ...data,
-  requiresSupervisor: data.requiresSupervisor ?? false,
-  crossesMidnight: data.crossesMidnight ?? false
-}));
 
 // GET /api/shifts
 export const GET = createRouteHandler<ShiftRow[]>({
@@ -104,14 +96,14 @@ export const GET = createRouteHandler<ShiftRow[]>({
 });
 
 // POST /api/shifts
-export const POST = createRouteHandler<ShiftRow | undefined, z.infer<typeof strictCreateShiftSchema>>({
+export const POST = createRouteHandler<ShiftRow | undefined>({
   validate: {
-    body: strictCreateShiftSchema
+    body: createShiftSchema
   },
   handler: async (req) => {
     try {
       const body = await req.json();
-      const result = strictCreateShiftSchema.safeParse(body);
+      const result = createShiftSchema.safeParse(body);
 
       if (!result.success) {
         throw Errors.validation('Invalid request body', result.error.errors);
@@ -126,8 +118,8 @@ export const POST = createRouteHandler<ShiftRow | undefined, z.infer<typeof stri
         end_time: result.data.endTime,
         duration_minutes: result.data.durationHours * 60,
         pattern_type: 'fixed',
-        crosses_midnight: result.data.crossesMidnight,
-        requires_supervisor: result.data.requiresSupervisor,
+        crosses_midnight: result.data.crossesMidnight ?? false,
+        requires_supervisor: result.data.requiresSupervisor ?? false,
         metadata: (result.data.metadata ?? null) as Json
       };
       

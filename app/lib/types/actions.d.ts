@@ -1,8 +1,13 @@
 /**
  * Server Actions Type Declarations
- * Last Updated: 2024
+ * Last Updated: 2025-03-19
  * 
  * Type declarations for server actions and their exports.
+ * Provides type definitions for all server actions including:
+ * - Schedule management
+ * - Employee management
+ * - Assignment handling
+ * - Time requirement configuration
  */
 
 // Schedule Actions

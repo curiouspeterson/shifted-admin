@@ -34,7 +34,8 @@ export const loginResponseSchema = z.object({
     email: z.string().email(),
     firstName: z.string(),
     lastName: z.string()
-  })
+  }),
+  token: z.string()
 })
 
 export type RegisterRequest = z.infer<typeof registerRequestSchema>

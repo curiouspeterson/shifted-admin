@@ -5,6 +5,7 @@ A modern, offline-capable web application for managing employee schedules in 24/
 ## Core Features
 
 ### Schedule Management
+
 - 📅 Bi-weekly schedule generation and management
 - ⏰ Flexible shift durations (4h, 10h, 12h)
 - 📊 Real-time staffing requirements tracking
@@ -12,6 +13,7 @@ A modern, offline-capable web application for managing employee schedules in 24/
 - 📱 Mobile-responsive interface
 
 ### Employee Management
+
 - 👥 Comprehensive employee profiles
 - 🔐 Role-based access control
 - 📋 Time-off request system
@@ -19,6 +21,7 @@ A modern, offline-capable web application for managing employee schedules in 24/
 - 🏢 Department organization
 
 ### Offline Capabilities
+
 - 💻 Full offline functionality
 - 🔄 Background sync
 - 📱 PWA support
@@ -26,6 +29,7 @@ A modern, offline-capable web application for managing employee schedules in 24/
 - 🔌 Automatic online/offline switching
 
 ### Technical Features
+
 - ⚡ Server-side rendering with Next.js 14 App Router
 - 🔒 Type-safe database operations with Supabase
 - 🎯 Real-time updates and notifications
@@ -38,6 +42,7 @@ A modern, offline-capable web application for managing employee schedules in 24/
 ## Tech Stack
 
 ### Frontend
+
 - Next.js 14 (App Router)
 - TypeScript
 - Tailwind CSS
@@ -47,6 +52,7 @@ A modern, offline-capable web application for managing employee schedules in 24/
 - Service Workers
 
 ### Backend
+
 - Supabase (PostgreSQL)
 - Row Level Security
 - TypeScript
@@ -54,13 +60,14 @@ A modern, offline-capable web application for managing employee schedules in 24/
 - Edge Functions
 
 ### Testing
+
 - Jest
 - React Testing Library
 - Integration Tests
 - Performance Benchmarks
 
 ## Project Structure
-```
+
 app/                  # Next.js application code
 ├── (auth)           # Authentication routes
 ├── api              # API routes
@@ -68,16 +75,17 @@ app/                  # Next.js application code
 ├── dashboard        # Main application views
 ├── lib             # Core utilities and services
 └── types           # TypeScript definitions
-```
 
 ## Getting Started
 
 ### Prerequisites
+
 - Node.js 18+
 - npm/yarn
 - Supabase account
 
 ### Environment Variables
+
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
@@ -88,6 +96,7 @@ SUPABASE_DB_PASSWORD=
 ```
 
 ### Installation
+
 1. Clone the repository
 2. Install dependencies: `npm install`
 3. Set up environment variables
@@ -97,6 +106,7 @@ SUPABASE_DB_PASSWORD=
 ## Development Status
 
 ### Completed Features
+
 - ✅ Core authentication
 - ✅ Employee management
 - ✅ Schedule management
@@ -106,13 +116,14 @@ SUPABASE_DB_PASSWORD=
 - ✅ Performance monitoring
 
 ### In Development
+
 - ⏳ Schedule optimization algorithm
 - ⏳ Advanced reporting features
 - ⏳ Email notification system
 - ⏳ Enhanced performance monitoring
 - ⏳ AI-powered scheduling suggestions
 
-## Testing
+## Testing again
 
 ```bash
 # Run unit tests
@@ -143,6 +154,7 @@ npm run test:performance
 ## Support
 
 For support, please contact the development team through:
+
 - Issue Tracker
 - Development Chat
 - Email Support
@@ -150,6 +162,3 @@ For support, please contact the development team through:
 ## License
 
 This project is proprietary software. All rights reserved.
-
----
-Last updated: 2024-01-24

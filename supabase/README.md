@@ -6,7 +6,7 @@ This directory contains the Supabase project configuration, including database m
 
 ## Directory Structure
 
-```
+``` bash
 supabase/
 ├── functions/     # PostgreSQL functions and triggers
 ├── migrations/    # Database migrations
@@ -17,16 +17,19 @@ supabase/
 ## Setup
 
 1. Install the Supabase CLI:
+
    ```bash
    npm install -g supabase
    ```
 
 2. Link your project:
+
    ```bash
    supabase link --project-ref your-project-ref
    ```
 
 3. Start the local development server:
+
    ```bash
    supabase start
    ```
@@ -36,16 +39,19 @@ supabase/
 ### Database Changes
 
 1. Create a new migration:
+
    ```bash
    supabase migration new your-migration-name
    ```
 
 2. Apply migrations:
+
    ```bash
    supabase db push
    ```
 
 3. Reset database (development only):
+
    ```bash
    supabase db reset
    ```
@@ -53,6 +59,7 @@ supabase/
 ### Functions
 
 1. Create a new function in `functions/`:
+
    ```sql
    -- functions/your_function_name.sql
    create or replace function your_function_name()
@@ -66,6 +73,7 @@ supabase/
    ```
 
 2. Deploy functions:
+
    ```bash
    supabase functions deploy
    ```
@@ -73,6 +81,7 @@ supabase/
 ### Type Generation
 
 1. Generate TypeScript types:
+
    ```bash
    supabase gen types typescript --local > ../app/lib/supabase/database.types.ts
    ```
@@ -114,6 +123,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ### Adding a New Table
 
 1. Create a migration:
+
    ```sql
    create table public.your_table (
      id uuid primary key default gen_random_uuid(),
@@ -126,6 +136,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
    ```
 
 2. Create policies:
+
    ```sql
    create policy "Users can view their own data"
    on public.your_table
@@ -138,6 +149,7 @@ SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ### Modifying a Table
 
 1. Create a migration:
+
    ```sql
    -- Add a column
    alter table public.your_table
@@ -174,4 +186,4 @@ Common issues and solutions:
 
 - [Supabase Documentation](https://supabase.com/docs)
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/)
-- [TypeScript Documentation](https://www.typescriptlang.org/docs/) 
+- [TypeScript Documentation](https://www.typescriptlang.org/docs/)

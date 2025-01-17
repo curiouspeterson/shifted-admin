@@ -1,6 +1,6 @@
 /**
  * Auth Provider Component
- * Last Updated: 2025-01-17
+ * Last Updated: 2025-03-19
  * 
  * Manages authentication state and token handling for the application.
  * Uses modern React patterns and Next.js best practices.
@@ -11,6 +11,9 @@
 import * as React from 'react'
 import { createContext, useContext, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import type { ApiResponse } from '@/lib/api'
+import type { LoginResponse } from '@/lib/validations/auth'
+import { loginResponseSchema } from '@/lib/validations/auth'
 
 interface AuthContextType {
   isAuthenticated: boolean
@@ -33,7 +36,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const checkAuth = async () => {
       try {
         const token = localStorage.getItem('auth_token')
-        if (token) {
+        if (typeof token === 'string' && token.length > 0) {
           // Validate token here
           setIsAuthenticated(true)
         }
@@ -58,12 +61,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         body: JSON.stringify({ email, password }),
       })
 
+      const data = await response.json() as ApiResponse<LoginResponse>
+
       if (!response.ok) {
-        throw new Error('Authentication failed')
+        const errorMessage = data.error !== null && typeof data.error === 'string' && data.error.length > 0 
+          ? data.error 
+          : 'Authentication failed'
+        throw new Error(errorMessage)
       }
 
-      const data = await response.json()
-      localStorage.setItem('auth_token', data.token)
+      // Validate response data against schema
+      const validatedData = loginResponseSchema.parse(data.data)
+      const token = validatedData.token
+
+      // Store token and update state
+      localStorage.setItem('auth_token', token)
       setIsAuthenticated(true)
       router.push('/dashboard')
     } catch (err) {

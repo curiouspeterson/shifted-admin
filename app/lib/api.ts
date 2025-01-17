@@ -1,6 +1,6 @@
 /**
  * API Utilities
- * Last Updated: 2025-01-17
+ * Last Updated: 2024-01-22
  * 
  * Provides utilities for API route handlers including rate limiting and validation.
  */
@@ -17,13 +17,35 @@ export interface ApiResponse<T> {
   status?: number
 }
 
+export interface ValidatedRequest<T> {
+  body: T
+}
+
 export interface ApiHandlerOptions<TResponse, TRequest = unknown> {
   rateLimit?: RateLimiter
   validate?: {
     body?: z.ZodType<TRequest>
     query?: z.ZodSchema
   }
-  handler: (req: NextRequest) => Promise<NextResponse<ApiResponse<TResponse>>>
+  handler: (
+    req: NextRequest, 
+    validated: ValidatedRequest<TRequest>
+  ) => Promise<NextResponse<ApiResponse<TResponse>>>
+}
+
+function getRequestIdentifier(req: NextRequest): string {
+  const forwardedFor = req.headers.get('x-forwarded-for') ?? ''
+  const ip = req.ip ?? ''
+  
+  if (ip.trim() !== '') {
+    return ip
+  }
+  
+  if (forwardedFor.trim() !== '') {
+    return forwardedFor
+  }
+  
+  return 'unknown'
 }
 
 export const createRouteHandler = <TResponse, TRequest = unknown>(
@@ -33,12 +55,7 @@ export const createRouteHandler = <TResponse, TRequest = unknown>(
     try {
       // Check rate limit if enabled
       if (options.rateLimit) {
-        const forwardedFor = req.headers.get('x-forwarded-for')
-        const identifier = req.ip ?? (
-          forwardedFor !== null && forwardedFor.trim() !== '' 
-            ? forwardedFor 
-            : 'unknown'
-        )
+        const identifier = getRequestIdentifier(req)
         const isLimited = await options.rateLimit.isRateLimited(identifier)
         
         if (isLimited) {
@@ -50,8 +67,10 @@ export const createRouteHandler = <TResponse, TRequest = unknown>(
       }
 
       // Validate request body if schema provided
+      let validatedBody: TRequest | undefined
       if (options.validate?.body && req.method !== 'GET') {
-        const body = await req.json()
+        const clonedReq = req.clone()
+        const body = await clonedReq.json()
         const result = await options.validate.body.safeParseAsync(body)
         
         if (!result.success) {
@@ -63,10 +82,14 @@ export const createRouteHandler = <TResponse, TRequest = unknown>(
             { status: 400 }
           )
         }
+        
+        validatedBody = result.data
       }
 
       // Handle the request
-      const response = await options.handler(req)
+      const response = await options.handler(req, { 
+        body: validatedBody as TRequest 
+      })
       
       // Handle errors in response
       const data = await response.json() as ApiResponse<TResponse>

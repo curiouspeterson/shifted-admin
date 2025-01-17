@@ -1,6 +1,6 @@
 /**
  * Sign In Form Component
- * Last Updated: 2025-01-17
+ * Last Updated: 2025-03-19
  * 
  * A dedicated client-side form component for handling authentication.
  * Follows 2025 best practices for React component organization.
@@ -11,7 +11,7 @@
 import * as React from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/providers/auth-provider'
-import { Button } from '@/components/client-wrappers/button-client'
+import { ClientButton } from '@/components/ui'
 import { Input } from '@/components/client-wrappers/input-client'
 
 export function SignInForm() {
@@ -73,13 +73,14 @@ export function SignInForm() {
       )}
 
       <div>
-        <Button
+        <ClientButton
           type="submit"
           disabled={isLoading}
+          loading={isLoading}
           className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
         >
           {isLoading ? 'Signing in...' : 'Sign in'}
-        </Button>
+        </ClientButton>
       </div>
     </form>
   )

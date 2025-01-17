@@ -1,120 +1,122 @@
 /**
- * Database Types
- * Last Updated: 2024-03-21
+ * Database Types and Utilities
+ * Last Updated: 2025-03-19
  * 
- * Types for database operations and results.
+ * Central definition of database types and type utilities.
+ * Provides type-safe database operations and schema definitions.
  */
 
-import { Database } from '@/lib/database/database.types'
+import type { PostgrestFilterBuilder } from '@supabase/postgrest-js'
+import type {
+  Database,
+  Schema,
+  Tables,
+  TableName,
+  Enums,
+  Row,
+  Insert,
+  Update,
+  DatabaseRecord
+} from '@/lib/types/database/schema'
 
-/**
- * Generic database result type
- */
+// Query Types
+export type QueryFilter<T extends TableName> = PostgrestFilterBuilder<
+  Schema,
+  Row<T>,
+  Row<T>
+>
+
+export type FilterOperator = 
+  | 'eq' 
+  | 'neq' 
+  | 'gt' 
+  | 'gte' 
+  | 'lt' 
+  | 'lte' 
+  | 'like' 
+  | 'ilike' 
+  | 'is' 
+  | 'in' 
+  | 'cs' 
+  | 'cd'
+
+export type FilterValue = string | number | boolean | null | Array<string | number>
+
+export interface Filter<T extends TableName> {
+  column: keyof Row<T>
+  operator: FilterOperator
+  value: FilterValue
+}
+
+// Result Types
 export interface DatabaseResult<T> {
   data: T | null
-  error: string | null
+  error: DatabaseError | null
 }
 
-/**
- * Base database record type
- */
-export interface DatabaseRecord {
-  id: string
-  created_at: string
-  updated_at: string
+export interface DatabaseError {
+  code: string
+  message: string
+  details?: unknown
 }
 
-/**
- * Convert null to undefined for optional fields
- */
-type NullToUndefined<T> = {
-  [K in keyof T]: T[K] extends null ? undefined : T[K]
-}
-
-/**
- * Convert undefined to null for database fields
- */
-type UndefinedToNull<T> = {
-  [K in keyof T]: T[K] extends undefined ? null : T[K]
-}
-
-/**
- * Make fields optional and convert null to undefined
- */
-type OptionalFields<T> = {
-  [K in keyof T]: T[K] extends null ? T[K] | undefined : T[K]
-}
-
-/**
- * Employee database types
- */
-export type DbEmployee = {
-  Row: Database['public']['Tables']['employees']['Row']
-  Insert: OptionalFields<Database['public']['Tables']['employees']['Insert']>
-  Update: OptionalFields<Database['public']['Tables']['employees']['Update']>
-}
-
-/**
- * Schedule database types
- */
-export type DbSchedule = {
-  Row: Database['public']['Tables']['schedules']['Row']
-  Insert: OptionalFields<Database['public']['Tables']['schedules']['Insert']>
-  Update: OptionalFields<Database['public']['Tables']['schedules']['Update']>
-}
-
-/**
- * Assignment database types
- */
-export type DbAssignment = {
-  Row: Database['public']['Tables']['assignments']['Row']
-  Insert: OptionalFields<Database['public']['Tables']['assignments']['Insert']>
-  Update: OptionalFields<Database['public']['Tables']['assignments']['Update']>
-}
-
-/**
- * Rate limit database types
- */
-export type DbRateLimit = {
-  Row: Database['public']['Tables']['rate_limits']['Row']
-  Insert: OptionalFields<Database['public']['Tables']['rate_limits']['Insert']>
-  Update: OptionalFields<Database['public']['Tables']['rate_limits']['Update']>
-}
-
-/**
- * Helper function to create a successful database result
- */
-export function createSuccessResult<T>(data: T): DatabaseResult<T> {
-  return { data, error: null }
-}
-
-/**
- * Helper function to create an error database result
- */
-export function createErrorResult<T>(error: string): DatabaseResult<T> {
-  return { data: null, error }
-}
-
-/**
- * Helper function to handle database errors
- */
-export function handleDatabaseError<T>(error: unknown): DatabaseResult<T> {
-  console.error('Database error:', error)
-  return createErrorResult(
-    error instanceof Error ? error.message : 'An unexpected database error occurred'
+// Type Guards
+export function isDatabaseResult<T>(value: unknown): value is DatabaseResult<T> {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'data' in value &&
+    'error' in value
   )
 }
 
-/**
- * Helper function to convert undefined to null for database operations
- */
-export function toDbNull<T>(value: T | undefined): T | null {
-  return value === undefined ? null : value
+export function isDatabaseError(value: unknown): value is DatabaseError {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'code' in value &&
+    'message' in value
+  )
 }
 
-/**
- * Helper function to convert null to undefined for application use
- */
-export function fromDbNull<T>(value: T | null): T | undefined {
-  return value === null ? undefined : value
+// Table Type Helpers
+export type TableWithId<T extends TableName> = T extends TableName
+  ? 'id' extends keyof Tables[T]['Row']
+    ? T
+    : never
+  : never
+
+// Type Mapper Interface
+export interface TypeMapper<
+  T extends TableName,
+  D, // Domain type
+  I, // Insert type
+  U = Partial<I> // Update type
+> {
+  toRow(data: Row<T>): D
+  toDbInsert(data: I): Insert<T>
+  toDbUpdate(data: U): Update<T>
+  validateDbData(data: unknown): data is Row<T> | Insert<T> | Update<T>
+}
+
+// Common Database Operations Interface
+export interface DatabaseOperations<T> {
+  findById(id: string): Promise<DatabaseResult<T>>
+  findMany(filters?: Filter<TableName>[]): Promise<DatabaseResult<T[]>>
+  create(data: Partial<T>): Promise<DatabaseResult<T>>
+  update(id: string, data: Partial<T>): Promise<DatabaseResult<T>>
+  delete(id: string): Promise<DatabaseResult<void>>
+}
+
+// Re-export types from schema
+export type {
+  Database,
+  Schema,
+  Tables,
+  TableName,
+  Enums,
+  Row,
+  Insert,
+  Update,
+  DatabaseRecord
 } 
