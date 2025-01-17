@@ -25,7 +25,7 @@ export interface BaseError {
 export class AppError extends Error implements BaseError {
   constructor(
     public type: ErrorType,
-    public message: string,
+    public override message: string,
     public code: string,
     public status: number,
     public details?: unknown

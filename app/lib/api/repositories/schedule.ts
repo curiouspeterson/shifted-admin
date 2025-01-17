@@ -6,7 +6,7 @@
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
-import { Database } from '@/lib/supabase/database.types';
+import type { Database } from '@/lib/supabase/database.types';
 import { Errors } from '@/lib/errors/types';
 
 export type Schedule = Database['public']['Tables']['schedules']['Row'];
@@ -44,7 +44,7 @@ export class ScheduleRepository {
       query = query.lte('end_date', filters.endDate.toISOString());
     }
 
-    if (filters.createdBy) {
+    if (typeof filters.createdBy === 'string' && filters.createdBy.trim() !== '') {
       query = query.eq('created_by', filters.createdBy);
     }
 

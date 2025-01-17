@@ -359,9 +359,9 @@ export class BackgroundSyncManager<T extends Record<string, unknown>> {
           errorLogger.error('Failed to process sync entry', {
             error,
             entry
-          });
-        }
-      }
+                    });
+                  }
+                }
     } finally {
       this.isProcessing = false;
     }

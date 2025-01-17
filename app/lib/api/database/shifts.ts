@@ -1,6 +1,6 @@
 /**
  * Shifts Database Operations
- * Last Updated: 2024-03
+ * Last Updated: 2025-01-17
  * 
  * This module provides type-safe database operations for the shifts table.
  * It includes:
@@ -10,7 +10,7 @@
  */
 
 import { SupabaseClient, PostgrestError } from '@supabase/supabase-js';
-import type { Database } from '../../supabase/database.types';
+import type { Database } from '../../database/database.types';
 
 type Tables = Database['public']['Tables'];
 type ShiftRow = Tables['shifts']['Row'];

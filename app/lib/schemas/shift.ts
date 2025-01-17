@@ -1,6 +1,6 @@
 /**
  * Shift Schema Types
- * Last Updated: 2024-03-21
+ * Last Updated: 2025-01-17
  * 
  * Defines the domain types and validation schemas for shifts.
  */
@@ -23,11 +23,61 @@ const shiftBase = {
   metadata: z.record(z.unknown()).optional()
 };
 
+// Helper function to validate shift times
+export const validateShiftTimes = (data: {
+  startTime: string;
+  endTime: string;
+  crossesMidnight: boolean;
+}) => {
+  const start = new Date(`1970-01-01T${data.startTime}`);
+  const end = new Date(`1970-01-01T${data.endTime}`);
+  if (data.crossesMidnight) {
+    end.setDate(end.getDate() + 1);
+  }
+  return end > start;
+};
+
 // Shift input schema
 export const shiftInputSchema = z.object({
   ...shiftBase,
   createdBy: z.string().uuid().optional(),
   updatedBy: z.string().uuid().optional()
+});
+
+// Create shift schema with time validation
+export const createShiftSchema = shiftInputSchema.superRefine((data, ctx) => {
+  if (!validateShiftTimes({
+    startTime: data.startTime,
+    endTime: data.endTime,
+    crossesMidnight: data.crossesMidnight
+  })) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'End time must be after start time',
+      path: ['endTime']
+    });
+  }
+});
+
+// Update shift schema with time validation
+export const updateShiftSchema = z.object({
+  ...shiftBase,
+  createdBy: z.string().uuid().optional(),
+  updatedBy: z.string().uuid().optional()
+}).partial().superRefine((data, ctx) => {
+  if (data.startTime && data.endTime) {
+    if (!validateShiftTimes({
+      startTime: data.startTime,
+      endTime: data.endTime,
+      crossesMidnight: data.crossesMidnight ?? false
+    })) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'End time must be after start time',
+        path: ['endTime']
+      });
+    }
+  }
 });
 
 // Shift schema (includes all fields)
@@ -41,31 +91,6 @@ export const shiftSchema = z.object({
   version: z.number().int().min(1)
 });
 
-// Helper function to validate shift times
-export const validateShiftTimes = (data: Partial<z.infer<typeof shiftSchema>>) => {
-  if (data.startTime && data.endTime) {
-    const start = new Date(`1970-01-01T${data.startTime}`);
-    const end = new Date(`1970-01-01T${data.endTime}`);
-    if (data.crossesMidnight) {
-      end.setDate(end.getDate() + 1);
-    }
-    return end > start;
-  }
-  return true;
-};
-
-// Create shift schema with time validation
-export const createShiftSchema = shiftInputSchema.refine(validateShiftTimes, {
-  message: 'End time must be after start time',
-  path: ['endTime']
-});
-
-// Update shift schema with time validation
-export const updateShiftSchema = shiftInputSchema.partial().refine(validateShiftTimes, {
-  message: 'End time must be after start time',
-  path: ['endTime']
-});
-
 // Infer types from schemas
 export type Shift = z.infer<typeof shiftSchema>;
-export type ShiftInput = z.infer<typeof shiftInputSchema>; 
+export type ShiftInput = z.infer<typeof shiftInputSchema>;
