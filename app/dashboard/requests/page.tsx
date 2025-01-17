@@ -13,8 +13,8 @@ import useSWR from 'swr'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import LoadingSpinner from '@/components/loading-spinner'
-import RequestForm from '@/components/request/RequestForm'
+import { Spinner } from '@/components/ui/spinner'
+import RequestForm from '@/components/request/request-form'
 
 export default function RequestsPage() {
   const router = useRouter()
@@ -24,7 +24,7 @@ export default function RequestsPage() {
   const { data: requests, error: fetchError, isLoading, mutate } = useSWR('/api/requests')
 
   if (isLoading) {
-    return <LoadingSpinner />
+    return <Spinner />
   }
 
   if (fetchError) {

@@ -11,10 +11,10 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { scheduleFormSchema } from '@/lib/schemas/forms';
 import type { ScheduleFormData } from '@/lib/schemas/forms';
-import { FormField, FormLabel, FormMessage } from '../forms/base/FormField';
+import { FormField, FormLabel, FormMessage } from '../forms/base/form-field';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { DatePicker } from '../forms/base/DatePicker';
+import { DatePicker } from '../forms/base/date-picker';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 
 interface ScheduleFormProps {

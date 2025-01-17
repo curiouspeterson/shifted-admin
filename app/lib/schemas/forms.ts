@@ -33,8 +33,8 @@ export const scheduleFormSchema = z.object({
 
 /**
  * Assignment Form Schema
- * Extends the base assignment schema for form validation.
- * Omits server-controlled fields and adds form-specific validations.
+ * Matches the database schema for schedule assignments.
+ * Includes only the fields that can be set by the form.
  */
 export const assignmentFormSchema = z.object({
   schedule_id: z.string(),
@@ -51,7 +51,7 @@ export const assignmentFormSchema = z.object({
 
 /**
  * Assignment Response Schema
- * Defines the structure of assignment responses from the server
+ * Matches the database Row type for schedule assignments.
  */
 export const assignmentResponseSchema = z.object({
   data: z.object({

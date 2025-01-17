@@ -14,7 +14,7 @@
 'use client';
 
 import { z } from 'zod';
-import { useForm } from '@/hooks/form/useForm';
+import { useForm } from '@/hooks/form';
 import { AppError } from '@/lib/errors';
 
 interface EmployeeFormProps {
@@ -62,11 +62,12 @@ export default function EmployeeForm({ onSave, onCancel }: EmployeeFormProps) {
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new AppError({
-          code: 'API_ERROR',
-          message: errorData.error || 'Failed to create employee',
-          statusCode: response.status
-        });
+        throw new AppError(
+          errorData.error || 'Failed to create employee',
+          'API_ERROR',
+          response.status,
+          { data: errorData }
+        );
       }
 
       onSave();

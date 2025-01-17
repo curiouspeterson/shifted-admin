@@ -10,14 +10,13 @@
 
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { AssignmentForm } from '@/components/forms/AssignmentForm';
+import { AssignmentForm } from '@/components/forms/assignment-form';
 import { createAssignment } from '@/lib/actions/assignment';
-import type { AssignmentFormData } from '@/lib/schemas/forms';
-import type { AssignmentResponse } from '@/lib/actions/assignment';
-import { useSchedule } from '@/lib/hooks/useSchedule';
-import { useScheduleAssignments } from '@/lib/hooks/useScheduleAssignments';
-import { useEmployees } from '@/lib/hooks/useEmployees';
-import { useShifts } from '@/lib/hooks/useShifts';
+import type { AssignmentFormData, AssignmentResponse } from '@/lib/schemas/forms';
+import { useSchedule } from '@/lib/hooks/use-schedule';
+import { useScheduleAssignments } from '@/lib/hooks/use-schedule-assignments';
+import { useEmployees } from '@/lib/hooks/use-employees';
+import { useShifts } from '@/lib/hooks/use-shifts';
 
 export default function NewAssignmentPage({ 
   params 
@@ -32,10 +31,7 @@ export default function NewAssignmentPage({
 
   const handleSubmit = async (formData: AssignmentFormData) => {
     try {
-      const result = await createAssignment({
-        ...formData,
-        schedule_id: params.id
-      });
+      const result = await createAssignment(formData);
       
       if (!result.data || result.error) {
         toast.error(result.error || 'Failed to create assignment');

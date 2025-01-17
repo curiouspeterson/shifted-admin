@@ -17,7 +17,7 @@ import * as React from 'react';
 import { z } from 'zod';
 import { toast } from 'sonner';
 import { Form } from '@/components/ui';
-import { useForm } from '@/lib/hooks';
+import { useForm } from '@/hooks/form';
 import { errorLogger } from '@/lib/logging/error-logger';
 import type { SubmitHandler, SubmitErrorHandler } from 'react-hook-form';
 
@@ -45,10 +45,11 @@ export function BaseForm<T extends z.ZodType>({
       await onSubmit(formData);
       toast.success(successMessage);
     } catch (error) {
-      errorLogger.error(error, {
+      errorLogger.error(error instanceof Error ? error.message : 'Unknown error occurred', {
         component: 'BaseForm',
         operation: 'submit',
-        formData
+        formData,
+        error
       });
       toast.error('Failed to save changes. Please try again.');
     }

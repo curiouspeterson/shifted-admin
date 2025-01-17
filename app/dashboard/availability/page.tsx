@@ -9,14 +9,14 @@
 
 import { useState } from 'react'
 import useSWR from 'swr'
-import LoadingSpinner from '@/components/loading-spinner'
+import { Spinner } from '@/components/ui/spinner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 
 export default function AvailabilityPage() {
   const { data, error, isLoading, mutate } = useSWR('/api/availability')
 
   if (isLoading) {
-    return <LoadingSpinner />
+    return <Spinner />
   }
 
   if (error) {

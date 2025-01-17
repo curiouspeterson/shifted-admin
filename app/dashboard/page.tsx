@@ -8,8 +8,8 @@
 
 'use client'
 
-import { useApp } from '@/lib/context/appContext'
-import { LoadingSpinner } from '@/components/ui/loading-spinner'
+import { useApp } from '@/lib/context/app-context'
+import { Spinner } from '@/components/ui/spinner'
 import { useEffect } from 'react'
 
 /**
@@ -35,7 +35,7 @@ export default function DashboardPage() {
   }, [setLoading, handleError])
 
   if (isLoading) {
-    return <LoadingSpinner fullScreen />
+    return <Spinner size="lg" className="min-h-screen" />
   }
 
   if (error) {

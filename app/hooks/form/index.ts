@@ -5,5 +5,5 @@
  * Exports form-related hooks and types.
  */
 
-export { useForm } from './useForm';
-export type { UseFormProps, UseFormReturn } from './useForm'; 
+export { useForm } from './use-form';
+export type { UseFormProps, UseFormReturn } from './use-form'; 
