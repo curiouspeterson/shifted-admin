@@ -1,12 +1,13 @@
 /**
  * Schedule Repository
- * Last Updated: 2025-01-15
+ * Last Updated: 2025-01-17
  * 
  * This module provides database operations for schedules.
  */
 
 import { SupabaseClient } from '@supabase/supabase-js';
 import { Database } from '@/lib/supabase/database.types';
+import { Errors } from '@/lib/errors/types';
 
 export type Schedule = Database['public']['Tables']['schedules']['Row'];
 export type ScheduleInsert = Database['public']['Tables']['schedules']['Insert'];
@@ -48,7 +49,11 @@ export class ScheduleRepository {
     }
 
     const { data, error } = await query;
-    if (error) throw error;
+
+    if (error) {
+      throw Errors.database('Failed to fetch schedules', { error });
+    }
+
     return data;
   }
 
@@ -59,22 +64,31 @@ export class ScheduleRepository {
       .eq('id', id)
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw Errors.notFound('Schedule not found', { id });
+      }
+      throw Errors.database('Failed to fetch schedule', { error });
+    }
+
     return data;
   }
 
-  async create(data: CreateScheduleBody & { created_by?: string }) {
+  async create(data: CreateScheduleBody) {
     const { data: schedule, error } = await this.supabase
       .from('schedules')
       .insert(data)
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      throw Errors.database('Failed to create schedule', { error });
+    }
+
     return schedule;
   }
 
-  async update(id: string, data: UpdateScheduleBody & { updated_by?: string }) {
+  async update(id: string, data: UpdateScheduleBody) {
     const { data: schedule, error } = await this.supabase
       .from('schedules')
       .update(data)
@@ -82,7 +96,13 @@ export class ScheduleRepository {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw Errors.notFound('Schedule not found', { id });
+      }
+      throw Errors.database('Failed to update schedule', { error });
+    }
+
     return schedule;
   }
 
@@ -92,71 +112,13 @@ export class ScheduleRepository {
       .delete()
       .eq('id', id);
 
-    if (error) throw error;
-  }
+    if (error) {
+      if (error.code === 'PGRST116') {
+        throw Errors.notFound('Schedule not found', { id });
+      }
+      throw Errors.database('Failed to delete schedule', { error });
+    }
 
-  async findByDateRange(startDate: Date, endDate: Date) {
-    const { data, error } = await this.supabase
-      .from('schedules')
-      .select('*')
-      .gte('start_date', startDate.toISOString())
-      .lte('end_date', endDate.toISOString());
-
-    if (error) throw error;
-    return data;
-  }
-
-  async findByStatus(status: ScheduleStatus) {
-    const { data, error } = await this.supabase
-      .from('schedules')
-      .select('*')
-      .eq('status', status);
-
-    if (error) throw error;
-    return data;
-  }
-
-  async findByCreator(createdBy: string) {
-    const { data, error } = await this.supabase
-      .from('schedules')
-      .select('*')
-      .eq('created_by', createdBy);
-
-    if (error) throw error;
-    return data;
-  }
-
-  async updateStatus(id: string, status: ScheduleStatus) {
-    const { data: schedule, error } = await this.supabase
-      .from('schedules')
-      .update({ status })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) throw error;
-    return schedule;
-  }
-
-  async findOverlapping(startDate: Date, endDate: Date) {
-    const { data, error } = await this.supabase
-      .from('schedules')
-      .select('*')
-      .or(`and(start_date,lte.${endDate.toISOString()},end_date,gte.${startDate.toISOString()})`);
-
-    if (error) throw error;
-    return data;
-  }
-
-  async findUpcoming(limit = 10) {
-    const { data, error } = await this.supabase
-      .from('schedules')
-      .select('*')
-      .gte('start_date', new Date().toISOString())
-      .order('start_date', { ascending: true })
-      .limit(limit);
-
-    if (error) throw error;
-    return data;
+    return true;
   }
 } 

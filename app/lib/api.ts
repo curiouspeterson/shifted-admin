@@ -7,58 +7,89 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { z } from 'zod'
-import { RateLimiter } from './rate-limiter'
+import { RateLimiter } from './rate-limiting'
+import { isAppError } from '@/lib/errors/types'
 
 export interface ApiResponse<T> {
   data?: T
   error?: string
+  details?: unknown
+  status?: number
 }
 
-export interface ApiHandlerOptions<T> {
+export interface ApiHandlerOptions<TResponse, TRequest = unknown> {
   rateLimit?: RateLimiter
   validate?: {
-    body?: z.ZodType<T>
+    body?: z.ZodType<TRequest>
     query?: z.ZodSchema
   }
-  handler: (req: NextRequest) => Promise<NextResponse>
+  handler: (req: NextRequest) => Promise<NextResponse<ApiResponse<TResponse>>>
 }
 
-export type RouteHandler<T> = (options: ApiHandlerOptions<T>) => (req: NextRequest) => Promise<NextResponse>
-
-export const createRouteHandler = <T>(options: ApiHandlerOptions<T>): ((req: NextRequest) => Promise<NextResponse>) => {
+export const createRouteHandler = <TResponse, TRequest = unknown>(
+  options: ApiHandlerOptions<TResponse, TRequest>
+): ((req: NextRequest) => Promise<NextResponse<ApiResponse<TResponse>>>) => {
   return async (req: NextRequest) => {
     try {
-      // Rate limiting
+      // Check rate limit if enabled
       if (options.rateLimit) {
-        const ip = req.headers.get('x-forwarded-for') || req.ip || 'unknown'
-        const rateLimited = await options.rateLimit.isRateLimited(ip)
+        const forwardedFor = req.headers.get('x-forwarded-for')
+        const identifier = req.ip ?? (
+          forwardedFor !== null && forwardedFor.trim() !== '' 
+            ? forwardedFor 
+            : 'unknown'
+        )
+        const isLimited = await options.rateLimit.isRateLimited(identifier)
         
-        if (rateLimited === true) {
-          return NextResponse.json<ApiResponse<T>>(
-            { error: 'Too many requests' },
+        if (isLimited) {
+          return NextResponse.json<ApiResponse<TResponse>>(
+            { error: 'Rate limit exceeded' },
             { status: 429 }
           )
         }
       }
 
-      // Validation
-      if (options.validate?.body) {
+      // Validate request body if schema provided
+      if (options.validate?.body && req.method !== 'GET') {
         const body = await req.json()
         const result = await options.validate.body.safeParseAsync(body)
         
         if (!result.success) {
-          return NextResponse.json<ApiResponse<T>>(
-            { error: 'Invalid request body' },
+          return NextResponse.json<ApiResponse<TResponse>>(
+            { 
+              error: 'Invalid request body',
+              details: result.error.errors
+            },
             { status: 400 }
           )
         }
       }
 
-      // Handle request
-      return options.handler(req)
+      // Handle the request
+      const response = await options.handler(req)
+      
+      // Handle errors in response
+      const data = await response.json() as ApiResponse<TResponse>
+      if (data.error) {
+        return NextResponse.json<ApiResponse<TResponse>>(data, { status: data.status ?? 500 })
+      }
+
+      return response
     } catch (error) {
-      console.error('API Error:', error)
-      return NextResponse.json<ApiResponse<T>>(
+      console.error('Route handler error:', error)
+      
+      if (isAppError(error)) {
+        return NextResponse.json<ApiResponse<TResponse>>(
+          { 
+            error: error.message,
+            details: error.details,
+            status: error.status
+          },
+          { status: error.status }
+        )
+      }
+      
+      return NextResponse.json<ApiResponse<TResponse>>(
         { error: 'Internal server error' },
         { status: 500 }
       )

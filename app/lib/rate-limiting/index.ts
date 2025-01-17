@@ -20,7 +20,7 @@ export interface RateLimitResult {
   }
 }
 
-export interface RateLimiterOptions {
+export interface RateLimitOptions {
   points: number
   duration: number // in seconds
   blockDuration: number // in seconds
@@ -34,12 +34,17 @@ interface RateLimitRecord {
 }
 
 export class RateLimiter {
-  private options: RateLimiterOptions
+  private options: RateLimitOptions
   private store: Map<string, RateLimitRecord>
   private isDevelopment: boolean
 
-  constructor(options: RateLimiterOptions) {
-    this.options = options
+  constructor(options: RateLimitOptions) {
+    this.options = {
+      points: options.points || 100,
+      duration: options.duration || 60,
+      blockDuration: options.blockDuration || 300,
+      keyPrefix: options.keyPrefix || 'rate-limit'
+    }
     this.store = new Map()
     this.isDevelopment = process.env.NODE_ENV === 'development'
   }
@@ -50,39 +55,41 @@ export class RateLimiter {
 
   private getRecord(key: string): RateLimitRecord {
     const now = Date.now()
-    const record = this.store.get(key)
+    let record = this.store.get(key)
 
     if (!record) {
-      return {
+      record = {
         points: this.options.points,
         lastReset: now,
         blockedUntil: null
       }
+      this.store.set(key, record)
     }
 
-    // Check if we should reset points
-    const timeSinceReset = now - record.lastReset
-    if (timeSinceReset >= this.options.duration * 1000) {
-      return {
-        points: this.options.points,
-        lastReset: now,
-        blockedUntil: null
-      }
+    // Reset points if duration has passed
+    const timeSinceLastReset = now - record.lastReset
+    if (timeSinceLastReset >= this.options.duration * 1000) {
+      record.points = this.options.points
+      record.lastReset = now
+      record.blockedUntil = null
     }
 
     return record
   }
 
-  private async checkMemoryLimit(identifier: string): Promise<RateLimitResult> {
-    if (!identifier || identifier === 'unknown') {
-      return {
-        success: true,
-        limit: this.options.points,
-        remaining: this.options.points,
-        reset: Math.floor(Date.now() / 1000) + this.options.duration
-      }
-    }
+  async isRateLimited(identifier: string): Promise<boolean> {
+    const result = await this.check(identifier)
+    return !result.success
+  }
 
+  async check(identifier: string): Promise<RateLimitResult> {
+    if (this.isDevelopment) {
+      return this.checkMemoryLimit(identifier)
+    }
+    return this.checkDistributedLimit(identifier)
+  }
+
+  private async checkMemoryLimit(identifier: string): Promise<RateLimitResult> {
     const key = this.getKey(identifier)
     const record = this.getRecord(key)
     const now = Date.now()
@@ -93,64 +100,37 @@ export class RateLimiter {
         success: false,
         limit: this.options.points,
         remaining: 0,
-        reset: Math.floor(record.blockedUntil / 1000)
+        reset: Math.ceil((record.blockedUntil - now) / 1000)
       }
     }
 
-    // Reset block if duration has passed
-    if (record.blockedUntil !== null && now >= record.blockedUntil) {
-      record.blockedUntil = null
-      record.points = this.options.points
-    }
+    // Decrement points
+    record.points--
 
-    // Check if out of points
+    // Block if out of points
     if (record.points <= 0) {
       record.blockedUntil = now + (this.options.blockDuration * 1000)
-      this.store.set(key, record)
       return {
         success: false,
         limit: this.options.points,
         remaining: 0,
-        reset: Math.floor(record.blockedUntil / 1000)
+        reset: this.options.blockDuration
       }
     }
 
-    // Consume a point
-    record.points--
-    this.store.set(key, record)
-    
     return {
       success: true,
       limit: this.options.points,
       remaining: record.points,
-      reset: Math.floor((record.lastReset + this.options.duration * 1000) / 1000)
+      reset: Math.ceil((record.lastReset + (this.options.duration * 1000) - now) / 1000)
     }
   }
 
   private async checkDistributedLimit(identifier: string): Promise<RateLimitResult> {
-    const now = Math.floor(Date.now() / 1000)
-    
-    if (!identifier || identifier === 'unknown') {
-      return {
-        success: true,
-        limit: this.options.points,
-        remaining: this.options.points,
-        reset: now + this.options.duration
-      }
-    }
-
     const cookieStore = cookies()
-    const supabaseUrl = process.env['NEXT_PUBLIC_SUPABASE_URL']
-    const supabaseKey = process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']
-
-    if (typeof supabaseUrl !== 'string' || supabaseUrl === '' || 
-        typeof supabaseKey !== 'string' || supabaseKey === '') {
-      throw new Error('Missing Supabase configuration')
-    }
-
     const supabase = createServerClient(
-      supabaseUrl,
-      supabaseKey,
+      process.env['NEXT_PUBLIC_SUPABASE_URL']!,
+      process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY']!,
       {
         cookies: {
           get(name: string) {
@@ -160,89 +140,82 @@ export class RateLimiter {
             cookieStore.set({ name, value, ...options })
           },
           remove(name: string, options: CookieOptions) {
-            cookieStore.delete({ name, ...options })
+            cookieStore.set({ name, value: '', ...options })
           },
         },
       }
     )
 
-    try {
-      // Clean up old rate limit entries
-      await supabase.rpc('cleanup_rate_limits', {
-        window_seconds: this.options.duration
-      })
+    const key = this.getKey(identifier)
+    const now = Math.floor(Date.now() / 1000)
 
-      // Get current count and check limit
-      const { data: rateLimits, error: countError } = await supabase
-        .from('rate_limits')
-        .select('timestamp')
-        .eq('ip', identifier)
-        .eq('identifier', this.options.keyPrefix)
-        .gte('timestamp', new Date(now - this.options.duration).toISOString())
+    const { data, error } = await supabase
+      .from('rate_limits')
+      .select('points, last_reset, blocked_until')
+      .eq('key', key)
+      .single()
 
-      if (countError) {
-        throw countError
-      }
+    if (error && error.code !== 'PGRST116') { // PGRST116 = not found
+      throw new Error(`Rate limit check failed: ${error.message}`)
+    }
 
-      const count = rateLimits?.length ?? 0
-      
-      if (count >= this.options.points) {
-        const oldestRequest = rateLimits?.[0]?.timestamp
-        const reset = typeof oldestRequest === 'string'
-          ? Math.floor(new Date(oldestRequest).getTime() / 1000) + this.options.duration
-          : now + this.options.duration
+    let record = data || {
+      points: this.options.points,
+      last_reset: now,
+      blocked_until: null
+    }
 
-        return {
-          success: false,
-          limit: this.options.points,
-          remaining: 0,
-          reset,
-          analytics: {
-            total: count,
-            window: this.options.duration
-          }
-        }
-      }
-      
-      // Add new rate limit entry
-      const timestamp = new Date(now * 1000).toISOString()
-      const { error: insertError } = await supabase
-        .from('rate_limits')
-        .insert({
-          ip: identifier,
-          identifier: this.options.keyPrefix,
-          timestamp
-        })
-
-      if (insertError) {
-        throw insertError
-      }
-      
-      return {
-        success: true,
-        limit: this.options.points,
-        remaining: Math.max(0, this.options.points - (count + 1)),
-        reset: now + this.options.duration,
-        analytics: {
-          total: count + 1,
-          window: this.options.duration
-        }
-      }
-    } catch (error) {
-      console.error('Rate limit check failed', { error, identifier })
-      // Fail open if database is down
-      return {
-        success: true,
-        limit: this.options.points,
-        remaining: 1,
-        reset: now + this.options.duration
+    // Reset points if duration has passed
+    const timeSinceLastReset = now - record.last_reset
+    if (timeSinceLastReset >= this.options.duration) {
+      record = {
+        points: this.options.points,
+        last_reset: now,
+        blocked_until: null
       }
     }
-  }
 
-  async check(identifier: string): Promise<RateLimitResult> {
-    return this.isDevelopment
-      ? this.checkMemoryLimit(identifier)
-      : this.checkDistributedLimit(identifier)
+    // Check if currently blocked
+    if (record.blocked_until !== null && now < record.blocked_until) {
+      return {
+        success: false,
+        limit: this.options.points,
+        remaining: 0,
+        reset: record.blocked_until - now
+      }
+    }
+
+    // Decrement points
+    record.points--
+
+    // Block if out of points
+    if (record.points <= 0) {
+      record.blocked_until = now + this.options.blockDuration
+    }
+
+    // Update record
+    await supabase
+      .from('rate_limits')
+      .upsert({
+        key,
+        ...record,
+        updated_at: new Date().toISOString()
+      })
+
+    if (record.points <= 0) {
+      return {
+        success: false,
+        limit: this.options.points,
+        remaining: 0,
+        reset: this.options.blockDuration
+      }
+    }
+
+    return {
+      success: true,
+      limit: this.options.points,
+      remaining: record.points,
+      reset: Math.ceil(record.last_reset + this.options.duration - now)
+    }
   }
 } 

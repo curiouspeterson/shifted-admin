@@ -1,8 +1,8 @@
 /**
- * Requests List Route Handler
+ * Time Off Requests Route Handler
  * Last Updated: 2025-01-17
  * 
- * Handles request list operations with rate limiting, validation, and pagination.
+ * Handles time off request operations with rate limiting, validation, and pagination.
  */
 
 import { RateLimiter } from '@/lib/rate-limiting'
@@ -17,7 +17,7 @@ const rateLimiter = new RateLimiter({
   points: 100,
   duration: 60, // 1 minute
   blockDuration: 300, // 5 minutes
-  keyPrefix: 'requests-list'
+  keyPrefix: 'time-off'
 })
 
 // Validation schemas
@@ -25,39 +25,38 @@ const queryParamsSchema = z.object({
   limit: z.coerce.number().min(1).max(100).default(20),
   offset: z.coerce.number().min(0).default(0),
   orderBy: z.object({
-    column: z.enum(['title', 'description', 'status', 'priority', 'created_at']),
+    column: z.enum(['start_date', 'end_date', 'status', 'created_at']),
     ascending: z.boolean()
   }).optional(),
-  search: z.string().optional(),
+  employeeId: z.string().uuid().optional(),
   status: z.enum(['pending', 'approved', 'rejected']).optional(),
-  priority: z.enum(['low', 'medium', 'high']).optional()
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional()
 })
 
-const requestSchema = z.object({
-  title: z.string().min(1),
-  description: z.string().min(1),
-  status: z.enum(['pending', 'approved', 'rejected']),
-  priority: z.enum(['low', 'medium', 'high']),
-  assignedTo: z.string().uuid().optional(),
-  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+const timeOffRequestSchema = z.object({
+  employeeId: z.string().uuid(),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  type: z.enum(['vacation', 'sick', 'personal', 'other']),
+  status: z.enum(['pending', 'approved', 'rejected']).default('pending'),
   notes: z.string().optional()
 })
 
-interface Request {
+interface TimeOffRequest {
   id: string
-  title: string
-  description: string
+  employeeId: string
+  startDate: string
+  endDate: string
+  type: 'vacation' | 'sick' | 'personal' | 'other'
   status: 'pending' | 'approved' | 'rejected'
-  priority: 'low' | 'medium' | 'high'
-  assignedTo?: string
-  dueDate?: string
   notes?: string
   createdAt: string
   updatedAt: string
 }
 
-interface RequestListResponse {
-  requests: Request[]
+interface TimeOffRequestListResponse {
+  requests: TimeOffRequest[]
   total: number
   limit: number
   offset: number
@@ -88,28 +87,30 @@ export const GET = createRouteHandler({
         column: orderByValue,
         ascending: isAscending
       } : undefined,
-      search: searchParams.get('search'),
+      employeeId: searchParams.get('employeeId'),
       status: searchParams.get('status'),
-      priority: searchParams.get('priority')
+      startDate: searchParams.get('startDate'),
+      endDate: searchParams.get('endDate')
     })
 
     const supabase = createClient(cookies())
-    let query = supabase.from('requests').select('*', { count: 'exact' })
+    let query = supabase.from('time_off_requests').select('*', { count: 'exact' })
 
     // Apply filters
-    if (queryParams.search && queryParams.search.trim() !== '') {
-      query = query.or(
-        `title.ilike.%${queryParams.search}%,` +
-        `description.ilike.%${queryParams.search}%`
-      )
+    if (typeof queryParams.employeeId === 'string' && queryParams.employeeId.trim() !== '') {
+      query = query.eq('employee_id', queryParams.employeeId)
     }
 
     if (queryParams.status) {
       query = query.eq('status', queryParams.status)
     }
 
-    if (queryParams.priority) {
-      query = query.eq('priority', queryParams.priority)
+    if (typeof queryParams.startDate === 'string' && queryParams.startDate.trim() !== '') {
+      query = query.gte('start_date', queryParams.startDate)
+    }
+
+    if (typeof queryParams.endDate === 'string' && queryParams.endDate.trim() !== '') {
+      query = query.lte('end_date', queryParams.endDate)
     }
 
     // Apply pagination and ordering
@@ -120,7 +121,7 @@ export const GET = createRouteHandler({
       })
 
     if (error !== null) {
-      return NextResponse.json<ApiResponse<RequestListResponse>>(
+      return NextResponse.json<ApiResponse<TimeOffRequestListResponse>>(
         { error: error.message },
         { status: 400 }
       )
@@ -128,16 +129,15 @@ export const GET = createRouteHandler({
 
     const total = typeof count === 'number' ? count : 0
 
-    return NextResponse.json<ApiResponse<RequestListResponse>>({
+    return NextResponse.json<ApiResponse<TimeOffRequestListResponse>>({
       data: {
         requests: data.map(item => ({
           id: item.id,
-          title: item.title,
-          description: item.description,
+          employeeId: item.employee_id,
+          startDate: item.start_date,
+          endDate: item.end_date,
+          type: item.type,
           status: item.status,
-          priority: item.priority,
-          assignedTo: item.assigned_to,
-          dueDate: item.due_date,
           notes: item.notes,
           createdAt: item.created_at,
           updatedAt: item.updated_at
@@ -153,23 +153,22 @@ export const GET = createRouteHandler({
 export const POST = createRouteHandler({
   rateLimit: rateLimiter,
   validate: {
-    body: requestSchema
+    body: timeOffRequestSchema
   },
   handler: async (req) => {
     const body = await req.json()
-    const { title, description, status, priority, assignedTo, dueDate, notes } = requestSchema.parse(body)
+    const { employeeId, startDate, endDate, type, status, notes } = timeOffRequestSchema.parse(body)
 
     const supabase = createClient(cookies())
     
     const { data, error } = await supabase
-      .from('requests')
+      .from('time_off_requests')
       .insert({
-        title,
-        description,
+        employee_id: employeeId,
+        start_date: startDate,
+        end_date: endDate,
+        type,
         status,
-        priority,
-        assigned_to: assignedTo,
-        due_date: dueDate,
         notes,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -178,21 +177,20 @@ export const POST = createRouteHandler({
       .single()
 
     if (error !== null || data === null) {
-      return NextResponse.json<ApiResponse<Request>>(
-        { error: error !== null ? error.message : 'Failed to create request' },
+      return NextResponse.json<ApiResponse<TimeOffRequest>>(
+        { error: error !== null ? error.message : 'Failed to create time off request' },
         { status: 400 }
       )
     }
 
-    return NextResponse.json<ApiResponse<Request>>({
+    return NextResponse.json<ApiResponse<TimeOffRequest>>({
       data: {
         id: data.id,
-        title: data.title,
-        description: data.description,
+        employeeId: data.employee_id,
+        startDate: data.start_date,
+        endDate: data.end_date,
+        type: data.type,
         status: data.status,
-        priority: data.priority,
-        assignedTo: data.assigned_to,
-        dueDate: data.due_date,
         notes: data.notes,
         createdAt: data.created_at,
         updatedAt: data.updated_at

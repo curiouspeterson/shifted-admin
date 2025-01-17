@@ -28,7 +28,7 @@ const queryParamsSchema = z.object({
     column: z.enum(['first_name', 'last_name', 'email', 'role', 'status', 'created_at']),
     ascending: z.boolean()
   }).optional(),
-  search: z.string().optional(),
+  search: z.string().trim().min(1).nullish(),
   role: z.enum(['admin', 'manager', 'employee']).optional(),
   status: z.enum(['active', 'inactive']).optional()
 })
@@ -87,7 +87,7 @@ export const GET = createRouteHandler({
     let query = supabase.from('employees').select('*', { count: 'exact' })
 
     // Apply filters
-    if (queryParams.search) {
+    if (queryParams.search !== null && queryParams.search !== undefined) {
       query = query.or(
         `first_name.ilike.%${queryParams.search}%,` +
         `last_name.ilike.%${queryParams.search}%,` +

@@ -1,161 +1,108 @@
 /**
- * Error Types
+ * Error Types and Utilities
  * Last Updated: 2025-01-17
  * 
- * Modern error handling system using discriminated unions and proper type safety.
+ * Provides type-safe error handling utilities for the application.
  */
 
-/**
- * Base error interface with discriminated union
- */
+export type ErrorType = 
+  | 'validation'
+  | 'authentication'
+  | 'authorization'
+  | 'notFound'
+  | 'rateLimit'
+  | 'database'
+  | 'unknown';
+
 export interface BaseError {
-  code: string;
-  message: string;
-  timestamp: string;
-  correlationId: string;
-  path?: string[];
-}
-
-/**
- * Validation error details
- */
-export interface ValidationErrorDetail {
-  field: string;
+  type: ErrorType;
   message: string;
   code: string;
-  path: string[];
+  status: number;
+  details?: unknown;
 }
 
-/**
- * Error types using discriminated unions
- */
-export type AppError =
-  | {
-      type: 'validation';
-      errors: ValidationErrorDetail[];
-    } & BaseError
-  | {
-      type: 'authentication';
-      requiredPermissions?: string[];
-    } & BaseError
-  | {
-      type: 'authorization';
-      requiredRoles?: string[];
-    } & BaseError
-  | {
-      type: 'notFound';
-      resource: string;
-      identifier?: string;
-    } & BaseError
-  | {
-      type: 'database';
-      operation: 'create' | 'read' | 'update' | 'delete';
-      table: string;
-    } & BaseError
-  | {
-      type: 'rateLimit';
-      limit: number;
-      remaining: number;
-      reset: number;
-    } & BaseError
-  | {
-      type: 'timeRange';
-      start?: string;
-      end?: string;
-    } & BaseError;
+export class AppError extends Error implements BaseError {
+  constructor(
+    public type: ErrorType,
+    public message: string,
+    public code: string,
+    public status: number,
+    public details?: unknown
+  ) {
+    super(message);
+    this.name = 'AppError';
+  }
 
-/**
- * Error factory type
- */
-export type ErrorFactory<T extends AppError['type']> = (
-  message: string,
-  details: Omit<Extract<AppError, { type: T }>, keyof BaseError | 'type'>
-) => AppError;
-
-/**
- * Create an error with proper typing and metadata
- */
-export function createError<T extends AppError['type']>(
-  type: T,
-  message: string,
-  details: Omit<Extract<AppError, { type: T }>, keyof BaseError | 'type'>
-): AppError {
-  return {
-    type,
-    message,
-    code: `ERR_${type.toUpperCase()}`,
-    timestamp: new Date().toISOString(),
-    correlationId: crypto.randomUUID(),
-    ...details,
-  } as AppError;
+  toJSON() {
+    return {
+      type: this.type,
+      message: this.message,
+      code: this.code,
+      status: this.status,
+      details: this.details
+    };
+  }
 }
 
-/**
- * Type guard to check if an error is an AppError
- */
-export function isAppError(error: unknown): error is AppError {
-  return (
-    typeof error === 'object' &&
-    error !== null &&
-    'type' in error &&
-    'code' in error &&
-    'message' in error &&
-    'timestamp' in error &&
-    'correlationId' in error
-  );
-}
+export const isAppError = (error: unknown): error is AppError => {
+  return error instanceof AppError;
+};
 
-/**
- * Error factories for each error type
- */
 export const Errors = {
-  validation: ((message, details) =>
-    createError('validation', message, details)) as ErrorFactory<'validation'>,
-
-  authentication: ((message, details) =>
-    createError('authentication', message, details)) as ErrorFactory<'authentication'>,
-
-  authorization: ((message, details) =>
-    createError('authorization', message, details)) as ErrorFactory<'authorization'>,
-
-  notFound: ((message, details) =>
-    createError('notFound', message, details)) as ErrorFactory<'notFound'>,
-
-  database: ((message, details) =>
-    createError('database', message, details)) as ErrorFactory<'database'>,
-
-  rateLimit: ((message, details) =>
-    createError('rateLimit', message, details)) as ErrorFactory<'rateLimit'>,
-
-  timeRange: ((message, details) =>
-    createError('timeRange', message, details)) as ErrorFactory<'timeRange'>,
-} as const; 
-
-export interface ErrorDetails {
-  [key: string]: unknown | undefined;
-}
-
-export interface ErrorContext {
-  code: string;
-  severity: ErrorSeverity;
-  category: ErrorCategory;
-  source: string;
-  details?: ErrorDetails;
-}
-
-export enum ErrorSeverity {
-  LOW = 'LOW',
-  MEDIUM = 'MEDIUM',
-  HIGH = 'HIGH',
-  CRITICAL = 'CRITICAL',
-}
-
-export enum ErrorCategory {
-  VALIDATION = 'VALIDATION',
-  AUTHENTICATION = 'AUTHENTICATION',
-  AUTHORIZATION = 'AUTHORIZATION',
-  DATABASE = 'DATABASE',
-  NETWORK = 'NETWORK',
-  BUSINESS = 'BUSINESS',
-  SYSTEM = 'SYSTEM',
-} 
+  validation: (message: string, details?: unknown) => new AppError(
+    'validation',
+    message,
+    'VALIDATION_ERROR',
+    400,
+    details
+  ),
+  
+  authentication: (message: string, details?: unknown) => new AppError(
+    'authentication',
+    message,
+    'AUTHENTICATION_ERROR',
+    401,
+    details
+  ),
+  
+  authorization: (message: string, details?: unknown) => new AppError(
+    'authorization',
+    message,
+    'AUTHORIZATION_ERROR',
+    403,
+    details
+  ),
+  
+  notFound: (message: string, details?: unknown) => new AppError(
+    'notFound',
+    message,
+    'NOT_FOUND',
+    404,
+    details
+  ),
+  
+  rateLimit: (message: string, details?: unknown) => new AppError(
+    'rateLimit',
+    message,
+    'RATE_LIMIT_EXCEEDED',
+    429,
+    details
+  ),
+  
+  database: (message: string, details?: unknown) => new AppError(
+    'database',
+    message,
+    'DATABASE_ERROR',
+    500,
+    details
+  ),
+  
+  unknown: (message: string, details?: unknown) => new AppError(
+    'unknown',
+    message,
+    'INTERNAL_SERVER_ERROR',
+    500,
+    details
+  )
+}; 

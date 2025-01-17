@@ -19,12 +19,13 @@ import type {
   ResponseMetadata,
   CacheInfo,
   RateLimit,
-  ExtendedNextRequest
+  ExtendedNextRequest,
+  RouteContext
 } from './types';
 
 export type RouteHandler = (
   req: ExtendedNextRequest,
-  context?: { params?: Record<string, string> }
+  context?: RouteContext
 ) => Promise<NextResponse>;
 
 /**
@@ -36,15 +37,8 @@ function getBaseMetadata(
 ): ResponseMetadata {
   return {
     requestId: crypto.randomUUID(),
-    processingTime: 0,
-    version: '1.0',
     timestamp: new Date().toISOString(),
-    cache: cache ?? null,
-    rateLimit: rateLimit ?? {
-      limit: 0,
-      remaining: 0,
-      reset: 0
-    }
+    duration: 0
   };
 }
 

@@ -1,121 +1,103 @@
 /**
- * Schedule Requirements API Route
- * Last Updated: 2024-03-21
+ * Schedule Requirements Route Handler
+ * Last Updated: 2025-01-17
  * 
- * Handles schedule requirements operations with rate limiting.
+ * Handles CRUD operations for schedule requirements with rate limiting.
  */
 
-import { NextRequest } from 'next/server';
-import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
-import { createRateLimiter, defaultRateLimits } from '@/lib/api/rate-limit';
-import { TimeRequirementsOperations } from '@/lib/api/database/time-requirements';
-import { HTTP_STATUS_BAD_REQUEST, HTTP_STATUS_NOT_FOUND } from '@/lib/constants/http';
+import { RateLimiter } from '@/lib/rate-limiting'
+import { createRouteHandler } from '@/lib/api'
+import { createClient } from '@/lib/supabase/server'
+import { TimeRequirementsOperations } from '@/lib/operations/time-requirements'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
 
-// Create rate limiter for API endpoints
-const apiRateLimiter = createRateLimiter(defaultRateLimits.api);
+// Rate limiter: 100 requests per minute
+const rateLimiter = new RateLimiter({
+  points: 100,
+  duration: 60, // 1 minute
+  blockDuration: 300, // 5 minutes
+  keyPrefix: 'schedule-requirements'
+})
 
-export async function GET(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-): Promise<Response> {
-  try {
-    // Check rate limit
-    const ip = request.ip || request.headers.get('x-forwarded-for') || 'unknown';
-    await apiRateLimiter.check(ip);
+export const GET = createRouteHandler({
+  rateLimit: rateLimiter,
+  handler: async (req) => {
+    const { searchParams } = new URL(req.url)
+    const scheduleId = searchParams.get('scheduleId')
 
-    // Create Supabase client
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
+    if (scheduleId === null || scheduleId.trim() === '') {
+      return NextResponse.json(
+        { error: 'Schedule ID is required' },
+        { status: 400 }
+      )
+    }
 
-    // Initialize database operations
-    const timeRequirements = new TimeRequirementsOperations(supabase);
-
-    // Get requirements
-    const { data: requirements, error } = await timeRequirements.findMany({
-      filter: {
-        schedule_id: params.id
-      }
-    });
+    const supabase = createClient(cookies())
+    const timeRequirements = new TimeRequirementsOperations(supabase)
+    const { data, error } = await timeRequirements.getByScheduleId(scheduleId)
 
     if (error) {
-      return Response.json({
-        error: {
-          message: error.message,
-          code: 'requirements/fetch-failed'
-        }
-      }, { status: HTTP_STATUS_BAD_REQUEST });
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      )
     }
 
-    if (!requirements?.length) {
-      return Response.json({
-        error: {
-          message: 'Requirements not found',
-          code: 'requirements/not-found'
-        }
-      }, { status: HTTP_STATUS_NOT_FOUND });
-    }
-
-    return Response.json({
-      data: requirements,
-      error: null
-    });
-  } catch (error) {
-    console.error('Requirements fetch error:', error);
-    return Response.json({
-      error: {
-        message: error instanceof Error ? error.message : 'Failed to fetch requirements',
-        code: 'requirements/unknown-error'
-      }
-    }, { status: HTTP_STATUS_BAD_REQUEST });
+    return NextResponse.json({ data })
   }
-}
+})
 
-export async function POST(
-  request: NextRequest,
-  { params }: { params: { id: string } }
-): Promise<Response> {
-  try {
-    // Check rate limit
-    const ip = request.ip || request.headers.get('x-forwarded-for') || 'unknown';
-    await apiRateLimiter.check(ip);
+export const POST = createRouteHandler({
+  rateLimit: rateLimiter,
+  handler: async (req) => {
+    const { searchParams } = new URL(req.url)
+    const scheduleId = searchParams.get('scheduleId')
 
-    // Parse request body
-    const requirement = await request.json();
-
-    // Create Supabase client
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
-
-    // Initialize database operations
-    const timeRequirements = new TimeRequirementsOperations(supabase);
-
-    // Create requirement
-    const { data: newRequirement, error } = await timeRequirements.create({
-      ...requirement,
-      schedule_id: params.id
-    });
-
-    if (error) {
-      return Response.json({
-        error: {
-          message: error.message,
-          code: 'requirements/create-failed'
-        }
-      }, { status: HTTP_STATUS_BAD_REQUEST });
+    if (scheduleId === null || scheduleId.trim() === '') {
+      return NextResponse.json(
+        { error: 'Schedule ID is required' },
+        { status: 400 }
+      )
     }
 
-    return Response.json({
-      data: newRequirement,
-      error: null
-    });
-  } catch (error) {
-    console.error('Requirement creation error:', error);
-    return Response.json({
-      error: {
-        message: error instanceof Error ? error.message : 'Failed to create requirement',
-        code: 'requirements/unknown-error'
+    try {
+      // Parse request body
+      const requirement = await req.json()
+
+      // Create Supabase client
+      const supabase = createClient(cookies())
+
+      // Initialize database operations
+      const timeRequirements = new TimeRequirementsOperations(supabase)
+
+      // Create requirement
+      const { data: newRequirement, error } = await timeRequirements.create({
+        ...requirement,
+        schedule_id: scheduleId
+      })
+
+      if (error !== null && typeof error === 'object') {
+        return NextResponse.json(
+          { 
+            error: error.message,
+            details: 'details' in error ? error.details : undefined,
+            code: 'requirements/create-failed'
+          },
+          { status: 400 }
+        )
       }
-    }, { status: HTTP_STATUS_BAD_REQUEST });
+
+      return NextResponse.json({ data: newRequirement })
+    } catch (error) {
+      console.error('Requirement creation error:', error)
+      return NextResponse.json(
+        {
+          error: error instanceof Error ? error.message : 'Failed to create requirement',
+          code: 'requirements/unknown-error'
+        },
+        { status: 500 }
+      )
+    }
   }
-}
+})

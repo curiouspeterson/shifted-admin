@@ -1,6 +1,6 @@
 /**
  * Schedule API Route - Single Schedule Operations
- * Last Updated: 2024-03-21
+ * Last Updated: 2025-01-17
  * 
  * This module provides API endpoints for managing individual schedules:
  * GET /api/schedules/[id] - Get a single schedule
@@ -9,12 +9,11 @@
  */
 
 import { z } from 'zod';
-import { NextRequest } from 'next/server';
-import { createRouteHandler } from '@/lib/api/route-handler';
-import type { RouteContext } from '@/lib/api/route-handler';
+import { NextResponse } from 'next/server';
+import { createRouteHandler } from '@/lib/api';
+import type { ApiResponse } from '@/lib/api';
 import { scheduleRepository } from '@/lib/api/repositories';
-import { CACHE_KEYS } from '@/lib/api/cache/config';
-import type { Schedule, ScheduleStatus } from '@/lib/api/repositories';
+import type { Schedule } from '@/lib/api/repositories';
 
 // Validation schemas
 const updateScheduleSchema = z.object({
@@ -25,131 +24,92 @@ const updateScheduleSchema = z.object({
   metadata: z.record(z.unknown()).optional().nullable(),
 });
 
-type UpdateScheduleResponse = z.infer<typeof updateScheduleSchema>;
+type UpdateScheduleRequest = z.infer<typeof updateScheduleSchema>;
 
 // GET /api/schedules/[id]
-export const GET = createRouteHandler(
-  {
-    auth: {
-      required: true,
-      roles: ['user', 'admin'],
-    },
-    cache: {
-      enabled: true,
-      tags: [CACHE_KEYS.SCHEDULES],
-    },
-    rateLimit: {
-      enabled: true,
-      requests: 100,
-      window: 60, // 1 minute
-    },
-  },
-  async (req: NextRequest, ctx: RouteContext) => {
-    if (!ctx.params?.id) {
-      return new Response(
-        JSON.stringify({ error: 'Schedule ID is required' }),
+export const GET = createRouteHandler({
+  handler: async (req) => {
+    const id = req.nextUrl.pathname.split('/').pop();
+    
+    if (typeof id !== 'string' || id.trim() === '') {
+      return NextResponse.json<ApiResponse<Schedule>>(
+        { error: 'Invalid schedule ID' },
         { status: 400 }
       );
     }
 
-    const schedule = await scheduleRepository.findById(ctx.params.id);
-    
-    if (!schedule) {
-      return new Response(
-        JSON.stringify({ error: 'Schedule not found' }),
+    const schedule = await scheduleRepository.findById(id);
+
+    if (schedule === null) {
+      return NextResponse.json<ApiResponse<Schedule>>(
+        { error: 'Schedule not found' },
         { status: 404 }
       );
     }
 
-    return schedule;
+    return NextResponse.json<ApiResponse<Schedule>>({ data: schedule });
   }
-);
+});
 
 // PUT /api/schedules/[id]
-export const PUT = createRouteHandler<UpdateScheduleResponse>(
-  {
-    auth: {
-      required: true,
-      roles: ['admin'],
-    },
-    validation: {
-      body: updateScheduleSchema,
-    },
-    cache: {
-      enabled: false,
-    },
-    rateLimit: {
-      enabled: true,
-      requests: 50,
-      window: 60, // 1 minute
-    },
+export const PUT = createRouteHandler({
+  validate: {
+    body: updateScheduleSchema
   },
-  async (req: NextRequest, ctx: RouteContext) => {
-    if (!ctx.params?.id) {
-      return new Response(
-        JSON.stringify({ error: 'Schedule ID is required' }),
+  handler: async (req) => {
+    const id = req.nextUrl.pathname.split('/').pop();
+    
+    if (typeof id !== 'string' || id.trim() === '') {
+      return NextResponse.json<ApiResponse<Schedule>>(
+        { error: 'Invalid schedule ID' },
         { status: 400 }
-      ) as any;
+      );
     }
 
-    const body = await req.json();
-    const data = updateScheduleSchema.parse(body);
+    const body = await req.json() as UpdateScheduleRequest;
+    const result = updateScheduleSchema.safeParse(body);
 
-    // Check if schedule exists
-    const existingSchedule = await scheduleRepository.findById(ctx.params.id);
-    if (!existingSchedule) {
-      return new Response(
-        JSON.stringify({ error: 'Schedule not found' }),
+    if (!result.success) {
+      return NextResponse.json<ApiResponse<Schedule>>(
+        { error: 'Invalid request body' },
+        { status: 400 }
+      );
+    }
+
+    const updated = await scheduleRepository.update(id, result.data);
+
+    if (updated === null) {
+      return NextResponse.json<ApiResponse<Schedule>>(
+        { error: 'Schedule not found' },
         { status: 404 }
-      ) as any;
+      );
     }
 
-    // Update schedule
-    await scheduleRepository.update(ctx.params.id, {
-      ...data,
-      updated_at: new Date().toISOString(),
-    });
-
-    return data;
+    return NextResponse.json<ApiResponse<Schedule>>({ data: updated });
   }
-);
+});
 
 // DELETE /api/schedules/[id]
-export const DELETE = createRouteHandler(
-  {
-    auth: {
-      required: true,
-      roles: ['admin'],
-    },
-    cache: {
-      enabled: false,
-    },
-    rateLimit: {
-      enabled: true,
-      requests: 50,
-      window: 60, // 1 minute
-    },
-  },
-  async (req: NextRequest, ctx: RouteContext) => {
-    if (!ctx.params?.id) {
-      return new Response(
-        JSON.stringify({ error: 'Schedule ID is required' }),
+export const DELETE = createRouteHandler({
+  handler: async (req) => {
+    const id = req.nextUrl.pathname.split('/').pop();
+    
+    if (typeof id !== 'string' || id.trim() === '') {
+      return NextResponse.json<ApiResponse<void>>(
+        { error: 'Invalid schedule ID' },
         { status: 400 }
       );
     }
 
-    // Check if schedule exists
-    const existingSchedule = await scheduleRepository.findById(ctx.params.id);
-    if (!existingSchedule) {
-      return new Response(
-        JSON.stringify({ error: 'Schedule not found' }),
+    const result = await scheduleRepository.delete(id);
+
+    if (result === null) {
+      return NextResponse.json<ApiResponse<void>>(
+        { error: 'Schedule not found' },
         { status: 404 }
       );
     }
 
-    // Delete schedule
-    await scheduleRepository.delete(ctx.params.id);
-
-    return new Response(null, { status: 204 });
+    return NextResponse.json<ApiResponse<void>>({ data: undefined });
   }
-); 
+}); 

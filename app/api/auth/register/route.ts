@@ -7,13 +7,15 @@
 
 import { RateLimiter } from '@/lib/rate-limiting'
 import { 
-  registerRequestSchema, 
+  registerRequestSchema,
+  type RegisterRequest,
   type RegisterResponse 
 } from '@/lib/validations/auth'
 import { createRouteHandler, type ApiResponse } from '@/lib/api'
 import { createClient } from '@/lib/supabase/server'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { Errors } from '@/lib/errors/types'
 
 // Rate limiter: 5 attempts per 15 minutes
 const rateLimiter = new RateLimiter({
@@ -23,37 +25,37 @@ const rateLimiter = new RateLimiter({
   keyPrefix: 'register'
 })
 
-export const POST = createRouteHandler({
+export const POST = createRouteHandler<RegisterResponse, RegisterRequest>({
   rateLimit: rateLimiter,
   validate: {
     body: registerRequestSchema
   },
   handler: async (req) => {
-    const body = await req.json()
-    const { email, password, firstName, lastName } = registerRequestSchema.parse(body)
+    try {
+      const body = await req.json() as RegisterRequest
+      const { email, password, firstName, lastName } = registerRequestSchema.parse(body)
 
-    const supabase = createClient(cookies())
-    
-    const { data: { user }, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: {
-          firstName,
-          lastName
+      const supabase = createClient(cookies())
+      
+      const { data: { user }, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            firstName,
+            lastName
+          }
         }
+      })
+
+      if (error !== null || user === null) {
+        throw Errors.validation(
+          error?.message ?? 'Failed to create user',
+          { email }
+        )
       }
-    })
 
-    if (error !== null || user === null) {
-      return NextResponse.json<ApiResponse<RegisterResponse>>(
-        { error: error !== null ? error.message : 'Failed to create user' },
-        { status: 400 }
-      )
-    }
-
-    return NextResponse.json<ApiResponse<RegisterResponse>>({
-      data: {
+      const response: RegisterResponse = {
         user: {
           id: user.id,
           email: user.email!,
@@ -61,6 +63,24 @@ export const POST = createRouteHandler({
           lastName: user.user_metadata['lastName']
         }
       }
-    })
+
+      return NextResponse.json<ApiResponse<RegisterResponse>>({
+        data: response
+      })
+    } catch (error) {
+      console.error('Registration failed:', error)
+      
+      if (error instanceof Error) {
+        return NextResponse.json<ApiResponse<RegisterResponse>>(
+          { error: error.message },
+          { status: 400 }
+        )
+      }
+
+      return NextResponse.json<ApiResponse<RegisterResponse>>(
+        { error: 'Registration failed' },
+        { status: 500 }
+      )
+    }
   }
 }) 
