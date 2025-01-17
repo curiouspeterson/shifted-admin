@@ -1,22 +1,28 @@
 /**
- * Error Handling Exports
- * Last Updated: 2024-03-21
+ * Error Types Index
+ * Last updated: 2025-01-17
  * 
- * This file exports all error-related functionality from the errors module.
+ * This file exports all error types used in the application.
  */
 
-// Export error types and interfaces
-export * from './types';
+// Export base error types
+export type { ErrorConfig } from './base';
+export { AppError } from './base';
 
-// Export base error class and others
-export { BaseError as AppError, DatabaseError, ValidationError, AuthenticationError, AuthorizationError, NetworkError, BusinessError, TimeRangeError, NotFoundError } from './base';
-export { ErrorSeverity, ErrorCategory } from './base';
+// Export auth errors
+export { AuthError, TokenExpiredError, InvalidTokenError, MissingTokenError } from './auth';
 
-// Export service worker error
-export { ServiceWorkerError } from './service-worker';
+// Export database errors
+export { DatabaseError } from './database';
 
-// Export error utilities
-export * from './utils';
+// Export validation errors
+export { ValidationError } from './validation';
 
-// Export error boundary component
-export { ErrorBoundary } from '@/components/error/error-boundary'; 
+// Export monitoring errors
+export { MonitoringError } from './monitoring';
+
+// Export analytics errors
+export { AnalyticsError } from './analytics';
+
+// Export API errors
+export { ApiError } from './api'; 

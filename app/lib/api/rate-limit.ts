@@ -6,6 +6,20 @@
  */
 
 import { RateLimitOptions } from './rate-limiter';
+import { RateLimiterMemory } from 'rate-limiter-flexible';
+import type { RateLimiterOpts } from './types';
+
+/**
+ * Rate Limiter Types
+ * Last Updated: 2025-01-17
+ */
+
+export interface RateLimiterOpts {
+  points?: number;
+  duration?: number;
+  blockDuration?: number;
+  keyPrefix?: string;
+}
 
 /**
  * Default rate limit configurations for different API endpoints
@@ -62,3 +76,18 @@ export const rateLimitConfigs: Record<string, RateLimitOptions> = {
     identifier: 'api:admin'
   }
 } as const; 
+
+/**
+ * Rate Limiter Configuration
+ * Last Updated: 2025-01-17
+ */
+
+export const createRateLimiter = (options: RateLimiterOpts) => {
+  const { points = 10, duration = 1, blockDuration = 60 } = options;
+  
+  return new RateLimiterMemory({
+    points,
+    duration,
+    blockDuration,
+  });
+}; 

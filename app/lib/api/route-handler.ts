@@ -2,25 +2,28 @@
  * API Route Handler
  * Last Updated: 2025-01-17
  * 
- * Utility for creating type-safe Next.js 14+ route handlers with built-in
- * error handling, validation, rate limiting, and caching.
+ * Modern route handler implementation with proper error handling,
+ * validation, rate limiting, and caching.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { RateLimiter } from './rate-limiter';
 import { CacheControl } from './cache';
-import { ValidationError } from '@/lib/errors';
+import { Errors, isAppError, type AppError } from '@/lib/errors/types';
+import { withSupabase } from './middleware';
+import { logger } from '@/lib/logging/logger';
 import type { 
   ApiHandlerOptions, 
   ApiResponse, 
   ResponseMetadata,
   CacheInfo,
-  RateLimit
+  RateLimit,
+  ExtendedNextRequest
 } from './types';
 
 export type RouteHandler = (
-  req: NextRequest,
+  req: ExtendedNextRequest,
   context?: { params?: Record<string, string> }
 ) => Promise<NextResponse>;
 
@@ -28,8 +31,8 @@ export type RouteHandler = (
  * Get base metadata for API responses
  */
 function getBaseMetadata(
-  cache?: CacheInfo | null,
-  rateLimit?: RateLimit
+  cache?: CacheInfo | undefined,
+  rateLimit?: RateLimit | undefined
 ): ResponseMetadata {
   return {
     requestId: crypto.randomUUID(),
@@ -53,52 +56,77 @@ export function createRouteHandler<T = unknown>(
   handler: RouteHandler,
   options: ApiHandlerOptions<T> = {}
 ): RouteHandler {
-  return async (req: NextRequest, context?: { params?: Record<string, string> }) => {
+  return async (req: NextRequest, context?: { params?: Record<string, string> }): Promise<NextResponse> => {
     const startTime = Date.now();
+    const requestId = crypto.randomUUID();
     let rateLimitState: RateLimit | undefined;
     let cacheInfo: CacheInfo | undefined;
 
+    // Create request-scoped logger
+    const requestLogger = logger.child({
+      requestId,
+      method: req.method,
+      path: new URL(req.url).pathname,
+    });
+
     try {
+      // Extend request with Supabase client and session
+      const extendedReq = await withSupabase(req);
+
       // Initialize rate limiter if configured
       let rateLimiter: RateLimiter | null = null;
       if (options.rateLimit) {
         rateLimiter = new RateLimiter(options.rateLimit);
+        requestLogger.debug('Rate limiter initialized', { 
+          config: options.rateLimit 
+        });
       }
 
       // Check rate limit if enabled
       if (rateLimiter) {
-        const key = options.rateLimit?.identifier || req.ip || 'unknown';
+        const key = options.rateLimit?.identifier || extendedReq.ip || 'unknown';
         const { success, limit, remaining, reset } = await rateLimiter.check(key);
         
         rateLimitState = { limit, remaining, reset };
+        requestLogger.debug('Rate limit checked', { rateLimitState });
         
         if (!success) {
-          throw new ValidationError('Rate limit exceeded', {
-            rateLimit: rateLimitState
-          });
+          throw Errors.rateLimit('Rate limit exceeded', rateLimitState);
         }
       }
 
       // Validate request components if configured
       if (options.validate) {
+        requestLogger.debug('Validating request');
+
         // Validate query parameters
         if (options.validate.query) {
-          const query = Object.fromEntries(new URL(req.url).searchParams);
+          const query = Object.fromEntries(new URL(extendedReq.url).searchParams);
           const result = await options.validate.query.safeParseAsync(query);
           if (!result.success) {
-            throw new ValidationError('Invalid query parameters', {
-              validation: result.error.errors
+            throw Errors.validation('Invalid query parameters', {
+              errors: result.error.errors.map(err => ({
+                field: err.path.join('.'),
+                message: err.message,
+                code: 'INVALID_QUERY',
+                path: err.path.map(p => p.toString())
+              }))
             });
           }
         }
 
         // Validate request body for non-GET requests
-        if (options.validate.body && req.method !== 'GET') {
-          const body = await req.json();
+        if (options.validate.body && extendedReq.method !== 'GET') {
+          const body = await extendedReq.json();
           const result = await options.validate.body.safeParseAsync(body);
           if (!result.success) {
-            throw new ValidationError('Invalid request body', {
-              validation: result.error.errors
+            throw Errors.validation('Invalid request body', {
+              errors: result.error.errors.map(err => ({
+                field: err.path.join('.'),
+                message: err.message,
+                code: 'INVALID_BODY',
+                path: err.path.map(p => p.toString())
+              }))
             });
           }
         }
@@ -107,15 +135,22 @@ export function createRouteHandler<T = unknown>(
         if (options.validate.params && context?.params) {
           const result = await options.validate.params.safeParseAsync(context.params);
           if (!result.success) {
-            throw new ValidationError('Invalid URL parameters', {
-              validation: result.error.errors
+            throw Errors.validation('Invalid URL parameters', {
+              errors: result.error.errors.map(err => ({
+                field: err.path.join('.'),
+                message: err.message,
+                code: 'INVALID_PARAMS',
+                path: err.path.map(p => p.toString())
+              }))
             });
           }
         }
+
+        requestLogger.debug('Request validation successful');
       }
 
-      // Execute handler
-      const response = await handler(req, context);
+      // Execute handler with extended request
+      const response = await handler(extendedReq, context);
 
       // Add cache headers if configured
       if (options.cache) {
@@ -137,7 +172,7 @@ export function createRouteHandler<T = unknown>(
 
       // Add rate limit headers if enabled
       if (rateLimiter) {
-        const key = options.rateLimit?.identifier || req.ip || 'unknown';
+        const key = options.rateLimit?.identifier || extendedReq.ip || 'unknown';
         const state = await rateLimiter.getState(key);
         rateLimitState = state;
         
@@ -159,6 +194,11 @@ export function createRouteHandler<T = unknown>(
             metadata
           };
           
+          requestLogger.info('Request successful', {
+            status: response.status,
+            processingTime: metadata.processingTime
+          });
+
           return NextResponse.json(enrichedData, {
             status: response.status,
             headers: response.headers
@@ -168,7 +208,46 @@ export function createRouteHandler<T = unknown>(
 
       return response;
     } catch (error) {
-      throw error;
+      const apiError = isAppError(error) ? error : Errors.database(
+        'Internal server error',
+        { 
+          operation: 'read',
+          table: 'unknown'
+        }
+      );
+
+      requestLogger.error('Request failed', apiError);
+
+      return NextResponse.json({
+        data: null,
+        error: apiError,
+        metadata: getBaseMetadata(cacheInfo, rateLimitState)
+      }, {
+        status: getErrorStatus(apiError),
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      });
     }
   };
+}
+
+/**
+ * Get HTTP status code for error type
+ */
+function getErrorStatus(error: AppError): number {
+  switch (error.type) {
+    case 'validation':
+      return 400;
+    case 'authentication':
+      return 401;
+    case 'authorization':
+      return 403;
+    case 'notFound':
+      return 404;
+    case 'rateLimit':
+      return 429;
+    default:
+      return 500;
+  }
 } 

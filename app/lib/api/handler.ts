@@ -19,6 +19,9 @@ import {
 import { headers } from 'next/headers';
 import { z } from 'zod';
 import { RateLimiter } from './rate-limiter';
+import { AppError } from '@/lib/errors/base';
+import { createRateLimiter } from './rate-limit';
+import type { RouteHandlerConfig } from './types';
 
 // HTTP Status codes
 const HTTP_STATUS = {
@@ -344,4 +347,37 @@ export function createApiHandler<T = unknown, R = unknown>(
       );
     }
   };
-} 
+}
+
+/**
+ * API Route Handler Factory
+ * Last Updated: 2025-01-17
+ */
+
+export const createRouteHandler = <T extends z.ZodType>(config: RouteHandlerConfig<T>) => {
+  const { schema, handler, rateLimit } = config;
+  
+  return async (req: NextRequest) => {
+    try {
+      if (rateLimit) {
+        const limiter = createRateLimiter(rateLimit);
+        await limiter.consume(req.ip);
+      }
+
+      const data = schema ? await schema.parseAsync(await req.json()) : undefined;
+      const result = await handler(req, data);
+      
+      return NextResponse.json(result);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return NextResponse.json({ error: error.errors }, { status: 400 });
+      }
+      
+      if (error instanceof AppError) {
+        return NextResponse.json({ error: error.message }, { status: error.statusCode });
+      }
+      
+      return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
+  };
+}; 

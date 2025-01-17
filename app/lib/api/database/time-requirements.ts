@@ -14,7 +14,7 @@ type TimeRequirementInsert = Database['public']['Tables']['time_requirements']['
 type TimeRequirementUpdate = Database['public']['Tables']['time_requirements']['Update'];
 
 export class TimeRequirementsOperations {
-  constructor(private readonly supabase: SupabaseClient<Database>) {}
+  constructor(private readonly supabase: SupabaseClient<Database, 'public'>) {}
 
   /**
    * Find a time requirement by ID

@@ -8,6 +8,18 @@
 import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { CacheControl } from './cache';
+import { SupabaseClient, User, Session } from '@supabase/supabase-js';
+import type { Database } from '../supabase/database.types';
+import type { RateLimiterOpts } from './rate-limit';
+
+/**
+ * Extended NextRequest with Supabase client and session
+ */
+export interface ExtendedNextRequest extends NextRequest {
+  supabase: SupabaseClient<Database>;
+  user?: User;
+  session?: Session;
+}
 
 /**
  * Base query parameters
@@ -130,4 +142,21 @@ export interface ApiHandlerOptions<T = unknown> {
     query?: z.ZodSchema;
     params?: z.ZodSchema;
   };
+}
+
+export interface RouteHandlerConfig<T extends z.ZodType> {
+  schema?: T;
+  handler: (
+    req: NextRequest,
+    data?: z.infer<T>
+  ) => Promise<unknown>;
+  rateLimit?: RateLimiterOpts;
+}
+
+export interface ApiContext<T> {
+  req: NextRequest;
+  params?: Record<string, string>;
+  headers: Headers;
+  body?: T;
+  query: URLSearchParams;
 } 

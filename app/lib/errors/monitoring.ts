@@ -1,194 +1,52 @@
 /**
- * Error Monitoring Service
- * Last Updated: 2025-01-16
- * 
- * Provides error monitoring and metrics tracking capabilities.
+ * Monitoring Error Types
+ * Last updated: 2025-01-17
  */
 
-import { errorLogger } from '@/lib/logging/error-logger'
 import { AppError } from './base';
-import { ErrorCategories, ErrorSeverity } from './types';
+import { HTTP_STATUS_INTERNAL_SERVER_ERROR } from '../api/constants';
 
-/**
- * Error metrics interface
- */
-interface ErrorMetrics {
-  total: number;
-  byCategory: Record<string, number>;
-  bySeverity: Record<string, number>;
-  byCode: Record<string, number>;
-  recentErrors: Array<{
-    timestamp: string;
-    error: AppError;
-  }>;
+export interface MonitoringErrorDetail extends Record<string, unknown> {
+  service: string;
+  operation: string;
+  timestamp: string;
+  metadata?: Record<string, unknown>;
 }
 
-/**
- * Error monitoring service
- */
-export class ErrorMonitoringService {
-  private static instance: ErrorMonitoringService;
-  private metrics: ErrorMetrics = {
-    total: 0,
-    byCategory: Object.fromEntries(
-      Object.values(ErrorCategories).map(category => [category, 0])
-    ),
-    bySeverity: Object.fromEntries(
-      ['info', 'warning', 'error', 'critical'].map(severity => [severity, 0])
-    ),
-    byCode: {},
-    recentErrors: [],
-  };
-
-  private constructor() {
-    // Initialize metrics storage
-  }
-
-  /**
-   * Get singleton instance
-   */
-  static getInstance(): ErrorMonitoringService {
-    if (!ErrorMonitoringService.instance) {
-      ErrorMonitoringService.instance = new ErrorMonitoringService();
-    }
-    return ErrorMonitoringService.instance;
-  }
-
-  /**
-   * Track an error
-   */
-  trackError(error: AppError): void {
-    // Update total count
-    this.metrics.total++;
-
-    // Update category count
-    const category = error.metadata.source;
-    this.metrics.byCategory[category] = (this.metrics.byCategory[category] || 0) + 1;
-
-    // Update severity count
-    const severity = error.metadata.severity;
-    this.metrics.bySeverity[severity] = (this.metrics.bySeverity[severity] || 0) + 1;
-
-    // Update code count
-    this.metrics.byCode[error.code] = (this.metrics.byCode[error.code] || 0) + 1;
-
-    // Add to recent errors
-    this.metrics.recentErrors.unshift({
-      timestamp: new Date().toISOString(),
-      error,
-    });
-
-    // Keep only last 100 errors
-    if (this.metrics.recentErrors.length > 100) {
-      this.metrics.recentErrors.pop();
-    }
-
-    // Log metrics update
-    errorLogger.info('Error metrics updated', {
-      total: this.metrics.total,
-      category,
-      severity,
-      code: error.code,
-      timestamp: new Date().toISOString()
+export class MonitoringError extends AppError {
+  constructor(message: string, details: MonitoringErrorDetail) {
+    super({
+      message,
+      status: HTTP_STATUS_INTERNAL_SERVER_ERROR,
+      code: 'MONITORING_ERROR',
+      details
     });
   }
+}
 
-  /**
-   * Get error metrics
-   */
-  getMetrics(): ErrorMetrics {
-    return { ...this.metrics };
-  }
-
-  /**
-   * Get error rate for a specific category
-   */
-  getErrorRate(category: string, timeWindowMs: number = 3600000): number {
-    const now = Date.now();
-    const relevantErrors = this.metrics.recentErrors.filter(
-      ({ timestamp }) => now - new Date(timestamp).getTime() <= timeWindowMs
-    );
-
-    const categoryErrors = relevantErrors.filter(
-      ({ error }) => error.metadata.source === category
-    );
-
-    return categoryErrors.length / (timeWindowMs / 1000); // errors per second
-  }
-
-  /**
-   * Check if error rate exceeds threshold
-   */
-  isErrorRateExceeded(
-    category: string,
-    threshold: number,
-    timeWindowMs: number = 3600000
-  ): boolean {
-    const rate = this.getErrorRate(category, timeWindowMs);
-    return rate > threshold;
-  }
-
-  /**
-   * Reset metrics
-   */
-  resetMetrics(): void {
-    this.metrics = {
-      total: 0,
-      byCategory: Object.fromEntries(
-        Object.values(ErrorCategories).map(category => [category, 0])
-      ),
-      bySeverity: Object.fromEntries(
-        ['info', 'warning', 'error', 'critical'].map(severity => [severity, 0])
-      ),
-      byCode: {},
-      recentErrors: [],
-    };
+export class MetricsError extends MonitoringError {
+  constructor(message: string, details: MonitoringErrorDetail) {
+    super(message, {
+      ...details,
+      code: 'METRICS_ERROR'
+    });
   }
 }
 
-/**
- * Get error monitoring instance
- */
-export function getErrorMonitoring(): ErrorMonitoringService {
-  return ErrorMonitoringService.getInstance();
+export class TracingError extends MonitoringError {
+  constructor(message: string, details: MonitoringErrorDetail) {
+    super(message, {
+      ...details,
+      code: 'TRACING_ERROR'
+    });
+  }
 }
 
-/**
- * Track an error
- */
-export function trackError(error: AppError): void {
-  ErrorMonitoringService.getInstance().trackError(error);
-}
-
-/**
- * Get error metrics
- */
-export function getErrorMetrics(): ErrorMetrics {
-  return ErrorMonitoringService.getInstance().getMetrics();
-}
-
-/**
- * Check if error rate exceeds threshold
- */
-export function isErrorRateExceeded(
-  category: string,
-  threshold: number,
-  timeWindowMs?: number
-): boolean {
-  return ErrorMonitoringService.getInstance().isErrorRateExceeded(
-    category,
-    threshold,
-    timeWindowMs
-  );
-}
-
-/**
- * Updates error metrics with new error data
- */
-function updateErrorMetrics(metrics: ErrorMetrics) {
-  errorLogger.info('Error metrics updated', {
-    metrics,
-    timestamp: new Date().toISOString()
-  })
-  // Additional metric update logic...
+export class LoggingError extends MonitoringError {
+  constructor(message: string, details: MonitoringErrorDetail) {
+    super(message, {
+      ...details,
+      code: 'LOGGING_ERROR'
+    });
+  }
 } 

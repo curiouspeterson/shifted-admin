@@ -18,8 +18,15 @@ const inter = Inter({ subsets: ['latin'] });
 export const metadata: Metadata = {
   title: 'Shifted Admin',
   description: 'Admin dashboard for Shifted',
-  viewport: 'width=device-width, initial-scale=1',
-  themeColor: '#000000',
+};
+
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#FFFFFF' },
+    { media: '(prefers-color-scheme: dark)', color: '#000000' }
+  ]
 };
 
 export default function RootLayout({

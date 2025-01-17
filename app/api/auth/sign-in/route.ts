@@ -5,12 +5,11 @@
  * Handles user sign in requests.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createRouteHandler } from '@/lib/api';
+import type { ExtendedNextRequest } from '@/lib/api/types';
 import { z } from 'zod';
 import { AuthenticationError } from '@/lib/errors';
-import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
 
 // Validation schema for sign-in credentials
 const signInSchema = z.object({
@@ -18,7 +17,7 @@ const signInSchema = z.object({
   password: z.string().min(8, 'Password must be at least 8 characters')
 });
 
-export const POST = createRouteHandler(async (req: NextRequest) => {
+export const POST = createRouteHandler(async (req: ExtendedNextRequest) => {
   const data = await req.json();
   
   // Validate request body
@@ -29,10 +28,7 @@ export const POST = createRouteHandler(async (req: NextRequest) => {
 
   // Attempt sign in
   const { email, password } = result.data;
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
-
-  const { data: authData, error } = await supabase.auth.signInWithPassword({
+  const { data: authData, error } = await req.supabase.auth.signInWithPassword({
     email,
     password
   });

@@ -10,17 +10,11 @@
  */
 
 import { z } from 'zod';
-import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandler } from '@/lib/api/route-handler';
-import type { ApiResponse } from '@/lib/api/types';
+import { NextResponse } from 'next/server';
+import { createRouteHandler } from '@/lib/api';
+import type { ExtendedNextRequest } from '@/lib/api/types';
 import { TimeRequirementsOperations } from '@/lib/api/database/time-requirements';
-import {
-  HTTP_STATUS_OK,
-  HTTP_STATUS_CREATED,
-  HTTP_STATUS_METHOD_NOT_ALLOWED,
-} from '@/lib/constants/http';
-import { defaultRateLimits } from '@/lib/api/rate-limit';
-import { cacheConfigs } from '@/lib/api/cache';
+import { HTTP_STATUS_CREATED } from '@/lib/constants/http';
 import type { ListTimeRequirementsQuery } from '@/lib/schemas/api';
 import {
   listTimeRequirementsQuerySchema,
@@ -34,62 +28,42 @@ import {
   TimeRangeError,
   NotFoundError,
   ValidationError,
-  AuthorizationError,
 } from '@/lib/errors';
-import { env } from '@/lib/env';
-import { createClient } from '@supabase/supabase-js';
+import { CacheControl } from '@/lib/api/cache';
 
 type TimeRequirementRow = Database['public']['Tables']['time_requirements']['Row'];
 type TimeRequirementSortColumn = NonNullable<z.infer<typeof timeRequirementSortSchema>['sort']>;
 
-// Custom rate limits for time requirements
-const timeRequirementsRateLimits = {
+// Rate limits for time requirements
+const rateLimits = {
   list: {
-    ...defaultRateLimits.api,
-    limit: 100,
+    windowMs: 60 * 1000, // 1 minute
+    maxRequests: 100,
     identifier: 'time-requirements:list',
   },
   create: {
-    ...defaultRateLimits.api,
-    limit: 30,
+    windowMs: 60 * 1000,
+    maxRequests: 30,
     identifier: 'time-requirements:create', 
   },
   update: {
-    ...defaultRateLimits.api,
-    limit: 40,
+    windowMs: 60 * 1000,
+    maxRequests: 40,
     identifier: 'time-requirements:update',
   },
 } as const;
 
 // Cache configuration for time requirements
-const timeRequirementsCacheConfig = {
+const cacheConfig = {
   list: {
-    ...cacheConfigs.api,
+    maxAge: 60, // 1 minute
+    staleWhileRevalidate: 30,
     prefix: 'api:time-requirements:list',
     includeQuery: true,
     excludeParams: ['offset'] as const,
+    control: CacheControl.Public
   },
 };
-
-// Base metadata for responses
-const getBaseMetadata = (cache?: { hit: boolean; ttl: number } | null) => ({
-  requestId: crypto.randomUUID(),
-  processingTime: 0,
-  version: '1.0',
-  timestamp: new Date().toISOString(),
-  cache: cache ?? null,
-  rateLimit: {
-    limit: 100,
-    remaining: 99,
-    reset: Math.floor(Date.now() / 1000) + 60
-  }
-});
-
-// Initialize Supabase client
-const supabase = createClient<Database>(
-  env.DATABASE_URL,
-  env.DATABASE_AUTH_TOKEN
-);
 
 // Map day of week strings to numbers
 const dayOfWeekMap = {
@@ -103,7 +77,7 @@ const dayOfWeekMap = {
 } as const;
 
 // GET /api/time-requirements
-export const GET = createRouteHandler(async (req: NextRequest) => {
+export const GET = createRouteHandler(async (req: ExtendedNextRequest) => {
   const { searchParams } = new URL(req.url);
   const query = Object.fromEntries(searchParams);
   
@@ -114,7 +88,7 @@ export const GET = createRouteHandler(async (req: NextRequest) => {
     });
   }
 
-  const timeRequirements = new TimeRequirementsOperations(supabase);
+  const timeRequirements = new TimeRequirementsOperations(req.supabase);
   
   const options = {
     limit: parsedQuery.data.limit,
@@ -140,16 +114,18 @@ export const GET = createRouteHandler(async (req: NextRequest) => {
 
   return NextResponse.json({
     data: result.data || [],
-    error: null,
-    metadata: getBaseMetadata(null)
+    error: null
   });
 }, {
-  rateLimit: timeRequirementsRateLimits.list,
-  cache: timeRequirementsCacheConfig.list
+  rateLimit: rateLimits.list,
+  cache: cacheConfig.list,
+  validate: {
+    query: listTimeRequirementsQuerySchema
+  }
 });
 
 // POST /api/time-requirements
-export const POST = createRouteHandler(async (req: NextRequest) => {
+export const POST = createRouteHandler(async (req: ExtendedNextRequest) => {
   const body = await req.json();
   const parsedBody = createTimeRequirementSchema.safeParse(body);
   
@@ -173,7 +149,7 @@ export const POST = createRouteHandler(async (req: NextRequest) => {
     });
   }
 
-  const timeRequirements = new TimeRequirementsOperations(supabase);
+  const timeRequirements = new TimeRequirementsOperations(req.supabase);
 
   const result = await timeRequirements.create({
     schedule_id: parsedBody.data.scheduleId,
@@ -194,15 +170,17 @@ export const POST = createRouteHandler(async (req: NextRequest) => {
 
   return NextResponse.json({
     data: result.data,
-    error: null,
-    metadata: getBaseMetadata(null)
+    error: null
   }, { status: HTTP_STATUS_CREATED });
 }, {
-  rateLimit: timeRequirementsRateLimits.create
+  rateLimit: rateLimits.create,
+  validate: {
+    body: createTimeRequirementSchema
+  }
 });
 
 // PATCH /api/time-requirements/[id]
-export const PATCH = createRouteHandler(async (req: NextRequest, context?: { params?: Record<string, string> }) => {
+export const PATCH = createRouteHandler(async (req: ExtendedNextRequest, context?: { params?: Record<string, string> }) => {
   if (!context?.params?.id) {
     throw new ValidationError('Time requirement ID is required', {
       validation: [{
@@ -222,7 +200,7 @@ export const PATCH = createRouteHandler(async (req: NextRequest, context?: { par
     });
   }
 
-  const timeRequirements = new TimeRequirementsOperations(supabase);
+  const timeRequirements = new TimeRequirementsOperations(req.supabase);
   
   const existing = await timeRequirements.findById(context.params.id);
   if (!existing.data) {
@@ -262,9 +240,11 @@ export const PATCH = createRouteHandler(async (req: NextRequest, context?: { par
 
   return NextResponse.json({
     data: result.data,
-    error: null,
-    metadata: getBaseMetadata(null)
+    error: null
   });
 }, {
-  rateLimit: timeRequirementsRateLimits.update
+  rateLimit: rateLimits.update,
+  validate: {
+    body: updateTimeRequirementSchema
+  }
 });

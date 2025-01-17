@@ -1,103 +1,161 @@
 /**
  * Error Types
- * Last Updated: 2024-01-17
+ * Last Updated: 2025-01-17
  * 
- * This file defines the base error types and interfaces used throughout the application.
+ * Modern error handling system using discriminated unions and proper type safety.
  */
 
-import { ErrorSeverity } from '../logging/error-logger';
-
 /**
- * Error metadata interface
- */
-export interface ErrorMetadata {
-  timestamp: string;
-  severity: ErrorSeverity;
-  source: string;
-  context?: Record<string, any>;
-  stack?: string;
-}
-
-/**
- * Base error interface
+ * Base error interface with discriminated union
  */
 export interface BaseError {
   code: string;
   message: string;
-  metadata: ErrorMetadata;
-  cause?: Error;
+  timestamp: string;
+  correlationId: string;
+  path?: string[];
 }
 
 /**
- * Error codes enum
+ * Validation error details
  */
-export const ErrorCodes = {
-  // Validation Errors
-  VALIDATION_ERROR: 'VALIDATION_ERROR',
-  INVALID_INPUT: 'INVALID_INPUT',
-  REQUIRED_FIELD: 'REQUIRED_FIELD',
-  INVALID_FORMAT: 'INVALID_FORMAT',
-
-  // Authentication Errors
-  UNAUTHORIZED: 'UNAUTHORIZED',
-  INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
-  SESSION_EXPIRED: 'SESSION_EXPIRED',
-  TOKEN_EXPIRED: 'TOKEN_EXPIRED',
-
-  // Authorization Errors
-  FORBIDDEN: 'FORBIDDEN',
-  INSUFFICIENT_PERMISSIONS: 'INSUFFICIENT_PERMISSIONS',
-  RESOURCE_ACCESS_DENIED: 'RESOURCE_ACCESS_DENIED',
-
-  // Database Errors
-  DATABASE_ERROR: 'DATABASE_ERROR',
-  NOT_FOUND: 'NOT_FOUND',
-  DUPLICATE: 'DUPLICATE',
-  FOREIGN_KEY: 'FOREIGN_KEY',
-  SERIALIZATION_FAILURE: 'SERIALIZATION_FAILURE',
-  DEADLOCK_DETECTED: 'DEADLOCK_DETECTED',
-  TRANSACTION_FAILED: 'TRANSACTION_FAILED',
-  CONFLICT: 'CONFLICT',
-
-  // Network Errors
-  NETWORK_ERROR: 'NETWORK_ERROR',
-  REQUEST_TIMEOUT: 'REQUEST_TIMEOUT',
-  SERVICE_UNAVAILABLE: 'SERVICE_UNAVAILABLE',
-  API_ERROR: 'API_ERROR',
-
-  // Business Logic Errors
-  BUSINESS_RULE_VIOLATION: 'BUSINESS_RULE_VIOLATION',
-  INVALID_STATE: 'INVALID_STATE',
-  OPERATION_NOT_ALLOWED: 'OPERATION_NOT_ALLOWED',
-
-  // System Errors
-  SYSTEM_ERROR: 'SYSTEM_ERROR',
-  CONFIGURATION_ERROR: 'CONFIGURATION_ERROR',
-  INITIALIZATION_ERROR: 'INITIALIZATION_ERROR',
-
-  // Unknown/Other
-  UNKNOWN: 'UNKNOWN',
-} as const;
+export interface ValidationErrorDetail {
+  field: string;
+  message: string;
+  code: string;
+  path: string[];
+}
 
 /**
- * Error category enum
+ * Error types using discriminated unions
  */
-export const ErrorCategories = {
-  VALIDATION: 'VALIDATION',
-  AUTHENTICATION: 'AUTHENTICATION',
-  AUTHORIZATION: 'AUTHORIZATION',
-  DATABASE: 'DATABASE',
-  NETWORK: 'NETWORK',
-  BUSINESS: 'BUSINESS',
-  SYSTEM: 'SYSTEM',
-  UNKNOWN: 'UNKNOWN',
-} as const;
+export type AppError =
+  | {
+      type: 'validation';
+      errors: ValidationErrorDetail[];
+    } & BaseError
+  | {
+      type: 'authentication';
+      requiredPermissions?: string[];
+    } & BaseError
+  | {
+      type: 'authorization';
+      requiredRoles?: string[];
+    } & BaseError
+  | {
+      type: 'notFound';
+      resource: string;
+      identifier?: string;
+    } & BaseError
+  | {
+      type: 'database';
+      operation: 'create' | 'read' | 'update' | 'delete';
+      table: string;
+    } & BaseError
+  | {
+      type: 'rateLimit';
+      limit: number;
+      remaining: number;
+      reset: number;
+    } & BaseError
+  | {
+      type: 'timeRange';
+      start?: string;
+      end?: string;
+    } & BaseError;
 
 /**
- * Error recovery action type
+ * Error factory type
  */
-export type ErrorRecoveryAction = {
-  type: 'retry' | 'refresh' | 'redirect' | 'reset' | 'custom';
-  label: string;
-  handler: () => Promise<void>;
-}; 
+export type ErrorFactory<T extends AppError['type']> = (
+  message: string,
+  details: Omit<Extract<AppError, { type: T }>, keyof BaseError | 'type'>
+) => AppError;
+
+/**
+ * Create an error with proper typing and metadata
+ */
+export function createError<T extends AppError['type']>(
+  type: T,
+  message: string,
+  details: Omit<Extract<AppError, { type: T }>, keyof BaseError | 'type'>
+): AppError {
+  return {
+    type,
+    message,
+    code: `ERR_${type.toUpperCase()}`,
+    timestamp: new Date().toISOString(),
+    correlationId: crypto.randomUUID(),
+    ...details,
+  } as AppError;
+}
+
+/**
+ * Type guard to check if an error is an AppError
+ */
+export function isAppError(error: unknown): error is AppError {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'type' in error &&
+    'code' in error &&
+    'message' in error &&
+    'timestamp' in error &&
+    'correlationId' in error
+  );
+}
+
+/**
+ * Error factories for each error type
+ */
+export const Errors = {
+  validation: ((message, details) =>
+    createError('validation', message, details)) as ErrorFactory<'validation'>,
+
+  authentication: ((message, details) =>
+    createError('authentication', message, details)) as ErrorFactory<'authentication'>,
+
+  authorization: ((message, details) =>
+    createError('authorization', message, details)) as ErrorFactory<'authorization'>,
+
+  notFound: ((message, details) =>
+    createError('notFound', message, details)) as ErrorFactory<'notFound'>,
+
+  database: ((message, details) =>
+    createError('database', message, details)) as ErrorFactory<'database'>,
+
+  rateLimit: ((message, details) =>
+    createError('rateLimit', message, details)) as ErrorFactory<'rateLimit'>,
+
+  timeRange: ((message, details) =>
+    createError('timeRange', message, details)) as ErrorFactory<'timeRange'>,
+} as const; 
+
+export interface ErrorDetails {
+  [key: string]: unknown | undefined;
+}
+
+export interface ErrorContext {
+  code: string;
+  severity: ErrorSeverity;
+  category: ErrorCategory;
+  source: string;
+  details?: ErrorDetails;
+}
+
+export enum ErrorSeverity {
+  LOW = 'LOW',
+  MEDIUM = 'MEDIUM',
+  HIGH = 'HIGH',
+  CRITICAL = 'CRITICAL',
+}
+
+export enum ErrorCategory {
+  VALIDATION = 'VALIDATION',
+  AUTHENTICATION = 'AUTHENTICATION',
+  AUTHORIZATION = 'AUTHORIZATION',
+  DATABASE = 'DATABASE',
+  NETWORK = 'NETWORK',
+  BUSINESS = 'BUSINESS',
+  SYSTEM = 'SYSTEM',
+} 

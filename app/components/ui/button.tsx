@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * Button Component
  * Last Updated: 2025-01-17

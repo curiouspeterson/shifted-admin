@@ -22,33 +22,28 @@
  */
 
 import { z } from 'zod';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createRouteHandler } from '@/lib/api';
-import type { ApiHandlerOptions } from '@/lib/api/types';
+import type { ApiHandlerOptions, ExtendedNextRequest } from '@/lib/api/types';
 import { EmployeesOperations } from '@/lib/api/database/employees';
 import {
   HTTP_STATUS_OK,
   HTTP_STATUS_CREATED,
   HTTP_STATUS_CONFLICT,
 } from '@/lib/constants/http';
-import { defaultRateLimits } from '@/lib/api';
 import { CacheControl } from '@/lib/api/cache';
 import {
   listEmployeesQuerySchema,
   createEmployeeSchema,
   employeeSortSchema,
 } from '@/lib/schemas/api';
-import type { Database } from '@/lib/supabase/database.types';
 import {
   ValidationError,
   AuthorizationError,
   DatabaseError,
 } from '@/lib/errors';
 
-type EmployeeRow = Database['public']['Tables']['employees']['Row'];
 type EmployeeSortColumn = NonNullable<z.infer<typeof employeeSortSchema>['sort']>;
-type ListEmployeesQuery = z.infer<typeof listEmployeesQuerySchema>;
-type CreateEmployee = z.infer<typeof createEmployeeSchema>;
 
 // Custom rate limits for employee operations
 const employeeRateLimits = {
@@ -84,10 +79,10 @@ const employeeCacheConfig = {
  * List employees with optional filtering and pagination
  */
 export const GET = createRouteHandler(
-  async (req: NextRequest) => {
+  async (req: ExtendedNextRequest) => {
     const url = new URL(req.url);
     const query = Object.fromEntries(url.searchParams);
-    const supabase = req.supabase;
+    const { supabase } = req;
 
     // Initialize database operations
     const employees = new EmployeesOperations(supabase);
@@ -134,9 +129,8 @@ export const GET = createRouteHandler(
  * Create a new employee record
  */
 export const POST = createRouteHandler(
-  async (req: NextRequest) => {
-    const supabase = req.supabase;
-    const session = req.session;
+  async (req: ExtendedNextRequest) => {
+    const { supabase, session } = req;
     const body = await req.json();
 
     if (!session) {

@@ -5,19 +5,18 @@
  * Handles new user registration requests.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandler, createRateLimiter } from '@/lib/api';
+import { NextResponse } from 'next/server';
+import { createRouteHandler } from '@/lib/api';
+import type { ExtendedNextRequest } from '@/lib/api/types';
 import { z } from 'zod';
 import { AuthenticationError } from '@/lib/errors';
-import { createClient } from '@/lib/supabase/server';
-import { cookies } from 'next/headers';
 
 // Rate limiter for registration attempts
-const rateLimiter = createRateLimiter({
+const rateLimiter = {
   windowMs: 15 * 60 * 1000, // 15 minutes
   maxRequests: 5, // 5 attempts per window
   identifier: 'auth:register'
-});
+};
 
 // Validation schema for registration
 const registerSchema = z.object({
@@ -27,14 +26,7 @@ const registerSchema = z.object({
   lastName: z.string().min(2, 'Last name must be at least 2 characters')
 });
 
-export const POST = createRouteHandler(async (req: NextRequest) => {
-  // Check rate limit
-  const clientIp = req.ip || 'unknown';
-  const rateLimit = await rateLimiter.check(clientIp);
-  if (!rateLimit.success) {
-    throw new AuthenticationError('Too many registration attempts. Please try again later.');
-  }
-
+export const POST = createRouteHandler(async (req: ExtendedNextRequest) => {
   const data = await req.json();
   
   // Validate request body
@@ -45,10 +37,7 @@ export const POST = createRouteHandler(async (req: NextRequest) => {
 
   // Create user
   const { email, password, firstName, lastName } = result.data;
-  const cookieStore = cookies();
-  const supabase = createClient(cookieStore);
-
-  const { data: authData, error } = await supabase.auth.signUp({
+  const { data: authData, error } = await req.supabase.auth.signUp({
     email,
     password,
     options: {
@@ -69,4 +58,9 @@ export const POST = createRouteHandler(async (req: NextRequest) => {
       session: authData.session
     }
   });
+}, {
+  rateLimit: rateLimiter,
+  validate: {
+    body: registerSchema
+  }
 }); 

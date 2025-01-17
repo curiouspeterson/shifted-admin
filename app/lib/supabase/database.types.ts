@@ -400,6 +400,55 @@ export interface Database {
           }
         ]
       }
+      time_requirements: {
+        Row: BaseRow & {
+          schedule_id: string
+          day_of_week: number
+          start_time: string
+          end_time: string
+          min_staff: number
+          requires_supervisor: boolean
+        }
+        Insert: Partial<BaseRow> & {
+          schedule_id: string
+          day_of_week: number
+          start_time: string
+          end_time: string
+          min_staff: number
+          requires_supervisor?: boolean
+        }
+        Update: Partial<BaseRow & {
+          schedule_id: string
+          day_of_week: number
+          start_time: string
+          end_time: string
+          min_staff: number
+          requires_supervisor: boolean
+        }>
+        Relationships: [
+          {
+            foreignKeyName: "time_requirements_schedule_id_fkey"
+            columns: ["schedule_id"]
+            isOneToOne: false
+            referencedRelation: "schedules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_requirements_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_requirements_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          }
+        ]
+      }
     }
     Views: Record<string, never>
     Functions: Record<string, never>
