@@ -1,66 +1,71 @@
 /**
- * User Registration Route Handler
+ * Register Route Handler
  * Last Updated: 2025-01-17
  * 
- * Handles new user registration requests.
+ * Handles user registration with rate limiting and validation.
  */
 
-import { NextResponse } from 'next/server';
-import { createRouteHandler } from '@/lib/api';
-import type { ExtendedNextRequest } from '@/lib/api/types';
-import { z } from 'zod';
-import { AuthenticationError } from '@/lib/errors';
+import { RateLimiter } from '@/lib/rate-limiter'
+import { registerSchema } from '@/lib/validations/auth'
+import { createRouteHandler } from '@/lib/api'
+import { createClient } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
 
-// Rate limiter for registration attempts
-const rateLimiter = {
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  maxRequests: 5, // 5 attempts per window
-  identifier: 'auth:register'
-};
+// Rate limiter: 5 attempts per 15 minutes
+const rateLimiter = new RateLimiter({
+  points: 5,
+  duration: 15 * 60, // 15 minutes
+  blockDuration: 30 * 60, // 30 minutes
+  keyPrefix: 'register'
+})
 
-// Validation schema for registration
-const registerSchema = z.object({
-  email: z.string().email('Invalid email format'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-  firstName: z.string().min(2, 'First name must be at least 2 characters'),
-  lastName: z.string().min(2, 'Last name must be at least 2 characters')
-});
-
-export const POST = createRouteHandler(async (req: ExtendedNextRequest) => {
-  const data = await req.json();
-  
-  // Validate request body
-  const result = await registerSchema.safeParseAsync(data);
-  if (!result.success) {
-    throw new AuthenticationError('Invalid registration data');
+interface RegisterResponse {
+  user: {
+    id: string
+    email: string
+    firstName: string
+    lastName: string
   }
+}
 
-  // Create user
-  const { email, password, firstName, lastName } = result.data;
-  const { data: authData, error } = await req.supabase.auth.signUp({
-    email,
-    password,
-    options: {
-      data: {
-        first_name: firstName,
-        last_name: lastName
-      }
-    }
-  });
-
-  if (error) {
-    throw new AuthenticationError(error.message);
-  }
-
-  return NextResponse.json({ 
-    data: {
-      user: authData.user,
-      session: authData.session
-    }
-  });
-}, {
+export const POST = createRouteHandler<RegisterResponse>({
   rateLimit: rateLimiter,
   validate: {
     body: registerSchema
+  },
+  handler: async (req) => {
+    const { email, password, firstName, lastName } = await req.json()
+
+    const supabase = createClient(cookies())
+    
+    const { data: { user }, error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          firstName,
+          lastName
+        }
+      }
+    })
+
+    if (error || !user) {
+      return NextResponse.json(
+        { error: error?.message || 'Failed to create user' },
+        { status: 400 }
+      )
+    }
+
+    return NextResponse.json({
+      data: {
+        user: {
+          id: user.id,
+          email: user.email!,
+          firstName: user.user_metadata.firstName,
+          lastName: user.user_metadata.lastName
+        }
+      }
+    })
   }
-}); 
+}) 

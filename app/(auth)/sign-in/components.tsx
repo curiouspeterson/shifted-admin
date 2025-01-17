@@ -17,33 +17,8 @@
 
 'use client'
 
-import { useFormStatus } from 'react-dom'
+import * as React from 'react'
 import { signIn } from '../actions'
-
-/**
- * Sign In Button Component
- * Renders a submit button with loading state
- * Shows a spinner when form is submitting
- * 
- * @returns A styled button with loading indicator
- */
-export function SignInButton() {
-  const { pending } = useFormStatus()
-  
-  return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed"
-    >
-      {pending ? (
-        <div className="w-5 h-5 border-t-2 border-white rounded-full animate-spin" />
-      ) : (
-        'Sign in'
-      )}
-    </button>
-  )
-}
 
 /**
  * Sign In Form Component
@@ -53,33 +28,56 @@ export function SignInButton() {
  * @param props.redirectedFrom - Optional URL to redirect to after successful sign-in
  * @returns A styled form with email/password inputs and submit button
  */
-export function SignInForm({ redirectedFrom }: { redirectedFrom?: string }) {
+export function SignInForm({ redirectedFrom }: { redirectedFrom?: string }): React.ReactElement {
+  const [error, setError] = React.useState<string | null>(null)
+
+  async function handleSubmit(formData: FormData): Promise<void> {
+    const emailValue = formData.get('email')
+    const passwordValue = formData.get('password')
+    
+    if (typeof emailValue !== 'string' || typeof passwordValue !== 'string') {
+      setError('Invalid form data')
+      return
+    }
+
+    const result = await signIn(emailValue, passwordValue)
+    if (result.error !== undefined && result.error !== '') {
+      setError(result.error)
+    }
+  }
+
   return (
-    <form className="mt-8 space-y-6" action={signIn}>
+    <form className="mt-8 space-y-6" action={handleSubmit}>
       {/* Hidden redirect field */}
-      {redirectedFrom && (
+      {typeof redirectedFrom === 'string' && redirectedFrom !== '' && (
         <input type="hidden" name="redirectedFrom" value={redirectedFrom} />
       )}
-      
-      {/* Input Fields Container */}
-      <div className="rounded-md shadow-sm -space-y-px">
-        {/* Email Input */}
+      {error !== null && error !== '' && (
+        <div className="rounded-md bg-red-50 p-4">
+          <div className="flex">
+            <div className="ml-3">
+              <h3 className="text-sm font-medium text-red-800">
+                {error}
+              </h3>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="space-y-6 rounded-md shadow-sm">
         <div>
-          <label htmlFor="email-address" className="sr-only">
+          <label htmlFor="email" className="sr-only">
             Email address
           </label>
           <input
-            id="email-address"
+            id="email"
             name="email"
             type="email"
             autoComplete="email"
             required
-            className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+            className="relative block w-full rounded-t-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
             placeholder="Email address"
           />
         </div>
-        
-        {/* Password Input */}
         <div>
           <label htmlFor="password" className="sr-only">
             Password
@@ -90,16 +88,19 @@ export function SignInForm({ redirectedFrom }: { redirectedFrom?: string }) {
             type="password"
             autoComplete="current-password"
             required
-            minLength={6}
-            className="appearance-none rounded-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-b-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+            className="relative block w-full rounded-b-md border-0 py-1.5 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:z-10 focus:ring-2 focus:ring-inset focus:ring-indigo-600 sm:text-sm sm:leading-6"
             placeholder="Password"
           />
         </div>
       </div>
 
-      {/* Submit Button */}
       <div>
-        <SignInButton />
+        <button
+          type="submit"
+          className="group relative flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600"
+        >
+          Sign in
+        </button>
       </div>
     </form>
   )

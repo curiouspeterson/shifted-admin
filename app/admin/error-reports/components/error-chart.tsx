@@ -8,7 +8,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { ErrorSeverity } from '@/lib/logging/error-logger';
 

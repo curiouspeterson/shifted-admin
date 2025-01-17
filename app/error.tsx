@@ -1,74 +1,51 @@
 /**
- * Global Error Boundary Component
+ * Global Error Component
  * Last Updated: 2025-01-17
  * 
- * Provides a consistent error handling experience across the application.
- * Features:
- * - Error logging
- * - User-friendly error messages
- * - Retry functionality
- * - Error details for development
+ * Handles application-level errors and provides recovery options.
  */
 
 'use client'
 
-import * as React from 'react';
-import { useEffect } from 'react';
+import * as React from 'react'
+import { ClientButton } from '@/components/ui'
 
-export default function GlobalError({
+export default function Error({
   error,
   reset,
 }: {
-  error: Error & { digest?: string };
-  reset: () => void;
-}) {
-  useEffect(() => {
-    // Log error to your error reporting service
-    console.error('Global error:', error);
-  }, [error]);
+  error: Error & { digest?: string }
+  reset: () => void
+}): React.ReactElement {
+  React.useEffect(() => {
+    // Log the error to an error reporting service
+    console.error(error)
+  }, [error])
 
   return (
-    <html>
-      <body>
-        <div className="min-h-screen flex items-center justify-center bg-background">
-          <div className="max-w-md w-full px-4">
-            <div className="text-center">
-              <h1 className="text-4xl font-bold text-red-600 mb-4">
-                Something went wrong!
-              </h1>
-              <p className="text-gray-600 mb-8">
-                We apologize for the inconvenience. Our team has been notified and is working to fix the issue.
-              </p>
-              <div className="space-y-4">
-                <button
-                  onClick={reset}
-                  className="w-full px-4 py-2 text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
-                >
-                  Try again
-                </button>
-                <button
-                  className="w-full px-4 py-2 text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 rounded-md transition-colors"
-                  onClick={() => window.location.href = '/'}
-                >
-                  Return Home
-                </button>
-              </div>
-              {process.env.NODE_ENV === 'development' && (
-                <div className="mt-8 p-4 bg-gray-100 rounded-lg text-left">
-                  <p className="font-mono text-sm text-gray-600">
-                    {error.message}
-                  </p>
-                  {error.digest && (
-                    <p className="font-mono text-sm text-gray-600 mt-2">
-                      Error ID: {error.digest}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4">
+      <div className="space-y-4 text-center">
+        <h1 className="text-4xl font-bold text-gray-900">Something went wrong!</h1>
+        <p className="text-lg text-gray-600">
+          {error.message || 'An unexpected error occurred'}
+        </p>
+        {error.digest && (
+          <p className="text-sm text-gray-500">
+            Error ID: {error.digest}
+          </p>
+        )}
+        <div className="flex gap-4 justify-center">
+          <ClientButton onClick={reset}>
+            Try again
+          </ClientButton>
+          <ClientButton 
+            variant="outline" 
+            onClick={() => window.location.href = '/'}
+          >
+            Go to Home
+          </ClientButton>
         </div>
-      </body>
-    </html>
-  );
+      </div>
+    </div>
+  )
 } 

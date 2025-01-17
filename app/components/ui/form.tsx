@@ -2,9 +2,9 @@
 
 /**
  * Form Components
- * Last Updated: 2024-03
+ * Last Updated: 2025-01-17
  * 
- * A collection of form-specific components that work with our form hook.
+ * A collection of form-specific components that work with react-hook-form.
  * Features:
  * - Form context provider
  * - Field components with validation
@@ -14,19 +14,20 @@
  */
 
 import * as React from 'react';
-import * as LabelPrimitive from '@radix-ui/react-label';
 import { Slot } from '@radix-ui/react-slot';
-import {
-  Controller,
+import type {
   ControllerProps,
   FieldPath,
   FieldValues,
+} from 'react-hook-form';
+import {
+  Controller,
   FormProvider,
   useFormContext,
 } from 'react-hook-form';
 
 import { cn } from '@/lib/utils';
-import { Label } from '@/components/ui/label';
+import { Label as RadixLabel } from '@radix-ui/react-label';
 
 const Form = FormProvider;
 
@@ -101,12 +102,12 @@ FormItem.displayName = 'FormItem';
 
 const FormLabel = React.forwardRef<
   HTMLLabelElement,
-  React.ComponentPropsWithoutRef<typeof Label>
->(({ className, ...props }, ref) => {
+  React.ComponentPropsWithoutRef<typeof RadixLabel>
+>(({ className, ...props }, _ref) => {
   const { error, formItemId } = useFormField();
 
   return (
-    <Label
+    <RadixLabel
       className={cn(error && 'text-destructive', className)}
       htmlFor={formItemId}
       {...props}

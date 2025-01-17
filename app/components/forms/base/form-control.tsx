@@ -1,28 +1,30 @@
+'use client'
+
 /**
  * Form Control Component
- * Last Updated: 2024-01-16
+ * Last Updated: 2025-01-17
  * 
- * A form control component that handles React Hook Form integration
- * and provides proper field registration and typing.
+ * A wrapper component that provides consistent form field layout and behavior.
+ * Supports both simple inputs (with register) and complex inputs (with controller).
  */
 
-"use client"
+import * as React from 'react'
+import type { ControllerRenderProps, FieldValues, Path, UseFormRegisterReturn } from 'react-hook-form'
+import { useController, useFormContext } from 'react-hook-form'
+import { FormField, FormLabel, FormMessage } from '@/components/ui'
+import { cn } from '@/lib/utils'
 
-import * as React from "react"
-import {
-  type FieldValues,
-  type Path,
-  type UseFormRegisterReturn,
-  type ControllerRenderProps,
-  useFormContext,
-  useController
-} from "react-hook-form"
-import {
-  FormField,
-  FormFieldWrapper,
-  FormLabel,
-  FormMessage,
-} from "./FormField"
+interface FormFieldWrapperProps {
+  children: React.ReactNode
+}
+
+function FormFieldWrapper({ children }: FormFieldWrapperProps): React.ReactElement {
+  return (
+    <div className={cn("space-y-2")}>
+      {children}
+    </div>
+  )
+}
 
 interface FormControlProps<T extends FieldValues = FieldValues> {
   name: Path<T>
@@ -38,41 +40,37 @@ interface FormControlProps<T extends FieldValues = FieldValues> {
 export function FormControl<T extends FieldValues = FieldValues>({
   name,
   label,
-  description,
   optional,
   useController: shouldUseController = false,
   children
-}: FormControlProps<T>) {
+}: FormControlProps<T>): React.ReactElement {
   const form = useFormContext<T>()
   
-  // Use controller for complex inputs that need value/onChange
-  if (shouldUseController) {
-    const { field } = useController({
-      name,
-      control: form.control
-    })
-    
-    return (
-      <FormField name={name}>
+  const controller = useController({
+    name,
+    control: form.control
+  })
+  
+  const field = shouldUseController 
+    ? controller.field 
+    : form.register(name)
+  
+  return (
+    <FormField
+      name={name}
+      control={form.control}
+      render={() => (
         <FormFieldWrapper>
-          {label && <FormLabel optional={optional}>{label}</FormLabel>}
+          {label && (
+            <div className="flex items-center gap-1">
+              <FormLabel>{label}</FormLabel>
+              {optional && <span className="text-sm text-muted-foreground">(Optional)</span>}
+            </div>
+          )}
           {children(field)}
           <FormMessage />
         </FormFieldWrapper>
-      </FormField>
-    )
-  }
-
-  // Use register for simple inputs
-  const registerField = form.register(name)
-  
-  return (
-    <FormField name={name}>
-      <FormFieldWrapper>
-        {label && <FormLabel optional={optional}>{label}</FormLabel>}
-        {children(registerField)}
-        <FormMessage />
-      </FormFieldWrapper>
-    </FormField>
+      )}
+    />
   )
 } 

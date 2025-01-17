@@ -7,7 +7,7 @@
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { z } from 'zod'
-import { RateLimiter } from '../rate-limiter'
+import { RateLimiter } from './rate-limiter'
 
 export interface ApiResponse<T> {
   data?: T
