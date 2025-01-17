@@ -1,48 +1,57 @@
 /**
  * API Logger
- * Last Updated: 2025-01-15
+ * Last Updated: 2025-01-17
  * 
- * This module provides logging functionality for API operations.
+ * API logging functionality using the centralized error logger
  */
 
-type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+import { errorLogger } from '@/lib/logging/error-logger';
 
-interface LogContext {
+interface ApiContext {
+  path?: string;
+  method?: string;
+  statusCode?: number;
+  duration?: number;
+  requestId?: string;
+  userId?: string;
   [key: string]: unknown;
 }
 
-class Logger {
-  private log(level: LogLevel, message: string, context?: LogContext) {
-    const timestamp = new Date().toISOString();
-    const logEntry = {
-      timestamp,
-      level,
-      message,
-      ...context,
-    };
+class ApiLogger {
+  private static instance: ApiLogger;
 
-    // In production, we would send this to a logging service
-    // For now, just console.log in development
-    if (process.env.NODE_ENV === 'development') {
-      console.log(JSON.stringify(logEntry, null, 2));
+  private constructor() {}
+
+  static getInstance(): ApiLogger {
+    if (!ApiLogger.instance) {
+      ApiLogger.instance = new ApiLogger();
     }
+    return ApiLogger.instance;
   }
 
-  debug(message: string, context?: LogContext) {
-    this.log('debug', message, context);
+  debug(message: string, context?: ApiContext): Promise<void> {
+    return errorLogger.debug(message, this.enrichContext(context));
   }
 
-  info(message: string, context?: LogContext) {
-    this.log('info', message, context);
+  info(message: string, context?: ApiContext): Promise<void> {
+    return errorLogger.info(message, this.enrichContext(context));
   }
 
-  warn(message: string, context?: LogContext) {
-    this.log('warn', message, context);
+  warn(message: string, context?: ApiContext): Promise<void> {
+    return errorLogger.warn(message, this.enrichContext(context));
   }
 
-  error(message: string, context?: LogContext) {
-    this.log('error', message, context);
+  error(message: string, context?: ApiContext): Promise<void> {
+    return errorLogger.error(message, this.enrichContext(context));
+  }
+
+  private enrichContext(context?: ApiContext): ApiContext {
+    return {
+      ...context,
+      source: 'api',
+      timestamp: new Date().toISOString(),
+    };
   }
 }
 
-export const logger = new Logger(); 
+export const apiLogger = ApiLogger.getInstance(); 

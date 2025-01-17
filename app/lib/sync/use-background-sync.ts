@@ -11,6 +11,7 @@ import { Database } from '@/lib/database/database.types'
 import { BackgroundSyncService, SyncStats } from './backgroundSyncService'
 import { LocalSyncStorage } from './local-storage'
 import { useSupabase } from '@/lib/supabase/provider'
+import { errorLogger } from '@/lib/logging/error-logger'
 
 // Type for the sync status
 export type SyncStatus = {
@@ -50,7 +51,9 @@ export function useBackgroundSync() {
     if (!syncService && supabase) {
       const storage = new LocalSyncStorage()
       syncService = new BackgroundSyncService(supabase, storage)
-      syncService.initialize().catch(console.error)
+      syncService.initialize().catch(error => {
+        errorLogger.error('Failed to initialize sync service', { error })
+      })
     }
   }, [supabase])
 
@@ -89,7 +92,7 @@ export function useBackgroundSync() {
           }))
         }
       } catch (error) {
-        console.error('Failed to get sync stats', error)
+        errorLogger.error('Failed to get sync stats', { error })
       }
     }, 1000)
 

@@ -1,6 +1,7 @@
 import { toast } from '@/components/ui/toast';
 import { OfflineStorage } from './offline';
 import { IndexedDB } from './indexed-db';
+import { errorLogger } from '@/lib/logging/error-logger';
 
 interface FallbackConfig {
   key: string;
@@ -40,7 +41,7 @@ export class OfflineFallback {
 
     // Initialize database connection
     this.db.init().catch(error => {
-      console.error('Failed to initialize offline fallbacks database:', error);
+      errorLogger.error('Failed to initialize offline fallbacks database', { error });
     });
   }
 
@@ -71,7 +72,7 @@ export class OfflineFallback {
           timestamp: Date.now(),
         };
       } catch (error) {
-        console.error('Failed to fetch data:', error);
+        errorLogger.error('Failed to fetch data', { error, key, config });
         // Fall through to try cache
       }
     }
@@ -99,7 +100,7 @@ export class OfflineFallback {
             timestamp: Date.now(),
           };
         } catch (error) {
-          console.error('Failed to fetch fresh data:', error);
+          errorLogger.error('Failed to fetch fresh data', { error, key, config });
           toast({
             title: 'Using Cached Data',
             description: 'Could not fetch latest data. Using cached version.',
@@ -113,7 +114,7 @@ export class OfflineFallback {
         }
       }
     } catch (error) {
-      console.error('Failed to get cached data:', error);
+      errorLogger.error('Failed to get cached data', { error, key });
     }
 
     // If we're offline and have no cache, return error
@@ -137,7 +138,7 @@ export class OfflineFallback {
         timestamp: Date.now(),
       };
     } catch (error) {
-      console.error('Failed to fetch data:', error);
+      errorLogger.error('Failed to fetch data', { error });
       return {
         data: null,
         source: null,
@@ -182,7 +183,7 @@ export class OfflineFallback {
         },
       });
     } catch (error) {
-      console.error('Failed to save fallback:', error);
+      errorLogger.error('Failed to save fallback', { error, key, ttl });
       throw error;
     }
   }
@@ -222,7 +223,7 @@ export class OfflineFallback {
         timestamp: result.timestamp,
       };
     } catch (error) {
-      console.error('Failed to get fallback:', error);
+      errorLogger.error('Failed to get fallback', { error, key });
       return null;
     }
   }
@@ -253,7 +254,7 @@ export class OfflineFallback {
         }
       }
     } catch (error) {
-      console.error('Failed to clear expired fallbacks:', error);
+      errorLogger.error('Failed to clear expired fallbacks', { error });
     }
   }
 
@@ -267,7 +268,7 @@ export class OfflineFallback {
         type: 'clear',
       });
     } catch (error) {
-      console.error('Failed to clear fallbacks:', error);
+      errorLogger.error('Failed to clear fallbacks', { error });
       throw error;
     }
   }

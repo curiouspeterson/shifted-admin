@@ -1,4 +1,5 @@
 import { toast } from '@/components/ui/toast';
+import { errorLogger } from '@/lib/logging/error-logger';
 
 interface SyncOperation {
   id: string;
@@ -51,7 +52,7 @@ export class SyncQueue {
       this.queue = operations;
       this.notifyPendingChanges();
     } catch (error) {
-      console.error('Failed to load sync queue:', error);
+      errorLogger.error('Failed to load sync queue', { error });
     }
   }
 
@@ -66,7 +67,7 @@ export class SyncQueue {
       }
       this.notifyPendingChanges();
     } catch (error) {
-      console.error('Failed to save sync queue:', error);
+      errorLogger.error('Failed to save sync queue', { error });
     }
   }
 
@@ -127,6 +128,7 @@ export class SyncQueue {
           this.queue = this.queue.filter(op => op.id !== operation.id);
           await this.saveQueue();
         } catch (error) {
+          errorLogger.error('Failed to process sync operation', { error, operation });
           if (operation.retryCount < this.config.maxRetries) {
             operation.retryCount++;
             await new Promise(resolve => setTimeout(resolve, this.config.retryDelay));
@@ -147,7 +149,7 @@ export class SyncQueue {
         this.config.onSyncComplete();
       }
     } catch (error) {
-      console.error('Error processing sync queue:', error);
+      errorLogger.error('Error processing sync queue', { error });
       this.config.onSyncError(error as Error);
     } finally {
       this.isProcessing = false;

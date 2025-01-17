@@ -10,10 +10,13 @@ import { ValidationErrorCode, ValidationErrorDetails } from './validation';
 import { Json } from '@/lib/types/json';
 import { errorLogger } from '@/lib/logging/error-logger'
 
+/**
+ * Error severity levels aligned with monitoring standards
+ */
 export enum ErrorSeverity {
-  INFO = 'info',
-  WARNING = 'warning',
-  ERROR = 'error',
+  LOW = 'info',
+  MEDIUM = 'warning',
+  HIGH = 'error',
   CRITICAL = 'critical'
 }
 
@@ -48,6 +51,7 @@ interface ErrorMetadata {
   source?: string;
   context?: ErrorContext;
   timestamp?: string;
+  cause?: Error;
 }
 
 /**

@@ -12,6 +12,7 @@ import { useEffect, useCallback } from 'react';
 import { toast } from '@/components/ui/toast';
 import { SyncQueue } from '@/lib/sync/sync-queue';
 import { CacheManager } from '@/lib/cache/cacheManager';
+import { errorLogger } from '@/lib/logging/error-logger';
 
 interface UseOfflineSyncOptions {
   onSyncComplete?: () => void;
@@ -56,7 +57,7 @@ export function useOfflineSync(options: UseOfflineSyncOptions = {}) {
           : 'Your changes will be saved when you\'re back online.',
       });
     } catch (error) {
-      console.error('Failed to add operation to sync queue:', error);
+      errorLogger.error('Failed to add operation to sync queue', { error, type, endpoint });
       toast.error('Operation Failed', {
         description: 'Failed to queue your changes. Please try again.',
       });

@@ -1,137 +1,103 @@
 /**
- * Error Logger Module
- * Last Updated: 2024-01-17
+ * Error Logger
+ * Last Updated: 2025-01-16
  * 
- * Provides structured error logging with proper formatting
- * for different types of errors.
+ * Centralized error logging with proper type safety
  */
 
-export enum ErrorSeverity {
-  DEBUG = 'debug',
-  INFO = 'info',
-  WARN = 'warn',
-  ERROR = 'error',
-  CRITICAL = 'critical'
-}
-
-type LogLevel = 'error' | 'warn' | 'info' | 'debug'
-
-interface ErrorDetails {
-  name: string
-  message: string
-  stack?: string
-  cause?: unknown
-  code?: string
-  digest?: string
-  [key: string]: unknown
-}
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
 interface LogContext {
-  [key: string]: unknown
+  [key: string]: unknown;
+}
+
+interface LogEntry {
+  level: LogLevel;
+  message: string;
+  timestamp: string;
+  context?: LogContext;
 }
 
 class ErrorLogger {
-  private static instance: ErrorLogger
-  
-  private constructor() {}
-  
+  private static instance: ErrorLogger;
+  private logBuffer: LogEntry[] = [];
+  private readonly bufferSize = 100;
+  private readonly logEndpoint = '/api/logs';
+
+  private constructor() {
+    if (typeof window !== 'undefined') {
+      window.addEventListener('beforeunload', () => this.flush());
+    }
+  }
+
   static getInstance(): ErrorLogger {
     if (!ErrorLogger.instance) {
-      ErrorLogger.instance = new ErrorLogger()
+      ErrorLogger.instance = new ErrorLogger();
     }
-    return ErrorLogger.instance
+    return ErrorLogger.instance;
   }
 
-  /**
-   * Format an error into a structured object
-   */
-  formatError(error: unknown): ErrorDetails {
-    if (error instanceof Error) {
-      return {
-        name: error.name,
-        message: error.message,
-        stack: error.stack,
-        cause: error.cause,
-        ...(error as any)
-      }
-    }
-    
-    if (typeof error === 'string') {
-      return {
-        name: 'Error',
-        message: error
-      }
-    }
-    
-    return {
-      name: 'UnknownError',
-      message: 'An unknown error occurred',
-      raw: error
+  private async flush(): Promise<void> {
+    if (this.logBuffer.length === 0) return;
+
+    try {
+      const logs = [...this.logBuffer];
+      this.logBuffer = [];
+
+      await fetch(this.logEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ logs }),
+      });
+    } catch {
+      // If flush fails, we'll try again on the next log
+      this.logBuffer = [...this.logBuffer];
     }
   }
 
-  /**
-   * Format Next.js errors with additional context
-   */
-  formatNextError(error: Error & { digest?: string }): ErrorDetails {
-    return {
-      ...this.formatError(error),
-      digest: error.digest
-    }
-  }
-
-  /**
-   * Log an error message with context
-   */
-  error(message: string, context?: LogContext) {
-    this.log('error', message, context)
-  }
-
-  /**
-   * Log a warning message with context
-   */
-  warn(message: string, context?: LogContext) {
-    this.log('warn', message, context)
-  }
-
-  /**
-   * Log an info message with context
-   */
-  info(message: string, context?: LogContext) {
-    this.log('info', message, context)
-  }
-
-  /**
-   * Log a debug message with context
-   */
-  debug(message: string, context?: LogContext) {
-    this.log('debug', message, context)
-  }
-
-  /**
-   * Internal logging implementation
-   */
-  private log(level: LogLevel, message: string, context?: LogContext) {
-    const timestamp = new Date().toISOString()
-    const logData = {
-      timestamp,
+  private async log(level: LogLevel, message: string, context?: LogContext): Promise<void> {
+    const entry: LogEntry = {
       level,
       message,
-      ...context
+      timestamp: new Date().toISOString(),
+      context,
+    };
+
+    this.logBuffer.push(entry);
+
+    // Flush if buffer is full
+    if (this.logBuffer.length >= this.bufferSize) {
+      await this.flush();
     }
 
-    // In development, pretty print to console
+    // In development, also log to console
     if (process.env.NODE_ENV === 'development') {
-      console[level](`[${timestamp}] ${message}`, context)
-      return
+      const logFn = level === 'error' ? 'error'
+        : level === 'warn' ? 'warn'
+        : level === 'info' ? 'info'
+        : 'debug';
+      // eslint-disable-next-line no-console
+      console[logFn](message, context);
     }
+  }
 
-    // In production, you might want to send to a logging service
-    // For now, just stringify and log
-    console[level](JSON.stringify(logData))
+  debug(message: string, context?: LogContext): Promise<void> {
+    return this.log('debug', message, context);
+  }
+
+  info(message: string, context?: LogContext): Promise<void> {
+    return this.log('info', message, context);
+  }
+
+  warn(message: string, context?: LogContext): Promise<void> {
+    return this.log('warn', message, context);
+  }
+
+  error(message: string, context?: LogContext): Promise<void> {
+    return this.log('error', message, context);
   }
 }
 
-// Export singleton instance
-export const errorLogger = ErrorLogger.getInstance()
-export const { formatError, formatNextError } = errorLogger 
+export const errorLogger = ErrorLogger.getInstance(); 

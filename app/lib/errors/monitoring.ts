@@ -1,10 +1,11 @@
 /**
  * Error Monitoring Service
- * Last Updated: 2024-03-19 20:35 PST
+ * Last Updated: 2025-01-16
  * 
- * This service provides error monitoring and analytics functionality.
+ * Provides error monitoring and metrics tracking capabilities.
  */
 
+import { errorLogger } from '@/lib/logging/error-logger'
 import { AppError } from './base';
 import { ErrorCategories, ErrorSeverity } from './types';
 
@@ -83,11 +84,12 @@ export class ErrorMonitoringService {
     }
 
     // Log metrics update
-    console.info('Error metrics updated:', {
+    errorLogger.info('Error metrics updated', {
       total: this.metrics.total,
       category,
       severity,
       code: error.code,
+      timestamp: new Date().toISOString()
     });
   }
 
@@ -178,4 +180,15 @@ export function isErrorRateExceeded(
     threshold,
     timeWindowMs
   );
+}
+
+/**
+ * Updates error metrics with new error data
+ */
+function updateErrorMetrics(metrics: ErrorMetrics) {
+  errorLogger.info('Error metrics updated', {
+    metrics,
+    timestamp: new Date().toISOString()
+  })
+  // Additional metric update logic...
 } 

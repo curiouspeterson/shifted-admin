@@ -1,40 +1,56 @@
-"use client";
+/**
+ * Global Error Boundary
+ * Last Updated: 2025-01-16
+ * 
+ * Handles uncaught errors at the application root level.
+ * This component is the last line of defense for error handling.
+ */
 
-import NextError from "next/error";
-import { useEffect } from "react";
+'use client'
+
+import { useEffect } from "react"
+import { errorLogger } from '@/lib/logging/error-logger'
 
 export default function GlobalError({
   error,
   reset,
 }: {
-  error: Error & { digest?: string };
-  reset: () => void;
+  error: Error & { digest?: string }
+  reset: () => void
 }) {
   useEffect(() => {
-    // Log the error to console in development
-    console.error("Global error:", error);
-  }, [error]);
+    errorLogger.error('Unhandled application error', {
+      error,
+      context: {
+        component: 'GlobalError',
+        digest: error.digest,
+        timestamp: new Date().toISOString()
+      }
+    })
+  }, [error])
 
   return (
     <html>
       <body>
-        <div className="min-h-screen flex items-center justify-center bg-gray-100">
-          <div className="bg-white p-8 rounded-lg shadow-md max-w-md w-full">
-            <h2 className="text-2xl font-bold text-gray-800 mb-4">
+        <div className="min-h-screen flex items-center justify-center bg-background">
+          <div className="rounded-lg bg-card p-8 shadow-lg max-w-md w-full space-y-6">
+            <h2 className="text-2xl font-bold text-foreground">
               Something went wrong!
             </h2>
-            <p className="text-gray-600 mb-4">
-              {error.message || "An unexpected error occurred"}
+            <p className="text-muted-foreground">
+              An unexpected error occurred. Our team has been notified.
             </p>
-            <button
-              onClick={reset}
-              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600 transition-colors"
-            >
-              Try again
-            </button>
+            <div className="flex justify-end space-x-4">
+              <button
+                onClick={() => reset()}
+                className="px-4 py-2 text-sm font-medium text-white bg-primary rounded-md hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
+              >
+                Try again
+              </button>
+            </div>
           </div>
         </div>
       </body>
     </html>
-  );
+  )
 }

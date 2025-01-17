@@ -9,6 +9,7 @@
 
 import { SupabaseClient, PostgrestError } from '@supabase/supabase-js'
 import type { Database } from '../../supabase/generated-types'
+import { errorLogger } from '../../logging/error-logger'
 
 type Schema = Database['public']
 type Tables = Schema['Tables']
@@ -142,6 +143,7 @@ export abstract class BaseRepository<
     const { data, error, status, statusText } = await this.buildFindByIdQuery(id)
 
     if (isPostgrestError(error)) {
+      errorLogger.error('Database findById error', { error, table: this.table, id })
       return {
         data: null,
         error,
@@ -152,9 +154,16 @@ export abstract class BaseRepository<
     }
 
     if (!this.isValidRow(data)) {
+      const validationError = createError('Invalid data format')
+      errorLogger.error('Database findById validation error', { 
+        error: validationError, 
+        table: this.table, 
+        id,
+        data 
+      })
       return {
         data: null,
-        error: createError('Invalid data format'),
+        error: validationError,
         count: null,
         status: 400,
         statusText: 'Bad Request'
@@ -177,6 +186,7 @@ export abstract class BaseRepository<
     const { data, error, count, status, statusText } = await this.buildFindQuery(options)
 
     if (isPostgrestError(error)) {
+      errorLogger.error('Database find error', { error, table: this.table, options })
       return {
         data: null,
         error,
@@ -187,9 +197,16 @@ export abstract class BaseRepository<
     }
 
     if (!Array.isArray(data) || !data.every(item => this.isValidRow(item))) {
+      const validationError = createError('Invalid data format')
+      errorLogger.error('Database find validation error', { 
+        error: validationError, 
+        table: this.table, 
+        options,
+        data 
+      })
       return {
         data: null,
-        error: createError('Invalid data format'),
+        error: validationError,
         count: null,
         status: 400,
         statusText: 'Bad Request'
@@ -213,6 +230,7 @@ export abstract class BaseRepository<
     const { data, error, status, statusText } = await this.buildCreateQuery(params)
 
     if (isPostgrestError(error)) {
+      errorLogger.error('Database create error', { error, table: this.table, params })
       return {
         data: null,
         error,
@@ -223,9 +241,16 @@ export abstract class BaseRepository<
     }
 
     if (!this.isValidRow(data)) {
+      const validationError = createError('Invalid data format')
+      errorLogger.error('Database create validation error', { 
+        error: validationError, 
+        table: this.table, 
+        params,
+        data 
+      })
       return {
         data: null,
-        error: createError('Invalid data format'),
+        error: validationError,
         count: null,
         status: 400,
         statusText: 'Bad Request'
@@ -249,6 +274,7 @@ export abstract class BaseRepository<
     const { data, error, status, statusText } = await this.buildUpdateQuery(id, params)
 
     if (isPostgrestError(error)) {
+      errorLogger.error('Database update error', { error, table: this.table, id, params })
       return {
         data: null,
         error,
@@ -259,9 +285,17 @@ export abstract class BaseRepository<
     }
 
     if (!this.isValidRow(data)) {
+      const validationError = createError('Invalid data format')
+      errorLogger.error('Database update validation error', { 
+        error: validationError, 
+        table: this.table, 
+        id,
+        params,
+        data 
+      })
       return {
         data: null,
-        error: createError('Invalid data format'),
+        error: validationError,
         count: null,
         status: 400,
         statusText: 'Bad Request'
@@ -285,6 +319,7 @@ export abstract class BaseRepository<
     const { data, error, status, statusText } = await this.buildDeleteQuery(id)
 
     if (isPostgrestError(error)) {
+      errorLogger.error('Database delete error', { error, table: this.table, id })
       return {
         data: null,
         error,
@@ -295,9 +330,16 @@ export abstract class BaseRepository<
     }
 
     if (!this.isValidRow(data)) {
+      const validationError = createError('Invalid data format')
+      errorLogger.error('Database delete validation error', { 
+        error: validationError, 
+        table: this.table, 
+        id,
+        data 
+      })
       return {
         data: null,
-        error: createError('Invalid data format'),
+        error: validationError,
         count: null,
         status: 400,
         statusText: 'Bad Request'

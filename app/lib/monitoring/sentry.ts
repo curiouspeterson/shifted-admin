@@ -1,13 +1,12 @@
 /**
  * Sentry Error Monitoring Configuration
- * Last Updated: 2024-01-15
+ * Last Updated: 2025-01-16
  * 
- * This module configures Sentry for error monitoring and provides utilities
- * for error reporting and performance monitoring.
+ * Configures Sentry for error monitoring and reporting.
  */
 
 import * as Sentry from '@sentry/nextjs';
-import { ErrorSeverity } from '../logging/errorLogger';
+import { errorLogger } from '@/lib/logging/error-logger';
 import { AppError } from '../errors/base';
 
 // Map our error severity levels to Sentry severity levels
@@ -19,20 +18,26 @@ const severityMap: Record<ErrorSeverity, Sentry.SeverityLevel> = {
   [ErrorSeverity.CRITICAL]: 'fatal',
 };
 
+const SENTRY_DSN = process.env.NEXT_PUBLIC_SENTRY_DSN;
+
 /**
- * Initialize Sentry with application configuration
+ * Initialize Sentry with environment-specific configuration
  */
-export function initializeSentry(): void {
-  if (!process.env.NEXT_PUBLIC_SENTRY_DSN) {
-    console.warn('Sentry DSN not found. Error monitoring will be disabled.');
+export function initSentry(): void {
+  if (!SENTRY_DSN) {
+    errorLogger.warn('Sentry DSN not found', {
+      context: {
+        message: 'Error monitoring will be disabled',
+        environment: process.env.NODE_ENV
+      }
+    });
     return;
   }
 
   Sentry.init({
-    dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+    dsn: SENTRY_DSN,
     environment: process.env.NODE_ENV,
-    enabled: process.env.NODE_ENV === 'production',
-    tracesSampleRate: 1.0,
+    tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
     debug: process.env.NODE_ENV === 'development',
   });
 }

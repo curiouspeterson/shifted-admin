@@ -10,6 +10,7 @@ import { z } from 'zod';
 import { ErrorCodes } from '@/lib/errors/types';
 import { AppError } from '@/lib/errors/base';
 import { createError, isRetryableError } from '@/lib/errors/utils';
+import { errorLogger } from '@/lib/logging/error-logger';
 
 // Types
 export type RouteHandler = (
@@ -86,7 +87,7 @@ export function withErrorHandler(
  */
 function handleError(error: unknown): NextResponse<ErrorResponse> {
   // Log error for debugging
-  console.error('Error in API route:', error);
+  errorLogger.error('Error in API route', { error });
 
   // Handle validation errors
   if (error instanceof z.ZodError) {

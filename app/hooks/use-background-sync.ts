@@ -1,90 +1,94 @@
-'use client';
+/**
+ * Background Sync Hook
+ * Last Updated: 2025-01-16
+ * 
+ * React hook for managing background sync state
+ */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useState } from 'react';
+import { type SyncStats } from '@/lib/types/sync';
+import { BackgroundSyncService } from '@/lib/sync/background-sync-service';
+import { LocalStorageSync } from '@/lib/sync/local-storage';
 import { toast } from '@/components/ui/toast';
-import { BackgroundSync } from '@/lib/utils/background-sync';
-import { useNetwork } from '@/hooks/use-network';
 
-interface UseBackgroundSyncOptions {
-  onSyncComplete?: (task: any) => void;
-  onSyncError?: (task: any, error: Error) => void;
-  maxRetries?: number;
-  retryDelay?: number;
-}
-
-export function useBackgroundSync(options: UseBackgroundSyncOptions = {}) {
-  const [stats, setStats] = useState({
+export function useBackgroundSync() {
+  const [stats, setStats] = useState<SyncStats>({
     pending: 0,
     processing: 0,
     completed: 0,
     failed: 0,
-  });
-  const { isOnline } = useNetwork();
-
-  const backgroundSync = BackgroundSync.getInstance({
-    maxRetries: options.maxRetries,
-    retryDelay: options.retryDelay,
-    onSyncComplete: (task) => {
-      options.onSyncComplete?.(task);
-      updateStats();
-    },
-    onSyncError: (task, error) => {
-      options.onSyncError?.(task, error);
-      updateStats();
-    },
+    lastSync: null,
+    lastError: null,
   });
 
-  const updateStats = useCallback(async () => {
-    const newStats = await backgroundSync.getStats();
-    setStats(newStats);
-  }, []);
+  const [isOnline, setIsOnline] = useState<boolean>(
+    typeof window !== 'undefined' ? navigator.onLine : true
+  );
 
   useEffect(() => {
-    // Update stats initially and when online status changes
+    // Initialize sync service
+    const storage = new LocalStorageSync();
+    const syncService = BackgroundSyncService.getInstance(storage, {
+      maxRetries: 3,
+      retryDelay: 5000,
+      onSyncComplete: () => {
+        toast.success('Sync completed successfully');
+        updateStats();
+      },
+      onSyncError: (error) => {
+        toast.error('Sync failed', {
+          description: error.message,
+        });
+        updateStats();
+      },
+    });
+
+    // Initialize and start sync
+    syncService.initialize().catch((error) => {
+      toast.error('Failed to initialize sync', {
+        description: error.message,
+      });
+    });
+
+    // Update stats periodically
+    const updateStats = async () => {
+      try {
+        const currentStats = await syncService.getStats();
+        setStats(currentStats);
+      } catch (error) {
+        console.error('Failed to update sync stats:', error);
+      }
+    };
+
+    const statsInterval = setInterval(updateStats, 30000);
     updateStats();
-  }, [updateStats, isOnline]);
 
-  const addTask = useCallback(async (
-    type: string,
-    payload: any
-  ) => {
-    try {
-      await backgroundSync.addTask(type, payload);
+    // Handle online/offline status
+    const handleOnline = () => {
+      setIsOnline(true);
+      toast.success('Back online');
       updateStats();
-    } catch (error) {
-      console.error('Failed to add background sync task:', error);
-      toast({
-        title: 'Sync Error',
-        description: 'Failed to queue task for background sync.',
-        variant: 'destructive',
-      });
-    }
-  }, [updateStats]);
+    };
 
-  const clearCompletedTasks = useCallback(async () => {
-    try {
-      await backgroundSync.clearCompletedTasks();
-      updateStats();
-      
-      toast({
-        title: 'Tasks Cleared',
-        description: 'Completed tasks have been cleared.',
-        variant: 'default',
+    const handleOffline = () => {
+      setIsOnline(false);
+      toast.error('You are offline', {
+        description: 'Changes will be synced when you reconnect',
       });
-    } catch (error) {
-      console.error('Failed to clear completed tasks:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to clear completed tasks.',
-        variant: 'destructive',
-      });
-    }
-  }, [updateStats]);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      clearInterval(statsInterval);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   return {
     stats,
-    addTask,
-    clearCompletedTasks,
     isOnline,
   };
 } 
