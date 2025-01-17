@@ -1,169 +1,225 @@
 /**
- * Supabase Type Mapping Layer
- * Last Updated: 2024-01-15
+ * Type Mapping Module
+ * Last Updated: 2025-01-16
  * 
- * Provides type-safe conversions between domain types and Supabase's database types.
- * Handles complex conditional types and type assertions with runtime validation.
+ * Provides type-safe mapping functions for database operations.
+ * Includes runtime validation and type guards.
  */
 
-import { Database } from '@/lib/database/database.types'
-import { PostgrestFilterBuilder } from '@supabase/postgrest-js'
+import type { Database } from '../database.types'
 
-// Database schema types
-export type Schema = Database['public']
-export type DbTables = Schema['Tables']
-export type TableName = keyof DbTables
-export type Row<T extends TableName> = DbTables[T]['Row']
-export type Insert<T extends TableName> = DbTables[T]['Insert']
-export type Update<T extends TableName> = DbTables[T]['Update']
+export type TableName = keyof Database['public']['Tables']
+export type Row<T extends TableName> = Database['public']['Tables'][T]['Row']
+export type Insert<T extends TableName> = Database['public']['Tables'][T]['Insert']
+export type Update<T extends TableName> = Database['public']['Tables'][T]['Update']
 
-// Type guard for tables with ID column
-export type TableWithId<T extends TableName> = T extends any
-  ? 'id' extends keyof DbTables[T]['Row']
-    ? T
-    : never
-  : never
+// Enum types
+export type EmployeeRole = Database['public']['Enums']['employee_role']
+export type EmployeeStatus = Database['public']['Enums']['employee_status']
+export type ScheduleStatus = Database['public']['Enums']['schedule_status']
+export type OvertimeStatus = Database['public']['Enums']['overtime_status']
 
-// Type mapper interface for converting between domain and database types
-export interface TypeMapper<
-  T extends TableName,
-  D, // Domain type
-  I, // Insert type
-  U = Partial<I> // Update type
-> {
-  /**
-   * Convert database row to domain type
-   */
-  toRow(data: Row<T>): D
-
-  /**
-   * Convert domain insert type to database insert type
-   */
-  toDbInsert(data: I): Insert<T>
-
-  /**
-   * Convert domain update type to database update type
-   */
-  toDbUpdate(data: U): Update<T>
-
-  /**
-   * Validate database data structure
-   */
-  validateDbData(data: unknown): data is Row<T> | Insert<T> | Update<T>
+/**
+ * Type guard to check if a value is a valid employee role
+ */
+export function isValidEmployeeRole(value: unknown): value is EmployeeRole {
+  return typeof value === 'string' && ['employee', 'supervisor', 'admin'].includes(value);
 }
 
 /**
- * Base type mapper implementation with common validation logic
+ * Type guard to check if a value is a valid employee status
  */
-export abstract class BaseTypeMapper<
-  T extends TableName,
-  D,
-  I,
-  U = Partial<I>
-> implements TypeMapper<T, D, I, U> {
-  abstract toRow(data: Row<T>): D
-  abstract toDbInsert(data: I): Insert<T>
-  abstract toDbUpdate(data: U): Update<T>
-
-  /**
-   * Default validation implementation
-   * Override in specific mappers for more precise validation
-   */
-  validateDbData(data: unknown): data is Row<T> | Insert<T> | Update<T> {
-    if (!data || typeof data !== 'object') {
-      return false
-    }
-
-    // Basic structure validation
-    const keys = Object.keys(data)
-    if (keys.length === 0) {
-      return false
-    }
-
-    // Check for required fields based on operation type
-    if ('id' in data) {
-      // Row type validation
-      return typeof (data as Row<T>).id === 'string'
-    }
-
-    // Insert/Update validation
-    return true
-  }
-
-  /**
-   * Validate required fields in a database record
-   */
-  protected validateRequiredFields(
-    data: object,
-    fields: (keyof Row<T>)[]
-  ): boolean {
-    return fields.every(field => 
-      field in data && 
-      data[field as keyof typeof data] !== undefined
-    )
-  }
+export function isValidEmployeeStatus(value: unknown): value is EmployeeStatus {
+  return typeof value === 'string' && ['active', 'inactive'].includes(value);
 }
 
 /**
- * Helper type for extracting valid column names
+ * Type guard to check if a value is a valid schedule status
  */
-export type ColumnKey<T extends TableName> = keyof Row<T> & string
+export function isValidScheduleStatus(value: unknown): value is ScheduleStatus {
+  return typeof value === 'string' && ['draft', 'published', 'archived'].includes(value);
+}
 
 /**
- * Helper type for resolving filter values
+ * Type guard to check if a value is a valid overtime status
  */
-export type FilterValue = string | number | boolean | null
+export function isValidOvertimeStatus(value: unknown): value is OvertimeStatus {
+  return value === null || (typeof value === 'string' && ['pending', 'approved', 'rejected'].includes(value));
+}
 
 /**
- * Helper function to safely cast a value to a filter value
+ * Type guard to check if a value is a valid database row
  */
-export function asFilterValue(value: unknown): FilterValue {
+export function isValidRow<T extends TableName>(tableName: T, data: unknown): data is Row<T> {
+  if (!data || typeof data !== 'object') {
+    return false
+  }
+
+  // Common fields all rows should have
+  const row = data as Record<string, unknown>
   if (
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean' ||
-    value === null
+    typeof row.id !== 'string' ||
+    typeof row.created_at !== 'string' ||
+    typeof row.updated_at !== 'string'
   ) {
-    return value
+    return false
   }
-  throw new Error(`Invalid filter value: ${value}`)
+
+  // Table-specific validation
+  switch (tableName) {
+    case 'employees':
+      return (
+        typeof row.first_name === 'string' &&
+        typeof row.last_name === 'string' &&
+        typeof row.email === 'string' &&
+        (row.phone === null || typeof row.phone === 'string') &&
+        isValidEmployeeRole(row.role) &&
+        isValidEmployeeStatus(row.status)
+      )
+    case 'shifts':
+      return (
+        typeof row.title === 'string' &&
+        typeof row.start_time === 'string' &&
+        typeof row.end_time === 'string' &&
+        typeof row.duration_minutes === 'number'
+      )
+    case 'assignments':
+      return (
+        typeof row.schedule_id === 'string' &&
+        typeof row.employee_id === 'string' &&
+        typeof row.shift_id === 'string' &&
+        typeof row.date === 'string'
+      )
+    default:
+      return true
+  }
+}
+
+/**
+ * Type guard to check if a value is a valid insert payload
+ */
+export function isValidInsert<T extends TableName>(tableName: T, data: unknown): data is Insert<T> {
+  if (!data || typeof data !== 'object') {
+    return false
+  }
+
+  const insert = data as Record<string, unknown>
+
+  // Table-specific validation
+  switch (tableName) {
+    case 'employees':
+      return (
+        typeof insert.first_name === 'string' &&
+        typeof insert.last_name === 'string' &&
+        typeof insert.email === 'string' &&
+        (insert.phone === undefined || insert.phone === null || typeof insert.phone === 'string') &&
+        (insert.role === undefined || isValidEmployeeRole(insert.role)) &&
+        (insert.status === undefined || isValidEmployeeStatus(insert.status))
+      )
+    case 'shifts':
+      return (
+        typeof insert.title === 'string' &&
+        typeof insert.start_time === 'string' &&
+        typeof insert.end_time === 'string' &&
+        typeof insert.duration_minutes === 'number'
+      )
+    case 'assignments':
+      return (
+        typeof insert.schedule_id === 'string' &&
+        typeof insert.employee_id === 'string' &&
+        typeof insert.shift_id === 'string' &&
+        typeof insert.date === 'string'
+      )
+    default:
+      return true
+  }
+}
+
+/**
+ * Type guard to check if a value is a valid update payload
+ */
+export function isValidUpdate<T extends TableName>(tableName: T, data: unknown): data is Update<T> {
+  if (!data || typeof data !== 'object') {
+    return false
+  }
+
+  const update = data as Record<string, unknown>
+
+  // Ensure no id/timestamps are being updated
+  if ('id' in update || 'created_at' in update) {
+    return false
+  }
+
+  // Table-specific validation
+  switch (tableName) {
+    case 'employees':
+      return Object.entries(update).every(([key, value]) => {
+        switch (key) {
+          case 'first_name':
+          case 'last_name':
+          case 'email':
+            return typeof value === 'string'
+          case 'role':
+            return value === undefined || isValidEmployeeRole(value)
+          case 'status':
+            return value === undefined || isValidEmployeeStatus(value)
+          case 'phone':
+            return value === null || typeof value === 'string'
+          case 'metadata':
+            return value === null || typeof value === 'object'
+          default:
+            return false
+        }
+      })
+    case 'shifts':
+      return Object.entries(update).every(([key, value]) => {
+        switch (key) {
+          case 'title':
+          case 'start_time':
+          case 'end_time':
+            return typeof value === 'string'
+          case 'duration_minutes':
+            return typeof value === 'number'
+          case 'metadata':
+            return value === null || typeof value === 'object'
+          default:
+            return false
+        }
+      })
+    default:
+      return true
+  }
 }
 
 /**
  * Helper function to safely cast database response to row type
+ * Throws error if validation fails
  */
-export function asRow<T extends TableName>(data: unknown): Row<T> {
-  if (!data || typeof data !== 'object') {
-    throw new Error('Invalid database row')
+export function asRow<T extends TableName>(tableName: T, data: unknown): Row<T> {
+  if (!isValidRow(tableName, data)) {
+    throw new Error(`Invalid ${tableName} row data`)
   }
-  return data as Row<T>
+  return data
 }
 
 /**
- * Helper type for Supabase's query builder
- */
-export type QueryBuilder<T extends TableName> = PostgrestFilterBuilder<
-  Database,
-  Schema[T],
-  Row<T>[]
->
-
-/**
  * Helper function to safely cast database response to insert type
+ * Throws error if validation fails
  */
-export function asInsert<T extends TableName>(data: unknown): Insert<T> {
-  if (!data || typeof data !== 'object') {
-    throw new Error('Invalid insert data')
+export function asInsert<T extends TableName>(tableName: T, data: unknown): Insert<T> {
+  if (!isValidInsert(tableName, data)) {
+    throw new Error(`Invalid ${tableName} insert data`)
   }
-  return data as Insert<T>
+  return data
 }
 
 /**
  * Helper function to safely cast database response to update type
+ * Throws error if validation fails
  */
-export function asUpdate<T extends TableName>(data: unknown): Update<T> {
-  if (!data || typeof data !== 'object') {
-    throw new Error('Invalid update data')
+export function asUpdate<T extends TableName>(tableName: T, data: unknown): Update<T> {
+  if (!isValidUpdate(tableName, data)) {
+    throw new Error(`Invalid ${tableName} update data`)
   }
-  return data as Update<T>
+  return data
 } 

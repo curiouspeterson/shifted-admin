@@ -2,17 +2,67 @@
  * Base Repository Class
  * Last Updated: January 16, 2025
  * 
- * Provides type-safe database operations with RLS support
+ * Provides type-safe database operations with RLS support.
+ * This is an abstract base class - specific repositories should extend it
+ * and provide their own type implementations and query builders.
  */
 
 import { SupabaseClient, PostgrestError } from '@supabase/supabase-js'
-import type { Database } from '../../../types/supabase'
+import type { Database } from '../../supabase/generated-types'
 
-type Tables = Database['public']['Tables']
+type Schema = Database['public']
+type Tables = Schema['Tables']
 type TableName = keyof Tables
-type Row<T extends TableName> = Tables[T]['Row']
-type Insert<T extends TableName> = Tables[T]['Insert']
-type Update<T extends TableName> = Tables[T]['Update']
+
+type FilterValue = string | number | boolean | null | Array<string | number | boolean | null>
+
+/**
+ * Common response type for database operations
+ */
+interface QueryResponse<T> {
+  data: T | null
+  error: PostgrestError | null
+  status: number
+  statusText: string
+}
+
+/**
+ * Response type for operations that return a single record
+ */
+interface SingleQueryResponse<T> extends QueryResponse<T> {
+  count: null
+}
+
+/**
+ * Response type for operations that return multiple records
+ */
+interface MultiQueryResponse<T> extends QueryResponse<T> {
+  count: number | null
+}
+
+/**
+ * Creates a standard error object matching PostgrestError shape
+ */
+function createError(message: string): PostgrestError {
+  return {
+    message,
+    details: '',
+    hint: '',
+    code: 'INVALID_FORMAT',
+    name: 'PostgrestError'
+  }
+}
+
+/**
+ * Type guard to check if a value is a PostgrestError
+ */
+function isPostgrestError(error: unknown): error is PostgrestError {
+  return error !== null && 
+         typeof error === 'object' && 
+         'code' in error && 
+         'name' in error && 
+         'message' in error
+}
 
 export interface DatabaseResult<T> {
   data: T | null
@@ -22,38 +72,76 @@ export interface DatabaseResult<T> {
   statusText: string
 }
 
-export interface QueryOptions<T extends TableName> {
-  select?: Array<keyof Row<T>>
+export interface QueryOptions {
+  select?: string[]
   filter?: {
-    column: keyof Row<T>
+    column: string
     operator: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte' | 'like' | 'ilike' | 'in'
-    value: unknown
+    value: FilterValue
   }[]
   order?: {
-    column: keyof Row<T>
+    column: string
     ascending?: boolean
   }
   limit?: number
   offset?: number
 }
 
-export class BaseRepository<T extends TableName> {
+/**
+ * Base repository class for database operations
+ * @template T - The table name in the database
+ * @template Row - The type of a row in the table (defaults to Tables[T]['Row'])
+ * @template Insert - The type for inserting a new row (defaults to Tables[T]['Insert'])
+ * @template Update - The type for updating an existing row (defaults to Tables[T]['Update'])
+ */
+export abstract class BaseRepository<
+  T extends TableName,
+  Row = Tables[T]['Row'],
+  Insert = Tables[T]['Insert'],
+  Update = Tables[T]['Update']
+> {
   constructor(
     protected readonly client: SupabaseClient<Database>,
     protected readonly table: T
   ) {}
 
   /**
+   * Type guard to check if a value matches the Row type
+   */
+  protected abstract isValidRow(data: unknown): data is Row
+
+  /**
+   * Build a query for finding a record by ID
+   */
+  protected abstract buildFindByIdQuery(id: string): Promise<SingleQueryResponse<Row>>
+
+  /**
+   * Build a query for finding records with options
+   */
+  protected abstract buildFindQuery(options?: QueryOptions): Promise<MultiQueryResponse<Row>>
+
+  /**
+   * Build a query for creating a record
+   */
+  protected abstract buildCreateQuery(params: Insert): Promise<SingleQueryResponse<Row>>
+
+  /**
+   * Build a query for updating a record
+   */
+  protected abstract buildUpdateQuery(id: string, params: Update): Promise<SingleQueryResponse<Row>>
+
+  /**
+   * Build a query for deleting a record
+   */
+  protected abstract buildDeleteQuery(id: string): Promise<SingleQueryResponse<Row>>
+
+  /**
    * Find a record by ID with RLS validation
    */
-  async findById(id: string): Promise<DatabaseResult<Row<T>>> {
-    const { data, error, status, statusText } = await this.client
-      .from(this.table)
-      .select()
-      .match({ id })
-      .single()
+  async findById(id: string): Promise<DatabaseResult<Row>> {
+    const { data, error, status, statusText } = await this.buildFindByIdQuery(id)
 
-    if (error) {
+    if (isPostgrestError(error)) {
       return {
         data: null,
         error,
@@ -63,8 +151,18 @@ export class BaseRepository<T extends TableName> {
       }
     }
 
+    if (!this.isValidRow(data)) {
+      return {
+        data: null,
+        error: createError('Invalid data format'),
+        count: null,
+        status: 400,
+        statusText: 'Bad Request'
+      }
+    }
+
     return {
-      data: data as unknown as Row<T>,
+      data,
       error: null,
       count: 1,
       status,
@@ -75,68 +173,10 @@ export class BaseRepository<T extends TableName> {
   /**
    * Find records with options and RLS validation
    */
-  async find(options?: QueryOptions<T>): Promise<DatabaseResult<Row<T>[]>> {
-    let query = this.client
-      .from(this.table)
-      .select(options?.select ? options.select.join(',') : '*')
+  async find(options?: QueryOptions): Promise<DatabaseResult<Row[]>> {
+    const { data, error, count, status, statusText } = await this.buildFindQuery(options)
 
-    if (options?.filter) {
-      for (const filter of options.filter) {
-        const column = String(filter.column)
-        const value = filter.value
-        
-        switch (filter.operator) {
-          case 'eq':
-            query = query.match({ [column]: value })
-            break
-          case 'neq':
-            query = query.not(column, 'eq', value)
-            break
-          case 'gt':
-            query = query.gt(column, value)
-            break
-          case 'gte':
-            query = query.gte(column, value)
-            break
-          case 'lt':
-            query = query.lt(column, value)
-            break
-          case 'lte':
-            query = query.lte(column, value)
-            break
-          case 'like':
-            query = query.like(column, String(value))
-            break
-          case 'ilike':
-            query = query.ilike(column, String(value))
-            break
-          case 'in':
-            query = query.in(column, Array.isArray(value) ? value : [value])
-            break
-        }
-      }
-    }
-
-    if (options?.order) {
-      query = query.order(String(options.order.column), {
-        ascending: options.order.ascending
-      })
-    }
-
-    if (options?.limit) {
-      query = query.limit(options.limit)
-    }
-
-    if (options?.offset) {
-      query = query.range(
-        options.offset,
-        options.offset + (options.limit || 10) - 1
-      )
-    }
-
-    const { data, error, count, status, statusText } = await query
-
-    if (error) {
+    if (isPostgrestError(error)) {
       return {
         data: null,
         error,
@@ -146,8 +186,18 @@ export class BaseRepository<T extends TableName> {
       }
     }
 
+    if (!Array.isArray(data) || !data.every(item => this.isValidRow(item))) {
+      return {
+        data: null,
+        error: createError('Invalid data format'),
+        count: null,
+        status: 400,
+        statusText: 'Bad Request'
+      }
+    }
+
     return {
-      data: data as unknown as Row<T>[],
+      data,
       error: null,
       count: count || null,
       status,
@@ -159,14 +209,10 @@ export class BaseRepository<T extends TableName> {
    * Create a new record
    * Note: This should be called from a server context with appropriate service role
    */
-  async create(params: Insert<T>): Promise<DatabaseResult<Row<T>>> {
-    const { data, error, status, statusText } = await this.client
-      .from(this.table)
-      .insert(params as any)
-      .select()
-      .single()
+  async create(params: Insert): Promise<DatabaseResult<Row>> {
+    const { data, error, status, statusText } = await this.buildCreateQuery(params)
 
-    if (error) {
+    if (isPostgrestError(error)) {
       return {
         data: null,
         error,
@@ -176,8 +222,18 @@ export class BaseRepository<T extends TableName> {
       }
     }
 
+    if (!this.isValidRow(data)) {
+      return {
+        data: null,
+        error: createError('Invalid data format'),
+        count: null,
+        status: 400,
+        statusText: 'Bad Request'
+      }
+    }
+
     return {
-      data: data as unknown as Row<T>,
+      data,
       error: null,
       count: 1,
       status,
@@ -189,15 +245,10 @@ export class BaseRepository<T extends TableName> {
    * Update a record
    * Note: This should be called from a server context with appropriate service role
    */
-  async update(id: string, params: Update<T>): Promise<DatabaseResult<Row<T>>> {
-    const { data, error, status, statusText } = await this.client
-      .from(this.table)
-      .update(params as any)
-      .match({ id })
-      .select()
-      .single()
+  async update(id: string, params: Update): Promise<DatabaseResult<Row>> {
+    const { data, error, status, statusText } = await this.buildUpdateQuery(id, params)
 
-    if (error) {
+    if (isPostgrestError(error)) {
       return {
         data: null,
         error,
@@ -207,8 +258,18 @@ export class BaseRepository<T extends TableName> {
       }
     }
 
+    if (!this.isValidRow(data)) {
+      return {
+        data: null,
+        error: createError('Invalid data format'),
+        count: null,
+        status: 400,
+        statusText: 'Bad Request'
+      }
+    }
+
     return {
-      data: data as unknown as Row<T>,
+      data,
       error: null,
       count: 1,
       status,
@@ -220,15 +281,10 @@ export class BaseRepository<T extends TableName> {
    * Delete a record
    * Note: This should be called from a server context with appropriate service role
    */
-  async delete(id: string): Promise<DatabaseResult<Row<T>>> {
-    const { data, error, status, statusText } = await this.client
-      .from(this.table)
-      .delete()
-      .match({ id })
-      .select()
-      .single()
+  async delete(id: string): Promise<DatabaseResult<Row>> {
+    const { data, error, status, statusText } = await this.buildDeleteQuery(id)
 
-    if (error) {
+    if (isPostgrestError(error)) {
       return {
         data: null,
         error,
@@ -238,8 +294,18 @@ export class BaseRepository<T extends TableName> {
       }
     }
 
+    if (!this.isValidRow(data)) {
+      return {
+        data: null,
+        error: createError('Invalid data format'),
+        count: null,
+        status: 400,
+        statusText: 'Bad Request'
+      }
+    }
+
     return {
-      data: data as unknown as Row<T>,
+      data,
       error: null,
       count: 1,
       status,

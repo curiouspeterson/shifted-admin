@@ -1,10 +1,13 @@
 /**
  * Base Error Classes
- * Last Updated: 2024-03-21
+ * Last Updated: 2025-01-16
  * 
- * Core error classes for the application.
- * Provides structured error handling with TypeScript support.
+ * Core error classes for structured error handling with TypeScript support.
+ * Implements monitoring and logging capabilities following Next.js best practices.
  */
+
+import { ValidationErrorCode, ValidationErrorDetails } from './validation';
+import { Json } from '@/lib/types/json';
 
 export enum ErrorSeverity {
   LOW = 'low',
@@ -20,7 +23,18 @@ export enum ErrorCategory {
   BUSINESS = 'business',
   SYSTEM = 'system',
   NETWORK = 'network',
-  DATABASE = 'database'
+  DATABASE = 'database',
+  HYDRATION = 'hydration'
+}
+
+export interface ErrorContext {
+  userId?: string;
+  requestId?: string;
+  url?: string;
+  method?: string;
+  statusCode?: number;
+  component?: string;
+  action?: string;
 }
 
 interface ErrorMetadata {
@@ -29,18 +43,29 @@ interface ErrorMetadata {
   category: ErrorCategory;
   details?: Record<string, unknown>;
   source?: string;
+  context?: ErrorContext;
   timestamp?: string;
 }
 
+/**
+ * Base class for all application errors
+ * Provides structured error handling with monitoring support
+ */
 export class BaseError extends Error {
   public readonly code: string;
   public readonly severity: ErrorSeverity;
   public readonly category: ErrorCategory;
   public readonly details?: Record<string, unknown>;
   public readonly source?: string;
+  public readonly context?: ErrorContext;
   public readonly timestamp: string;
+  public readonly isOperational: boolean;
 
-  constructor(message: string, metadata: ErrorMetadata) {
+  constructor(
+    message: string, 
+    metadata: ErrorMetadata,
+    isOperational = true
+  ) {
     super(message);
     this.name = this.constructor.name;
     this.code = metadata.code;
@@ -48,12 +73,22 @@ export class BaseError extends Error {
     this.category = metadata.category;
     this.details = metadata.details;
     this.source = metadata.source;
+    this.context = metadata.context;
     this.timestamp = metadata.timestamp || new Date().toISOString();
+    this.isOperational = isOperational;
 
     // Maintains proper stack trace
     Error.captureStackTrace(this, this.constructor);
+
+    // Log error if it's critical or non-operational
+    if (this.severity === ErrorSeverity.CRITICAL || !this.isOperational) {
+      this.logError();
+    }
   }
 
+  /**
+   * Converts error to a JSON structure suitable for logging and monitoring
+   */
   public toJSON() {
     return {
       name: this.name,
@@ -63,9 +98,48 @@ export class BaseError extends Error {
       category: this.category,
       details: this.details,
       source: this.source,
+      context: this.context,
       timestamp: this.timestamp,
-      stack: this.stack
+      stack: this.stack,
+      isOperational: this.isOperational
     };
+  }
+
+  /**
+   * Returns a user-friendly error response
+   */
+  public toResponse() {
+    return {
+      error: {
+        code: this.code,
+        message: this.message,
+        ...(this.details && { details: this.details })
+      }
+    };
+  }
+
+  /**
+   * Logs error details for monitoring
+   */
+  private logError() {
+    // TODO: Implement actual error logging
+    console.error('Critical Error:', this.toJSON());
+  }
+}
+
+// Legacy base class for backward compatibility
+export class AppError extends BaseError {
+  constructor(
+    message: string,
+    code = 'APP_ERROR',
+    details?: Record<string, unknown>
+  ) {
+    super(message, {
+      code,
+      severity: ErrorSeverity.MEDIUM,
+      category: ErrorCategory.SYSTEM,
+      details
+    });
   }
 }
 
@@ -126,4 +200,152 @@ export class AuthError extends BaseError {
       details
     });
   }
-} 
+}
+
+export class AuthenticationError extends BaseError {
+  constructor(
+    message: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message, {
+      code: 'AUTHENTICATION_FAILED',
+      severity: ErrorSeverity.HIGH,
+      category: ErrorCategory.AUTHENTICATION,
+      details
+    });
+  }
+}
+
+export class NetworkError extends BaseError {
+  constructor(
+    message: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message, {
+      code: 'NETWORK_ERROR',
+      severity: ErrorSeverity.HIGH,
+      category: ErrorCategory.NETWORK,
+      details
+    });
+  }
+}
+
+export class NotFoundError extends BusinessError {
+  constructor(
+    message: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message, 'NOT_FOUND', details);
+  }
+}
+
+export class AuthorizationError extends BaseError {
+  constructor(
+    message: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message, {
+      code: 'FORBIDDEN',
+      severity: ErrorSeverity.HIGH,
+      category: ErrorCategory.AUTHORIZATION,
+      details
+    });
+  }
+}
+
+export class DatabaseError extends BaseError {
+  constructor(
+    message: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message, {
+      code: 'DATABASE_ERROR',
+      severity: ErrorSeverity.HIGH,
+      category: ErrorCategory.DATABASE,
+      details
+    });
+  }
+}
+
+/**
+ * Time range validation error
+ * Used for date/time range validation failures
+ */
+export class TimeRangeError extends ValidationError {
+  constructor(
+    message: string,
+    details: ReadonlyArray<ValidationErrorDetails>
+  ) {
+    super(message, {
+      code: ValidationErrorCode.INVALID_RANGE,
+      severity: ErrorSeverity.MEDIUM,
+      category: ErrorCategory.VALIDATION,
+      details: details.map(detail => ({
+        ...detail,
+        code: detail.code || ValidationErrorCode.INVALID_RANGE,
+        metadata: detail.metadata || null as Json
+      }))
+    });
+  }
+
+  /**
+   * Create a time range error for start/end date validation
+   */
+  static createDateRangeError(
+    startDate: string,
+    endDate: string,
+    customMessage?: string
+  ): TimeRangeError {
+    const metadata: Json = {
+      comparison: {
+        type: 'date',
+        operator: 'after',
+        startDate,
+        endDate,
+        valid: new Date(endDate) > new Date(startDate)
+      }
+    };
+
+    return new TimeRangeError(
+      customMessage || 'End date must be after start date',
+      [{
+        field: 'end_date',
+        message: 'End date must be after start date',
+        code: ValidationErrorCode.INVALID_RANGE,
+        metadata
+      }]
+    );
+  }
+
+  /**
+   * Create a time range error for start/end time validation
+   */
+  static createTimeRangeError(
+    startTime: string,
+    endTime: string,
+    customMessage?: string
+  ): TimeRangeError {
+    const metadata: Json = {
+      comparison: {
+        type: 'time',
+        operator: 'after',
+        startTime,
+        endTime,
+        valid: endTime > startTime
+      }
+    };
+
+    return new TimeRangeError(
+      customMessage || 'End time must be after start time',
+      [{
+        field: 'end_time',
+        message: 'End time must be after start time',
+        code: ValidationErrorCode.INVALID_RANGE,
+        metadata
+      }]
+    );
+  }
+}
+
+// Re-export everything for convenience
+export type { ErrorMetadata }; 

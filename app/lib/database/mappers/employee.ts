@@ -1,78 +1,107 @@
 /**
  * Employee Type Mapper
- * Last Updated: 2024-01-15
+ * Last Updated: 2025-01-16
  * 
  * Handles type mapping between domain and database types for employees.
+ * Includes validation and type safety checks.
  */
 
-import { Database } from '@/lib/database/database.types'
+import type { Database, Json } from '@/lib/database/database.types';
+import type { 
+  Employee,
+  CreateEmployeeInput,
+  UpdateEmployeeInput 
+} from '@/employees/types';
+import { getEmployeeFullName } from '@/employees/types';
+import { employeeSchema, employeeInputSchema, employeeUpdateSchema } from '@/lib/schemas/employee';
 
-type EmployeeTable = 'employees'
-type EmployeeRow = Database['public']['Tables'][EmployeeTable]['Row']
-type EmployeeInsert = Database['public']['Tables'][EmployeeTable]['Insert']
-type EmployeeUpdate = Database['public']['Tables'][EmployeeTable]['Update']
-
-export interface Employee {
-  id: string
-  firstName: string
-  lastName: string
-  email: string
-  phone: string
-  position: string
-  department: string
-  isActive: boolean
-  createdAt: string | null
-  updatedAt: string | null
-  createdBy: string | null
-  updatedBy: string | null
-  version: number
-}
-
-export interface EmployeeInput {
-  firstName: string
-  lastName: string
-  email: string
-  phone: string
-  position: string
-  department: string
-  isActive?: boolean
-}
+type DbEmployee = Database['public']['Tables']['employees']['Row'];
+type DbEmployeeInsert = Database['public']['Tables']['employees']['Insert'];
+type DbEmployeeUpdate = Database['public']['Tables']['employees']['Update'];
 
 /**
  * Converts domain employee data to database format
+ * Throws error if validation fails
  */
-export function toDbEmployee(data: EmployeeInput): EmployeeInsert {
+export function toDbEmployee(input: CreateEmployeeInput): DbEmployeeInsert {
+  // Validate input
+  const validatedData = employeeInputSchema.parse({
+    ...input,
+    user_id: input.user_id,
+    created_by: null,
+    updated_by: null
+  });
+
   return {
-    first_name: data.firstName,
-    last_name: data.lastName,
-    email: data.email,
-    phone: data.phone,
-    position: data.position,
-    department: data.department,
-    is_active: data.isActive ?? true,
+    ...validatedData,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
-    version: 1
-  }
+    metadata: null as Json
+  };
 }
 
 /**
  * Converts database employee data to domain format
+ * Throws error if validation fails
  */
-export function toDomainEmployee(data: EmployeeRow): Employee {
+export function toDomainEmployee(data: DbEmployee): Employee {
+  // Validate database data
+  const validatedData = employeeSchema.parse(data);
+
   return {
-    id: data.id,
-    firstName: data.first_name,
-    lastName: data.last_name,
-    email: data.email,
-    phone: data.phone,
-    position: data.position,
-    department: data.department,
-    isActive: data.is_active,
-    createdAt: data.created_at,
-    updatedAt: data.updated_at,
-    createdBy: data.created_by,
-    updatedBy: data.updated_by,
-    version: data.version
+    ...validatedData,
+    metadata: validatedData.metadata as Json,
+    full_name: getEmployeeFullName(validatedData)
+  };
+}
+
+/**
+ * Converts domain update data to database format
+ * Throws error if validation fails
+ */
+export function toDbEmployeeUpdate(input: UpdateEmployeeInput): DbEmployeeUpdate {
+  // Validate update data
+  const validatedData = employeeUpdateSchema.parse(input);
+
+  return {
+    ...validatedData,
+    metadata: validatedData.metadata as Json | undefined,
+    updated_at: new Date().toISOString()
+  };
+}
+
+/**
+ * Type guard to check if value is a valid employee
+ */
+export function isValidEmployee(value: unknown): value is Employee {
+  try {
+    employeeSchema.parse(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Type guard to check if value is a valid employee input
+ */
+export function isValidEmployeeInput(value: unknown): value is CreateEmployeeInput {
+  try {
+    employeeInputSchema.parse(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Type guard to check if value is a valid employee update
+ */
+export function isValidEmployeeUpdate(value: unknown): value is UpdateEmployeeInput {
+  try {
+    employeeUpdateSchema.parse(value);
+    return true;
+  } catch {
+    return false;
   }
 } 

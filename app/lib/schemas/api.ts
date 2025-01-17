@@ -1,33 +1,50 @@
 /**
  * API Schema Module
- * Last Updated: 2024-03
+ * Last Updated: 2025-01-16
  * 
  * Defines Zod schemas for API request/response validation.
  * These schemas are used to validate query parameters, request bodies,
  * and response data across all API routes.
- * 
- * Features:
- * - Common query parameter validation
- * - Pagination schema
- * - Sorting schema
- * - API response wrapper schemas
- * - Type inference helpers
  */
 
 import { z } from 'zod';
-import {
-  scheduleSchema,
-  assignmentSchema,
-  employeeSchema,
-  shiftSchema,
-  timeBasedRequirementSchema,
-} from './schedule';
-import type { Database } from '../supabase/database.types';
+import { scheduleSchema } from './schedule';
+import { employeeSchema, employeeRoles, employeeStatuses } from './employee';
+import type { Database } from '../database/database.types';
+import { shiftInputSchema, validateShiftTimes } from './shift';
+import { timeRequirementInputSchema, DayOfWeek } from './time-requirement';
 
-// Get schedule row type from database types
-type ScheduleRow = Database['public']['Tables']['schedules']['Row'];
-type ShiftRow = Database['public']['Tables']['shifts']['Row'];
-type EmployeeRow = Database['public']['Tables']['employees']['Row'];
+// Type aliases for clarity
+type EmployeeRole = Database['public']['Enums']['employee_role'];
+type EmployeeStatus = Database['public']['Enums']['employee_status'];
+
+// Validation functions
+const isValidDateRange = (start: string, end: string): boolean => {
+  return new Date(end) >= new Date(start);
+};
+
+const validateTimeRange = (data: { startTime?: string; endTime?: string }, ctx: z.RefinementCtx): void => {
+  if (data.startTime && data.endTime) {
+    const start = new Date(data.startTime);
+    const end = new Date(data.endTime);
+    if (!(end > start)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'End time must be after start time',
+        path: ['endTime'],
+      });
+    }
+  }
+};
+
+// Employee filter schema
+export const employeeFilterSchema = z.object({
+  role: z.enum(employeeRoles).nullish(),
+  status: z.enum(employeeStatuses).nullish(),
+  search: z.string().nullish(),
+  department: z.string().nullish(),
+  position: z.string().nullish(),
+});
 
 /**
  * Common Query Parameters
@@ -73,21 +90,23 @@ export const shiftSortSchema = z.object({
   order: z.enum(['asc', 'desc']).optional(),
 });
 
-// Date range schema base (without refinement)
+// Date range schema base
 const dateRangeSchemaBase = z.object({
-  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
-  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
+  end_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullish(),
 });
 
 // Date range schema with refinement
-export const dateRangeSchema = dateRangeSchemaBase.refine(data => {
+export const dateRangeSchema = dateRangeSchemaBase.superRefine((data, ctx) => {
   if (data.start_date && data.end_date) {
-    return new Date(data.end_date) >= new Date(data.start_date);
+    if (!isValidDateRange(data.start_date, data.end_date)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'End date must be after start date',
+        path: ['end_date'],
+      });
+    }
   }
-  return true;
-}, {
-  message: 'End date must be after start date',
-  path: ['end_date'],
 });
 
 // Sorting schema for employees
@@ -148,24 +167,26 @@ export const listSchedulesQuerySchema = z.object({
   ...paginationSchema.shape,
   ...scheduleSortSchema.shape,
   ...dateRangeSchemaBase.shape,
-  status: z.enum(['draft', 'published', 'archived']).optional(),
-}).refine(data => {
+  status: z.enum(['draft', 'published', 'archived']).nullish(),
+}).superRefine((data, ctx) => {
   if (data.start_date && data.end_date) {
-    return new Date(data.end_date) >= new Date(data.start_date);
+    if (!isValidDateRange(data.start_date, data.end_date)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'End date must be after start date',
+        path: ['end_date'],
+      });
+    }
   }
-  return true;
-}, {
-  message: 'End date must be after start date',
-  path: ['end_date'],
 });
 
 // POST /api/schedules request body
 export const createScheduleSchema = scheduleSchema.omit({
   id: true,
-  created_at: true,
-  created_by: true,
-  published_at: true,
-  published_by: true,
+  createdAt: true,
+  createdBy: true,
+  publishedAt: true,
+  publishedBy: true,
   version: true,
 });
 
@@ -184,43 +205,16 @@ export const listShiftsQuerySchema = z.object({
   crosses_midnight: z.boolean().optional(),
 });
 
-// Base shift schema without refinement
-const shiftSchemaBase = z.object({
-  name: z.string().min(1, 'Shift name is required'),
-  start_time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/, {
-    message: 'Time must be in 24-hour format (HH:MM:SS)',
-  }),
-  end_time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/, {
-    message: 'Time must be in 24-hour format (HH:MM:SS)',
-  }),
-  duration_hours: z.number().min(0, 'Duration must be positive'),
-  crosses_midnight: z.boolean().optional(),
-  requires_supervisor: z.boolean().optional(),
-});
-
-// Refinement function for shift time validation
-const validateShiftTimes = (data: Partial<z.infer<typeof shiftSchemaBase>>) => {
-  if (data.start_time && data.end_time) {
-    const start = new Date(`1970-01-01T${data.start_time}`);
-    const end = new Date(`1970-01-01T${data.end_time}`);
-    if (data.crosses_midnight) {
-      end.setDate(end.getDate() + 1);
-    }
-    return end > start;
-  }
-  return true;
-};
-
 // POST /api/shifts request body
-export const createShiftSchema = shiftSchemaBase.refine(validateShiftTimes, {
+export const createShiftSchema = shiftInputSchema.extend({}).refine(validateShiftTimes, {
   message: 'End time must be after start time',
-  path: ['end_time'],
+  path: ['endTime'],
 });
 
 // PATCH /api/shifts/[id] request body
-export const updateShiftSchema = shiftSchemaBase.partial().refine(validateShiftTimes, {
+export const updateShiftSchema = shiftInputSchema.partial().refine(validateShiftTimes, {
   message: 'End time must be after start time',
-  path: ['end_time'],
+  path: ['endTime'],
 });
 
 /**
@@ -235,16 +229,23 @@ export const listAssignmentsQuerySchema = z.object({
   status: z.enum(['pending', 'confirmed', 'declined']).optional(),
 });
 
-// POST /api/schedules/[id]/assignments request body
-export const createAssignmentSchema = assignmentSchema.omit({
-  id: true,
-  created_at: true,
-  updated_at: true,
-  schedule_id: true,
+// Base schema for assignment creation
+const assignmentBaseSchema = z.object({
+  employeeId: z.string().uuid(),
+  startTime: z.string().datetime(),
+  endTime: z.string().datetime(),
+  status: z.enum(['pending', 'confirmed', 'declined']),
+  notes: z.string().max(1000).nullish(),
+  metadata: z.record(z.unknown()).nullish(),
+  createdBy: z.string().uuid().nullish(),
+  updatedBy: z.string().uuid().nullish()
 });
 
+// POST /api/schedules/[id]/assignments request body
+export const createAssignmentSchema = assignmentBaseSchema.superRefine(validateTimeRange);
+
 // PATCH /api/schedules/[id]/assignments/[id] request body
-export const updateAssignmentSchema = createAssignmentSchema.partial();
+export const updateAssignmentSchema = assignmentBaseSchema.partial().superRefine(validateTimeRange);
 
 /**
  * Employee API Schemas
@@ -254,54 +255,57 @@ export const updateAssignmentSchema = createAssignmentSchema.partial();
 export const listEmployeesQuerySchema = z.object({
   ...paginationSchema.shape,
   ...employeeSortSchema.shape,
-  status: z.enum(['active', 'inactive']).optional(),
-  role: z.enum(['employee', 'supervisor', 'admin']).optional(),
-  department: z.string().min(1).max(100).optional(),
+  status: z.enum(employeeStatuses).nullish(),
+  role: z.enum(employeeRoles).nullish(),
+  department: z.string().min(1).max(100).nullish(),
 });
 
 // POST /api/employees request body
 export const createEmployeeSchema = employeeSchema.omit({
   id: true,
-  created_at: true,
-  updated_at: true,
+  createdAt: true,
+  updatedAt: true,
 });
 
 // PATCH /api/employees/[id] request body
 export const updateEmployeeSchema = createEmployeeSchema.partial();
 
 /**
- * API Response Wrappers
+ * Time Requirement API Schemas
  */
 
-// Generic API response wrapper
+// GET /api/time-requirements query parameters
+export const listTimeRequirementsQuerySchema = z.object({
+  ...paginationSchema.shape,
+  ...timeRequirementSortSchema.shape,
+  schedule_id: z.string().uuid().optional(),
+  day_of_week: z.nativeEnum(DayOfWeek).optional(),
+  requires_supervisor: z.boolean().optional(),
+});
+
+// POST /api/time-requirements request body
+export const createTimeRequirementSchema = timeRequirementInputSchema.extend({});
+
+// PATCH /api/time-requirements/[id] request body
+export const updateTimeRequirementSchema = timeRequirementInputSchema.partial();
+
+/**
+ * API Response Schemas
+ */
+
+// Generic API response schema
 export const apiResponseSchema = <T extends z.ZodType>(dataSchema: T) =>
   z.object({
-    data: dataSchema.nullable(),
-    error: z.string().nullable(),
-    metadata: z.object({
-      timestamp: z.string().optional(),
-      count: z.number().optional(),
-      requestId: z.string().optional(),
-      duration: z.number().optional(),
-      cached: z.boolean().optional(),
-      cacheHit: z.boolean().optional(),
-      cacheTtl: z.number().optional(),
-      rateLimit: z.object({
-        limit: z.number(),
-        remaining: z.number(),
-        reset: z.number(),
-      }).optional(),
-    }).optional(),
+    data: dataSchema,
+    error: z.null(),
+    metadata: z.record(z.unknown()).optional(),
   });
 
-// List response wrapper
+// Generic API list response schema
 export const apiListResponseSchema = <T extends z.ZodType>(dataSchema: T) =>
   apiResponseSchema(z.array(dataSchema));
 
-/**
- * Type Inference
- * Helper types inferred from the Zod schemas
- */
+// Export query parameter types
 export type ListSchedulesQuery = z.infer<typeof listSchedulesQuerySchema>;
 export type CreateSchedule = z.infer<typeof createScheduleSchema>;
 export type UpdateSchedule = z.infer<typeof updateScheduleSchema>;
@@ -320,38 +324,4 @@ export type UpdateShift = z.infer<typeof updateShiftSchema>;
 
 export type ListTimeRequirementsQuery = z.infer<typeof listTimeRequirementsQuerySchema>;
 export type CreateTimeRequirement = z.infer<typeof createTimeRequirementSchema>;
-export type UpdateTimeRequirement = z.infer<typeof updateTimeRequirementSchema>;
-
-/**
- * Time Requirement API Schemas
- */
-
-// GET /api/time-requirements query parameters
-export const listTimeRequirementsQuerySchema = z.object({
-  ...paginationSchema.shape,
-  ...timeRequirementSortSchema.shape,
-  schedule_id: z.string().uuid().optional(),
-  day_of_week: z.number().int().min(0).max(6).optional(),
-  requires_supervisor: z.boolean().optional(),
-});
-
-// Base schema for time requirements without refinement
-const timeRequirementBaseSchema = z.object({
-  ...timeBasedRequirementSchema.omit({
-    id: true,
-    created_at: true,
-    updated_at: true,
-  }).shape,
-});
-
-// POST /api/time-requirements request body
-export const createTimeRequirementSchema = timeRequirementBaseSchema.transform((data) => ({
-  ...data,
-  requires_supervisor: data.requires_supervisor ?? false,
-}));
-
-// PATCH /api/time-requirements/[id] request body
-export const updateTimeRequirementSchema = timeRequirementBaseSchema.partial().transform((data) => ({
-  ...data,
-  requires_supervisor: data.requires_supervisor ?? undefined,
-})); 
+export type UpdateTimeRequirement = z.infer<typeof updateTimeRequirementSchema>; 

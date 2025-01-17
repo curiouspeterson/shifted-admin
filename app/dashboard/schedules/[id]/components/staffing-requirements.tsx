@@ -24,6 +24,9 @@ import { Label } from '@/components/ui/label';
 import type { TimeBasedRequirement, Assignment } from '@/lib/types/scheduling';
 import type { RequirementStatus } from '@/lib/scheduling/utils/schedule.types';
 
+// Enable debug logging only in development
+const DEBUG = process.env.NODE_ENV === 'development';
+
 /**
  * Props for the StaffingRequirements component
  * @property scheduleId - ID of the schedule being viewed
@@ -73,21 +76,23 @@ export function StaffingRequirements({
 
   // Debug logging for component props
   useEffect(() => {
-    console.log('StaffingRequirements props:', {
-      scheduleId,
-      date,
-      dayOfWeek,
-      assignmentsCount: assignments?.length,
-      timeRequirementsCount: timeRequirements?.length,
-      requirementStatusesCount: requirementStatuses?.length,
-      isLoading,
-      error
-    });
-  }, [scheduleId, date, assignments, timeRequirements, requirementStatuses, isLoading, error]);
+    if (DEBUG) {
+      // eslint-disable-next-line no-console
+      console.log('StaffingRequirements props:', {
+        scheduleId,
+        date,
+        dayOfWeek,
+        assignmentsCount: assignments?.length,
+        timeRequirementsCount: timeRequirements?.length,
+        requirementStatusesCount: requirementStatuses?.length,
+        isLoading,
+        error
+      });
+    }
+  }, [scheduleId, date, assignments, timeRequirements, requirementStatuses, isLoading, error, dayOfWeek]);
 
   // Error state display
   if (error) {
-    console.log('StaffingRequirements error:', error);
     return (
       <Card className="w-full">
         <CardHeader>
@@ -102,7 +107,6 @@ export function StaffingRequirements({
 
   // Loading state with skeleton UI
   if (isLoading) {
-    console.log('StaffingRequirements loading');
     return (
       <Card className="w-full">
         <CardHeader>
@@ -125,14 +129,17 @@ export function StaffingRequirements({
    * @param end - End time of the block
    * @returns The requirement status object if found
    */
-  const getRequirementStatus = (start: string, end: string) => {
+  const getRequirementStatus = (start: string, end: string): RequirementStatus | undefined => {
     const status = requirementStatuses.find(
       status => 
         status.date === date &&
         status.timeBlock.start === start &&
         status.timeBlock.end === end
     );
-    console.log('Requirement status lookup:', { start, end, status });
+    if (DEBUG && !status) {
+      // eslint-disable-next-line no-console
+      console.log('No requirement status found for:', { start, end });
+    }
     return status;
   };
 
@@ -142,13 +149,16 @@ export function StaffingRequirements({
    * @param end - End time of the block
    * @returns The requirement object if found
    */
-  const getRequirement = (start: string, end: string) => {
+  const getRequirement = (start: string, end: string): TimeBasedRequirement | undefined => {
     const requirement = timeRequirements.find(r => 
       r.day_of_week === dayOfWeek && 
       r.start_time === start && 
       r.end_time === end
     );
-    console.log('Requirement lookup:', { start, end, requirement });
+    if (DEBUG && !requirement) {
+      // eslint-disable-next-line no-console
+      console.log('No requirement found for:', { start, end, dayOfWeek });
+    }
     return requirement;
   };
 
@@ -167,7 +177,10 @@ export function StaffingRequirements({
             const req = getRequirement(block.start, block.end);
             const status = getRequirementStatus(block.start, block.end);
             if (!req || !status) {
-              console.log('Missing requirement or status:', { block, req, status });
+              if (DEBUG) {
+                // eslint-disable-next-line no-console
+                console.log('Missing requirement or status:', { block, req, status });
+              }
               return null;
             }
 

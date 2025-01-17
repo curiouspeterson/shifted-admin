@@ -65,4 +65,7 @@ export function useAppContext() {
   }
   
   return context;
-} 
+}
+
+// Alias for backward compatibility
+export const useApp = useAppContext; 

@@ -10,7 +10,7 @@ export interface CacheConfig {
   enabled: boolean;
   ttl: number;  // Time to live in seconds
   staleWhileRevalidate?: number;  // Time in seconds to serve stale content while revalidating
-  tags?: string[];  // Cache tags for invalidation
+  tags?: readonly string[];  // Cache tags for invalidation
 }
 
 export const cacheConfigs = {
@@ -18,25 +18,25 @@ export const cacheConfigs = {
     enabled: true,
     ttl: 60,  // 1 minute
     staleWhileRevalidate: 30,  // 30 seconds
-    tags: ['api']
+    tags: ['api'] as const
   },
   schedules: {
     enabled: true,
     ttl: 300,  // 5 minutes
     staleWhileRevalidate: 60,  // 1 minute
-    tags: ['schedules']
+    tags: ['schedules'] as const
   },
   employees: {
     enabled: true,
     ttl: 600,  // 10 minutes
     staleWhileRevalidate: 120,  // 2 minutes
-    tags: ['employees']
+    tags: ['employees'] as const
   },
   shifts: {
     enabled: true,
     ttl: 300,  // 5 minutes
     staleWhileRevalidate: 60,  // 1 minute
-    tags: ['shifts']
+    tags: ['shifts'] as const
   }
 } as const;
 
@@ -92,7 +92,7 @@ export function getCacheConfig(request: Request): CacheConfig | null {
 /**
  * Invalidates cache for given tags
  */
-export async function invalidateCache(tags: string[]): Promise<void> {
+export async function invalidateCache(tags: readonly string[]): Promise<void> {
   // TODO: Implement cache invalidation
   console.log('Cache invalidation not implemented', { tags });
 } 

@@ -1,6 +1,6 @@
 /**
  * API Handler Module
- * Last Updated: 2024-01-17
+ * Last Updated: 2024-01-16
  * 
  * Provides utilities for handling API routes with proper error handling
  * and type safety. Follows Next.js 14 best practices for API routes.
@@ -10,27 +10,52 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { AppError } from '@/lib/errors/base';
+import { logger } from './logger';
 
-export type ApiResponse<T = any> = {
-  data?: T | null;
-  error?: {
-    message: string;
-    code?: string;
-    details?: any;
-  };
+// Valid HTTP methods for API routes
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
+
+// HTTP status codes mapped to error codes
+const HTTP_STATUS = {
+  OK: 200,
+  BAD_REQUEST: 400,
+  UNAUTHORIZED: 401,
+  FORBIDDEN: 403,
+  NOT_FOUND: 404,
+  CONFLICT: 409,
+  INTERNAL_SERVER_ERROR: 500,
+} as const;
+
+// Structured error response type
+export type ApiErrorResponse = {
+  message: string;
+  code: string;
+  details?: z.ZodError | Record<string, unknown>;
 };
 
+// Type-safe API response
+export type ApiResponse<T> = {
+  data?: T | null;
+  error?: ApiErrorResponse;
+};
+
+// Options for route handler configuration
 type RouteHandlerOptions<T> = {
-  methods: ('GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH')[];
+  methods: HttpMethod[];
   requireAuth?: boolean;
   bodySchema?: z.Schema<T>;
   handler: (params: {
     request: NextRequest;
     body?: T;
-  }) => Promise<ApiResponse>;
+  }) => Promise<ApiResponse<T>>;
 };
 
-export function createRouteHandler<T = any>({
+/**
+ * Creates a type-safe route handler for Next.js API routes
+ * @param options Configuration options for the route handler
+ * @returns A Next.js route handler function
+ */
+export function createRouteHandler<T>({
   methods,
   requireAuth = true,
   bodySchema,
@@ -41,7 +66,8 @@ export function createRouteHandler<T = any>({
   ): Promise<NextResponse> {
     try {
       // Method validation
-      if (!methods.includes(request.method as any)) {
+      if (!methods.includes(request.method as HttpMethod)) {
+        logger.warn(`Method ${request.method} not allowed for this route`);
         return NextResponse.json(
           {
             error: {
@@ -49,7 +75,7 @@ export function createRouteHandler<T = any>({
               code: 'METHOD_NOT_ALLOWED'
             }
           },
-          { status: 405 }
+          { status: HTTP_STATUS.BAD_REQUEST }
         );
       }
 
@@ -61,6 +87,7 @@ export function createRouteHandler<T = any>({
           body = await bodySchema.parseAsync(json);
         } catch (error) {
           if (error instanceof z.ZodError) {
+            logger.warn('Validation error in request body', { error: error.errors });
             return NextResponse.json(
               {
                 error: {
@@ -69,7 +96,7 @@ export function createRouteHandler<T = any>({
                   details: error.errors
                 }
               },
-              { status: 400 }
+              { status: HTTP_STATUS.BAD_REQUEST }
             );
           }
           throw error;
@@ -84,19 +111,14 @@ export function createRouteHandler<T = any>({
         return NextResponse.json(result);
       }
 
-      // Return error response
+      // Return error response with appropriate status code
+      const status = getErrorStatus(result.error.code);
       return NextResponse.json(
-        {
-          error: {
-            message: result.error.message,
-            code: result.error.code,
-            details: result.error.details
-          }
-        },
-        { status: result.error.code === 'NOT_FOUND' ? 404 : 400 }
+        { error: result.error },
+        { status }
       );
     } catch (error) {
-      console.error('API Error:', error);
+      logger.error('Unhandled API error:', { error });
 
       if (error instanceof AppError) {
         return NextResponse.json(
@@ -106,7 +128,7 @@ export function createRouteHandler<T = any>({
               code: error.code
             }
           },
-          { status: error.status || 400 }
+          { status: getErrorStatus(error.code) }
         );
       }
 
@@ -117,8 +139,30 @@ export function createRouteHandler<T = any>({
             code: 'INTERNAL_SERVER_ERROR'
           }
         },
-        { status: 500 }
+        { status: HTTP_STATUS.INTERNAL_SERVER_ERROR }
       );
     }
   };
+}
+
+/**
+ * Maps error codes to HTTP status codes
+ */
+function getErrorStatus(code: string): number {
+  switch (code) {
+    case 'NOT_FOUND':
+      return HTTP_STATUS.NOT_FOUND;
+    case 'UNAUTHORIZED':
+      return HTTP_STATUS.UNAUTHORIZED;
+    case 'FORBIDDEN':
+      return HTTP_STATUS.FORBIDDEN;
+    case 'VALIDATION_ERROR':
+      return HTTP_STATUS.BAD_REQUEST;
+    case 'CONFLICT':
+      return HTTP_STATUS.CONFLICT;
+    case 'INTERNAL_SERVER_ERROR':
+      return HTTP_STATUS.INTERNAL_SERVER_ERROR;
+    default:
+      return HTTP_STATUS.BAD_REQUEST;
+  }
 } 

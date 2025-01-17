@@ -1,30 +1,53 @@
 /**
  * API Validation Module
- * Last Updated: 2024
+ * Last Updated: 2025-01-16
  * 
  * This file provides utilities for validating API requests using Zod schemas.
  * It includes helpers for validating request bodies, query parameters, and
  * route parameters with proper error handling and type inference.
- * 
- * Features:
- * - Request body validation
- * - Query parameter validation
- * - Route parameter validation
- * - Error handling with detailed messages
  */
 
 import { z } from 'zod';
-import { AppError } from '../errors';
+import { BaseError, ErrorCategory, ErrorSeverity } from '../errors/base';
+import { ValidationErrorCode, ValidationErrorDetails, formatZodError } from '../errors/validation';
 import { NextRequest } from 'next/server';
+import { Json, isJson } from '../types/json';
 
 /**
- * Request Validation Error
- * Custom error class for validation failures
+ * API Validation Error
+ * Custom error class for API validation failures
  */
-export class ValidationError extends AppError {
-  constructor(message: string, public errors?: z.ZodError) {
-    super(message, 400);
-    this.name = 'ValidationError';
+export class ApiValidationError extends BaseError {
+  constructor(
+    message: string,
+    public readonly validationDetails: ValidationErrorDetails[],
+    public readonly statusCode: number = 400
+  ) {
+    super(message, {
+      code: 'API_VALIDATION_ERROR',
+      severity: ErrorSeverity.MEDIUM,
+      category: ErrorCategory.VALIDATION,
+      details: validationDetails.reduce((acc, detail) => ({
+        ...acc,
+        [detail.field]: {
+          message: detail.message,
+          code: detail.code,
+          metadata: detail.metadata
+        }
+      }), {} as Record<string, unknown>),
+      source: 'api-validation',
+      timestamp: new Date().toISOString()
+    });
+  }
+
+  /**
+   * Get the validation details as a record
+   */
+  getDetails(): Record<string, ValidationErrorDetails> {
+    return this.validationDetails.reduce((acc, detail) => ({
+      ...acc,
+      [detail.field]: detail
+    }), {});
   }
 }
 
@@ -33,7 +56,7 @@ export class ValidationError extends AppError {
  * @param req - Next.js request object
  * @param schema - Zod schema to validate against
  * @returns Validated and typed request body
- * @throws ValidationError if validation fails
+ * @throws ApiValidationError if validation fails
  */
 export async function validateBody<T extends z.ZodType>(
   req: NextRequest,
@@ -41,12 +64,32 @@ export async function validateBody<T extends z.ZodType>(
 ): Promise<z.infer<T>> {
   try {
     const body = await req.json();
+    if (!isJson(body)) {
+      throw new ApiValidationError(
+        'Invalid request body format',
+        [{
+          field: 'body',
+          message: 'Request body must be valid JSON',
+          code: ValidationErrorCode.INVALID_FORMAT
+        }]
+      );
+    }
     return schema.parse(body);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new ValidationError('Invalid request body', error);
+      throw new ApiValidationError('Invalid request body', formatZodError(error));
     }
-    throw new ValidationError('Failed to parse request body');
+    if (error instanceof ApiValidationError) {
+      throw error;
+    }
+    throw new ApiValidationError(
+      'Failed to parse request body',
+      [{
+        field: 'body',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        code: ValidationErrorCode.INVALID_FORMAT
+      }]
+    );
   }
 }
 
@@ -55,7 +98,7 @@ export async function validateBody<T extends z.ZodType>(
  * @param req - Next.js request object
  * @param schema - Zod schema to validate against
  * @returns Validated and typed query parameters
- * @throws ValidationError if validation fails
+ * @throws ApiValidationError if validation fails
  */
 export function validateQuery<T extends z.ZodType>(
   req: NextRequest,
@@ -66,9 +109,16 @@ export function validateQuery<T extends z.ZodType>(
     return schema.parse(searchParams);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new ValidationError('Invalid query parameters', error);
+      throw new ApiValidationError('Invalid query parameters', formatZodError(error));
     }
-    throw new ValidationError('Failed to parse query parameters');
+    throw new ApiValidationError(
+      'Failed to parse query parameters',
+      [{
+        field: 'query',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        code: ValidationErrorCode.INVALID_FORMAT
+      }]
+    );
   }
 }
 
@@ -77,7 +127,7 @@ export function validateQuery<T extends z.ZodType>(
  * @param params - Route parameters object
  * @param schema - Zod schema to validate against
  * @returns Validated and typed route parameters
- * @throws ValidationError if validation fails
+ * @throws ApiValidationError if validation fails
  */
 export function validateParams<T extends z.ZodType>(
   params: Record<string, string>,
@@ -87,24 +137,17 @@ export function validateParams<T extends z.ZodType>(
     return schema.parse(params);
   } catch (error) {
     if (error instanceof z.ZodError) {
-      throw new ValidationError('Invalid route parameters', error);
+      throw new ApiValidationError('Invalid route parameters', formatZodError(error));
     }
-    throw new ValidationError('Failed to parse route parameters');
+    throw new ApiValidationError(
+      'Failed to parse route parameters',
+      [{
+        field: 'params',
+        message: error instanceof Error ? error.message : 'Unknown error',
+        code: ValidationErrorCode.INVALID_FORMAT
+      }]
+    );
   }
-}
-
-/**
- * Formats validation errors into a user-friendly message
- * @param error - Zod validation error
- * @returns Formatted error message
- */
-export function formatValidationErrors(error: z.ZodError): string {
-  return error.errors
-    .map(err => {
-      const path = err.path.join('.');
-      return `${path}: ${err.message}`;
-    })
-    .join(', ');
 }
 
 /**
@@ -150,4 +193,12 @@ export const commonSchemas = {
     sortBy: z.string().optional(),
     order: z.enum(['asc', 'desc']).default('asc'),
   }),
+
+  /**
+   * JSON validation schema
+   * Validates that a value is valid JSON
+   */
+  json: z.custom<Json>((val): val is Json => isJson(val), {
+    message: 'Invalid JSON format'
+  })
 }; 

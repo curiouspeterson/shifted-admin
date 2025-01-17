@@ -27,13 +27,15 @@
 
 'use client'
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import type { Schedule, TimeBasedRequirement, ScheduleAssignment } from '@/app/lib/types/scheduling';
 import type { RequirementStatus } from '@/app/lib/utils/schedule.types';
 import ScheduleHeader from './components/ScheduleHeader';
 import ScheduleTimeline from './components/ScheduleTimeline';
 import { StaffingRequirements } from './components/StaffingRequirements';
 import { Card } from '@/components/ui/card';
+import { useToast } from '@/components/ui/use-toast';
+import { logger } from '@/lib/logging/logger';
 
 /**
  * Interface for grouped assignments data structure
@@ -77,33 +79,49 @@ export default function ScheduleDetailsClient({
   requirementStatuses
 }: ScheduleDetailsClientProps) {
   const [error, setError] = useState<string | null>(initialError);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [validatedAssignments, setValidatedAssignments] = useState<GroupedAssignments | null>(null);
+  const { toast } = useToast();
 
-  /**
-   * Debug logging effect
-   * Logs component props for development debugging
-   */
-  useEffect(() => {
-    console.log('ScheduleDetailsClient received props:', {
-      scheduleId: schedule?.id,
-      assignmentCount: assignments ? Object.keys(assignments).length : 0,
-      timeRequirementsCount: timeRequirements?.length,
-      requirementStatusesCount: requirementStatuses?.length,
-      error: initialError
+  // Debug logging configuration
+  const DEBUG = process.env.NODE_ENV === 'development';
+
+  // Memoized error handler
+  const handleValidationError = useCallback((err: unknown, message: string) => {
+    logger.error('Schedule validation error:', err);
+    setError(message);
+    setValidatedAssignments(null);
+    toast({
+      title: 'Error',
+      description: message,
+      variant: 'destructive',
     });
-  }, [schedule, assignments, timeRequirements, requirementStatuses, initialError]);
+  }, [toast]);
 
-  /**
-   * Assignment validation effect
-   * Processes and validates incoming assignment data
-   */
+  // Debug logging effect
+  useEffect(() => {
+    if (DEBUG) {
+      logger.debug('ScheduleDetailsClient received props:', {
+        scheduleId: schedule?.id,
+        assignmentCount: assignments ? Object.keys(assignments).length : 0,
+        timeRequirementsCount: timeRequirements?.length,
+        requirementStatusesCount: requirementStatuses?.length,
+        error: initialError
+      });
+    }
+  }, [DEBUG, schedule, assignments, timeRequirements, requirementStatuses, initialError]);
+
+  // Assignment validation effect
   useEffect(() => {
     try {
-      console.log('Processing assignments:', assignments);
+      if (DEBUG) {
+        logger.debug('Processing assignments:', assignments);
+      }
       
       if (!assignments) {
-        console.log('No assignments provided');
+        if (DEBUG) {
+          logger.debug('No assignments provided');
+        }
         setValidatedAssignments(null);
         return;
       }
@@ -112,14 +130,14 @@ export default function ScheduleDetailsClient({
       const validated: GroupedAssignments = {};
       Object.entries(assignments).forEach(([date, shifts]) => {
         if (!shifts || typeof shifts !== 'object') {
-          console.log(`Invalid shifts for date ${date}:`, shifts);
+          logger.warn(`Invalid shifts for date ${date}:`, shifts);
           return;
         }
         
         validated[date] = {};
         Object.entries(shifts).forEach(([shiftId, shiftAssignments]) => {
           if (!Array.isArray(shiftAssignments)) {
-            console.log(`Invalid assignments for shift ${shiftId}:`, shiftAssignments);
+            logger.warn(`Invalid assignments for shift ${shiftId}:`, shiftAssignments);
             return;
           }
           validated[date][shiftId] = shiftAssignments.filter(assignment => {
@@ -129,35 +147,52 @@ export default function ScheduleDetailsClient({
               'employee_id' in assignment &&
               'shift_id' in assignment;
             
-            if (!isValid) {
-              console.log('Invalid assignment:', assignment);
+            if (!isValid && DEBUG) {
+              logger.debug('Invalid assignment:', assignment);
             }
             return isValid;
           });
         });
       });
 
-      console.log('Validated assignments:', validated);
+      if (DEBUG) {
+        logger.debug('Validated assignments:', validated);
+      }
       setValidatedAssignments(validated);
       setError(null);
     } catch (err) {
-      console.error('Error validating assignments:', err);
-      setError('Error processing schedule data');
-      setValidatedAssignments(null);
+      handleValidationError(err, 'Failed to process schedule data. Please try again.');
     }
-  }, [assignments]);
+  }, [DEBUG, assignments, handleValidationError]);
 
-  /**
-   * Error reset effect
-   * Resets error state when schedule changes
-   */
+  // Error reset effect
   useEffect(() => {
     setError(initialError);
   }, [initialError, schedule.id]);
 
+  // Loading state initialization
+  useEffect(() => {
+    const initializeData = async () => {
+      try {
+        // Your initialization logic here
+        if (DEBUG) {
+          logger.debug('Schedule details initialized');
+        }
+      } catch (err) {
+        handleValidationError(err, 'Failed to initialize schedule data. Please try again.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    initializeData();
+  }, [DEBUG, schedule.id, handleValidationError]);
+
   // Error state view
   if (error) {
-    console.log('Rendering error state:', error);
+    if (DEBUG) {
+      logger.debug('Rendering error state:', error);
+    }
     return (
       <Card className="p-6">
         <div className="text-red-500 font-medium">
@@ -169,7 +204,9 @@ export default function ScheduleDetailsClient({
 
   // Empty state view
   if (!validatedAssignments || Object.keys(validatedAssignments).length === 0) {
-    console.log('Rendering empty state');
+    if (DEBUG) {
+      logger.debug('Rendering empty state');
+    }
     return (
       <Card className="p-6">
         <div className="text-gray-500">
