@@ -1,6 +1,6 @@
 /**
  * Scheduling Types Module
- * Last Updated: 2024
+ * Last Updated: 2024-03-21
  * 
  * Defines TypeScript types and enums for the scheduling system.
  * These types extend the base database types with additional
@@ -14,7 +14,7 @@
  * - Scheduling rules
  */
 
-import type { Database } from '@/lib/supabase/database.types';
+import type { Database } from '@/lib/database/database.types';
 
 /**
  * Shift Pattern Types
@@ -37,14 +37,20 @@ export enum ScheduleStatus {
 
 /**
  * Employee Availability Type
- * Extends the database availability type with strict boolean flags
+ * Defines when an employee is available for work
  */
-export type EmployeeAvailability = Omit<
-  Database['public']['Tables']['employee_availability']['Row'],
-  'employee_id' | 'is_available'
-> & {
+export type EmployeeAvailability = {
+  id: string;
   employee_id: string;
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
   is_available: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+  version: number;
 };
 
 /**
@@ -61,115 +67,45 @@ export type Shift = Omit<
 
 /**
  * Time-Based Requirement Type
- * Defines staffing requirements for specific time periods
- * 
- * @property id - Unique identifier
- * @property schedule_id - Associated schedule ID
- * @property start_time - Start time in HH:MM format
- * @property end_time - End time in HH:MM format
- * @property min_employees - Minimum required employees
- * @property max_employees - Maximum allowed employees (optional)
- * @property min_supervisors - Minimum required supervisors
- * @property day_of_week - Day of week (0-6, Sunday-Saturday)
+ * Extends the database time requirement type
  */
-export type TimeBasedRequirement = {
-  id: string;
-  schedule_id: string;
-  start_time: string;
-  end_time: string;
-  min_employees: number;
-  max_employees: number | null;
-  min_supervisors: number;
-  day_of_week: number;
-  created_at: string;
-  updated_at: string;
-};
+export type TimeBasedRequirement = Database['public']['Tables']['time_requirements']['Row'];
 
 /**
  * Schedule Type
- * Defines the structure of a work schedule
- * 
- * @property id - Unique identifier
- * @property status - Current schedule status
- * @property start_date - Schedule start date
- * @property end_date - Schedule end date
- * @property version - Schedule version number
- * @property is_active - Whether the schedule is active
+ * Extends the database schedule type
  */
-export type Schedule = {
-  id: string;
-  status: 'draft' | 'published' | 'archived';
-  start_date: string;
-  end_date: string;
-  created_at: string | null;
-  created_by: string | null;
-  published_at?: string | null;
-  published_by?: string | null;
-  version: number;
-  is_active: boolean;
-};
+export type Schedule = Database['public']['Tables']['schedules']['Row'];
 
 /**
  * Employee Scheduling Rule Type
  * Defines scheduling preferences and constraints for an employee
  */
-export type EmployeeSchedulingRule = Omit<
-  Database['public']['Tables']['employee_scheduling_rules']['Row'],
-  'created_at' | 'updated_at' | 'preferred_shift_pattern' | 'max_weekly_hours' | 'min_weekly_hours' | 'require_consecutive_days'
-> & {
-  created_at: string;
-  updated_at: string;
+export type EmployeeSchedulingRule = {
+  id: string;
+  employee_id: string;
   preferred_shift_pattern: ShiftPatternType;
   max_weekly_hours: number;
   min_weekly_hours: number;
   require_consecutive_days: boolean;
+  created_at: string;
+  updated_at: string;
+  created_by: string | null;
+  updated_by: string | null;
+  version: number;
 };
 
 /**
  * Employee Type
- * Defines the structure of an employee record
- * 
- * @property id - Unique identifier
- * @property user_id - Associated user account ID
- * @property first_name - Employee's first name
- * @property last_name - Employee's last name
- * @property position - Employee's job position
+ * Extends the database employee type
  */
-export type Employee = {
-  id: string;
-  user_id: string | null;
-  first_name: string;
-  last_name: string;
-  email: string | null;
-  phone: number | null;
-  position: string;
-  is_active: boolean | null;
-  created_at: string | null;
-  updated_at: string | null;
-};
+export type Employee = Database['public']['Tables']['employees']['Row'];
 
 /**
  * Assignment Type
- * Defines a shift assignment linking an employee to a shift
- * 
- * @property id - Unique identifier
- * @property schedule_id - Associated schedule ID
- * @property employee_id - Assigned employee ID
- * @property shift_id - Assigned shift ID
- * @property date - Assignment date
- * @property is_supervisor_shift - Whether this is a supervisor shift
+ * Extends the database assignment type with employee and shift relations
  */
-export type Assignment = {
-  id: string;
-  schedule_id: string | null;
-  employee_id: string | null;
-  shift_id: string | null;
-  date: string;
-  is_supervisor_shift: boolean;
-  overtime_hours: number | null;
-  overtime_status: string | null;
-  created_at: string | null;
-  updated_at: string | null;
+export type Assignment = Database['public']['Tables']['schedule_assignments']['Row'] & {
   employee: Employee | null;
   shift: Shift | null;
 };
@@ -177,13 +113,6 @@ export type Assignment = {
 /**
  * Schedule Input Type
  * Helper type for creating or updating schedules
- * 
- * @property name - Schedule name
- * @property start_date - Start date in YYYY-MM-DD format
- * @property end_date - End date in YYYY-MM-DD format
- * @property status - Optional schedule status
- * @property version - Optional version number
- * @property is_active - Optional active status
  */
 export type ScheduleInput = {
   name: string;

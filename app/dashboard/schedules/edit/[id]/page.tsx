@@ -1,80 +1,47 @@
 /**
- * Edit Schedule Page Component
- * Last Updated: 2024-03
+ * Edit Schedule Page
+ * Last Updated: 2024-03-21
  * 
- * A server component that handles fetching schedule data and rendering the edit form.
- * Features:
- * - Server-side data fetching
- * - Error handling and notFound routing
- * - Loading states with Suspense
- * - Type-safe props
+ * Server Component for editing an existing schedule.
+ * Uses Suspense for loading states and error boundaries for error handling.
  */
 
-import { Suspense } from 'react'
-import { notFound } from 'next/navigation'
-import { supabaseAdmin } from '@/lib/supabase/admin'
-import { ScheduleForm } from '@/components/schedule/schedule-form'
-import { LoadingSpinner } from '@/components/ui/loading-spinner'
-
-/**
- * Loading component for the schedule form
- */
-function ScheduleFormLoader() {
-  return (
-    <div className="flex items-center justify-center min-h-[400px]">
-      <LoadingSpinner size="lg" />
-    </div>
-  )
-}
+import { Suspense } from 'react';
+import { notFound } from 'next/navigation';
+import { Spinner } from '@/components/ui/spinner';
+import { getScheduleDetails } from '../../[id]/utils/data-fetching';
+import { ScheduleForm } from '@/components/schedule/schedule-form';
 
 interface EditSchedulePageProps {
   params: {
-    id: string
-  }
+    id: string;
+  };
 }
 
 export default async function EditSchedulePage({ params }: EditSchedulePageProps) {
-  const scheduleId = params.id
-
-  try {
-    // Fetch schedule details from Supabase
-    const { data: schedule, error: fetchError } = await supabaseAdmin
-      .from('schedules')
-      .select('*')
-      .eq('id', scheduleId)
-      .single()
-
-    // Handle fetch errors
-    if (fetchError) throw fetchError
-    if (!schedule) notFound()
-
-    // Transform database data into form data
-    const initialData = {
-      name: schedule.name,
-      description: schedule.description || '',
-      start_date: schedule.start_date,
-      end_date: schedule.end_date,
-      is_active: schedule.is_active ?? true,
-    }
-
-    return (
-      <div className="container mx-auto py-8">
-        <h1 className="text-2xl font-bold mb-8">Edit Schedule</h1>
-        <Suspense fallback={<ScheduleFormLoader />}>
-          <ScheduleForm initialData={initialData} />
-        </Suspense>
-      </div>
-    )
-  } catch (error) {
-    console.error('Error loading schedule:', error)
-    return (
-      <div className="container mx-auto py-8">
-        <div className="rounded-md bg-red-50 p-4">
-          <div className="text-sm text-red-700">
-            {error instanceof Error ? error.message : 'Failed to load schedule'}
-          </div>
-        </div>
-      </div>
-    )
+  const scheduleResponse = await getScheduleDetails(params.id);
+  
+  if (scheduleResponse.status === 'notFound') {
+    notFound();
   }
+  
+  if (scheduleResponse.status === 'error') {
+    throw new Error(scheduleResponse.error.message);
+  }
+  
+  return (
+    <div className="container mx-auto py-8">
+      <h1 className="text-2xl font-bold mb-8">Edit Schedule</h1>
+      
+      <Suspense fallback={<Spinner size="lg" />}>
+        <ScheduleForm 
+          initialData={scheduleResponse.data}
+          onSubmit={async (data) => {
+            'use server';
+            // Handle form submission
+          }}
+        />
+      </Suspense>
+    </div>
+  );
 } 

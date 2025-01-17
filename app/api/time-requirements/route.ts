@@ -1,6 +1,6 @@
 /**
  * Time-Based Requirements API Route Handler
- * Last Updated: 2024-03
+ * Last Updated: 2024-03-21
  * 
  * This file implements the API endpoints for managing staffing requirements
  * based on time periods. Currently supports:
@@ -23,9 +23,9 @@
  */
 
 import { z } from 'zod';
-import { createRouteHandler } from '@/lib/api/handler';
+import { createRouteHandler } from '@/lib/api/route-handler';
 import type { RouteContext, ApiResponse } from '@/lib/api/types';
-import { TimeRequirementsOperations } from '@/lib/api/database/timeRequirements';
+import { TimeRequirementsOperations } from '@/lib/api/database/time-requirements';
 import {
   HTTP_STATUS_OK,
   HTTP_STATUS_CREATED,

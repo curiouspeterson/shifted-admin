@@ -1,91 +1,86 @@
 /**
  * Dashboard Navigation Component
- * Last Updated: 2024-01-16
+ * Last Updated: 2024-03-21
  * 
- * A responsive navigation bar component for the dashboard.
- * Features:
- * - Responsive design
- * - Sign-out functionality
- * - Theme toggle
- * - User info display
+ * Main navigation component for the dashboard.
+ * Uses app context for online/offline status.
  */
 
-'use client'
+'use client';
 
-import { useRouter } from 'next/navigation'
-import { useApp } from '@/lib/context/appContext'
-import { createBrowserClient } from '@supabase/ssr'
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useAppContext } from '@/lib/context/app-context';
+import { cn } from '@/lib/utils';
+import { 
+  Calendar,
+  Clock,
+  FileText,
+  Home,
+  Users,
+  AlertTriangle
+} from 'lucide-react';
 
-const navigation = [
-  { name: 'Dashboard', href: '/dashboard' },
-  { name: 'Schedules', href: '/dashboard/schedules' },
-  { name: 'Shifts', href: '/dashboard/shifts' },
-  { name: 'Employees', href: '/dashboard/employees' },
-  { name: 'Availability', href: '/dashboard/availability' },
-  { name: 'Time Off', href: '/dashboard/requests' },
-  { name: 'Settings', href: '/dashboard/settings' },
-]
+const navItems = [
+  {
+    title: 'Dashboard',
+    href: '/dashboard',
+    icon: Home
+  },
+  {
+    title: 'Schedules',
+    href: '/dashboard/schedules',
+    icon: Calendar
+  },
+  {
+    title: 'Shifts',
+    href: '/dashboard/shifts',
+    icon: Clock
+  },
+  {
+    title: 'Employees',
+    href: '/dashboard/employees',
+    icon: Users
+  },
+  {
+    title: 'Requests',
+    href: '/dashboard/requests',
+    icon: FileText
+  },
+  {
+    title: 'Error Reports',
+    href: '/dashboard/error-reports',
+    icon: AlertTriangle,
+    adminOnly: true
+  }
+];
 
 export default function DashboardNav() {
-  const router = useRouter()
-  const { theme, toggleTheme, handleError } = useApp()
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
-
-  const handleSignOut = async () => {
-    try {
-      await supabase.auth.signOut()
-      router.push('/sign-in')
-    } catch (error) {
-      handleError(error)
-    }
-  }
-
+  const pathname = usePathname();
+  const { state } = useAppContext();
+  
   return (
-    <nav className="bg-white shadow-sm">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="flex h-16 justify-between">
-          {/* Logo and Navigation Links */}
-          <div className="flex">
-            <div className="flex flex-shrink-0 items-center">
-              {/* Add your logo here */}
-              <span className="text-xl font-bold text-indigo-600">Shifted</span>
-            </div>
-            <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-              {navigation.map((item) => (
-                <a
-                  key={item.name}
-                  href={item.href}
-                  className="inline-flex items-center border-b-2 border-transparent px-1 pt-1 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700"
-                >
-                  {item.name}
-                </a>
-              ))}
-            </div>
-          </div>
-
-          {/* Right side buttons */}
-          <div className="flex items-center space-x-4">
-            {/* Theme Toggle */}
-            <button
-              onClick={toggleTheme}
-              className="rounded-md p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-500"
-            >
-              {theme === 'dark' ? '🌙' : '☀️'}
-            </button>
-
-            {/* Sign Out Button */}
-            <button
-              onClick={handleSignOut}
-              className="rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50"
-            >
-              Sign out
-            </button>
-          </div>
-        </div>
-      </div>
+    <nav className="grid items-start gap-2">
+      {navItems.map((item) => {
+        const Icon = item.icon;
+        const isActive = pathname === item.href;
+        
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            className={cn(
+              'group flex items-center rounded-md px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground',
+              isActive ? 'bg-accent' : 'transparent',
+              !state.isOnline && 'opacity-50 cursor-not-allowed'
+            )}
+            onClick={(e) => !state.isOnline && e.preventDefault()}
+          >
+            <Icon className="mr-2 h-4 w-4" />
+            <span>{item.title}</span>
+          </Link>
+        );
+      })}
     </nav>
-  )
+  );
 } 

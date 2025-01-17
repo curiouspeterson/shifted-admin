@@ -32,7 +32,11 @@ export async function GET(
     const timeRequirements = new TimeRequirementsOperations(supabase);
 
     // Get requirements
-    const { data: requirements, error } = await timeRequirements.findByScheduleId(params.id);
+    const { data: requirements, error } = await timeRequirements.findMany({
+      filter: {
+        schedule_id: params.id
+      }
+    });
 
     if (error) {
       return Response.json({
@@ -43,7 +47,7 @@ export async function GET(
       }, { status: HTTP_STATUS_BAD_REQUEST });
     }
 
-    if (!requirements) {
+    if (!requirements?.length) {
       return Response.json({
         error: {
           message: 'Requirements not found',

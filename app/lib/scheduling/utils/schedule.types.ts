@@ -1,13 +1,13 @@
 /**
  * Schedule Types Module
- * Last Updated: 2024
+ * Last Updated: 2024-03-21
  * 
  * Type definitions for schedule-related functionality, including assignment grouping,
  * requirement status tracking, and coverage validation. These types are used across
  * the application to ensure consistent data structures for schedule management.
  */
 
-import type { Assignment } from '@/app/lib/types/scheduling';
+import type { Assignment } from '@/lib/types/scheduling';
 
 /**
  * Grouped Assignments Interface

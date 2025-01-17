@@ -1,6 +1,6 @@
 /**
  * Schedule Header Component
- * Last Updated: 2024
+ * Last Updated: 2024-03-21
  * 
  * A client-side component that provides the header section for schedule details view.
  * Includes controls for editing, publishing, and deleting schedules, with proper
@@ -20,7 +20,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import type { Schedule } from '@/app/lib/types/scheduling';
+import type { Schedule } from '@/lib/types/scheduling';
 
 /**
  * Props for the ScheduleHeader component

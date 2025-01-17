@@ -1,6 +1,6 @@
 /**
  * Schedule API Route - Single Schedule Operations
- * Last Updated: 2025-01-15
+ * Last Updated: 2024-03-21
  * 
  * This module provides API endpoints for managing individual schedules:
  * GET /api/schedules/[id] - Get a single schedule
@@ -10,8 +10,8 @@
 
 import { z } from 'zod';
 import { NextRequest } from 'next/server';
-import { createRouteHandler } from '@/lib/api/routeHandler';
-import type { RouteContext } from '@/lib/api/routeHandler';
+import { createRouteHandler } from '@/lib/api/route-handler';
+import type { RouteContext } from '@/lib/api/route-handler';
 import { scheduleRepository } from '@/lib/api/repositories';
 import { CACHE_KEYS } from '@/lib/api/cache/config';
 import type { Schedule, ScheduleStatus } from '@/lib/api/repositories';

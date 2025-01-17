@@ -1,124 +1,98 @@
 /**
- * API Cache Configuration
- * Last Updated: 2024-01-16
+ * Cache Configuration
+ * Last Updated: 2024-03-21
  * 
- * This module provides caching utilities for API responses
- * using Postgres as the cache backend.
+ * Cache configuration and utilities for API endpoints.
+ * Implements caching strategies with TypeScript support.
  */
 
-import { createClient } from '@/lib/supabase/server'
-import { NextRequest } from 'next/server'
-import { cookies } from 'next/headers'
-
-// Default cache configuration
-export const defaultCacheConfig = {
-  ttl: 60, // 1 minute
-  tags: ['api'],
-  staleWhileRevalidate: 30, // 30 seconds
+export interface CacheConfig {
+  enabled: boolean;
+  ttl: number;  // Time to live in seconds
+  staleWhileRevalidate?: number;  // Time in seconds to serve stale content while revalidating
+  tags?: string[];  // Cache tags for invalidation
 }
 
-interface CacheConfig {
-  ttl?: number
-  tags?: string[]
-  staleWhileRevalidate?: number
+export const cacheConfigs = {
+  api: {
+    enabled: true,
+    ttl: 60,  // 1 minute
+    staleWhileRevalidate: 30,  // 30 seconds
+    tags: ['api']
+  },
+  schedules: {
+    enabled: true,
+    ttl: 300,  // 5 minutes
+    staleWhileRevalidate: 60,  // 1 minute
+    tags: ['schedules']
+  },
+  employees: {
+    enabled: true,
+    ttl: 600,  // 10 minutes
+    staleWhileRevalidate: 120,  // 2 minutes
+    tags: ['employees']
+  },
+  shifts: {
+    enabled: true,
+    ttl: 300,  // 5 minutes
+    staleWhileRevalidate: 60,  // 1 minute
+    tags: ['shifts']
+  }
+} as const;
+
+/**
+ * Generates cache key for a request
+ */
+export function generateCacheKey(request: Request): string {
+  const url = new URL(request.url);
+  const key = `${request.method}:${url.pathname}${url.search}`;
+  return key.toLowerCase();
 }
 
 /**
- * Creates a cache instance with the specified configuration
+ * Checks if a request is cacheable
  */
-export function createCache(config: CacheConfig = {}) {
-  const {
-    ttl = defaultCacheConfig.ttl,
-    tags = defaultCacheConfig.tags,
-    staleWhileRevalidate = defaultCacheConfig.staleWhileRevalidate,
-  } = config
-
-  // Create cache key from request
-  function createKey(req: NextRequest): string {
-    const url = new URL(req.url)
-    return `${url.pathname}${url.search}`
+export function isCacheable(request: Request): boolean {
+  // Only cache GET requests
+  if (request.method !== 'GET') {
+    return false;
   }
 
-  return {
-    /**
-     * Gets a cached response
-     */
-    async get(req: NextRequest) {
-      const cookieStore = cookies()
-      const supabase = createClient(cookieStore)
-      const key = createKey(req)
-      const now = new Date()
-
-      const { data, error } = await supabase
-        .from('cache_entries')
-        .select('value, created_at')
-        .eq('key', key)
-        .single()
-
-      if (error || !data) return null
-
-      const age = Math.floor((now.getTime() - new Date(data.created_at).getTime()) / 1000)
-      const isStale = age > ttl
-
-      // Return stale data if within stale-while-revalidate window
-      if (isStale && age > ttl + staleWhileRevalidate) {
-        return null
-      }
-
-      return {
-        data: JSON.parse(data.value),
-        isStale
-      }
-    },
-
-    /**
-     * Sets a cached response
-     */
-    async set(req: NextRequest, value: any) {
-      const cookieStore = cookies()
-      const supabase = createClient(cookieStore)
-      const key = createKey(req)
-      const now = new Date().toISOString()
-
-      // Store the cache entry
-      await supabase
-        .from('cache_entries')
-        .upsert({
-          key,
-          value: JSON.stringify(value),
-          created_at: now,
-          tags: tags
-        }, {
-          onConflict: 'key'
-        })
-
-      // Clean up old entries
-      await supabase.rpc('cleanup_cache_entries')
-    },
-
-    /**
-     * Invalidates cache by tags
-     */
-    async invalidate(invalidateTags: string[]) {
-      const cookieStore = cookies()
-      const supabase = createClient(cookieStore)
-      
-      await supabase
-        .from('cache_entries')
-        .delete()
-        .overlaps('tags', invalidateTags)
-    },
-
-    /**
-     * Gets cache control headers
-     */
-    getCacheControlHeaders() {
-      const headers = new Headers()
-      headers.set(
-        'Cache-Control',
-        `s-maxage=${ttl}, stale-while-revalidate=${staleWhileRevalidate}`
-      )
-      return headers
-    }
+  // Don't cache requests with authorization headers
+  if (request.headers.has('authorization')) {
+    return false;
   }
+
+  return true;
+}
+
+/**
+ * Gets cache config for a request
+ */
+export function getCacheConfig(request: Request): CacheConfig | null {
+  const url = new URL(request.url);
+  const path = url.pathname.toLowerCase();
+
+  if (path.includes('/api/schedules')) {
+    return cacheConfigs.schedules;
+  }
+
+  if (path.includes('/api/employees')) {
+    return cacheConfigs.employees;
+  }
+
+  if (path.includes('/api/shifts')) {
+    return cacheConfigs.shifts;
+  }
+
+  // Default to API config
+  return cacheConfigs.api;
+}
+
+/**
+ * Invalidates cache for given tags
+ */
+export async function invalidateCache(tags: string[]): Promise<void> {
+  // TODO: Implement cache invalidation
+  console.log('Cache invalidation not implemented', { tags });
 } 

@@ -56,6 +56,50 @@ export type Database = {
           version?: number;
         }
       }
+      schedules: {
+        Row: {
+          id: string;
+          status: 'draft' | 'published' | 'archived';
+          start_date: string;
+          end_date: string;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+          published_at: string | null;
+          published_by: string | null;
+          version: number;
+          is_active: boolean;
+        }
+        Insert: {
+          id?: string;
+          status?: 'draft' | 'published' | 'archived';
+          start_date: string;
+          end_date: string;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+          published_at?: string | null;
+          published_by?: string | null;
+          version?: number;
+          is_active?: boolean;
+        }
+        Update: {
+          id?: string;
+          status?: 'draft' | 'published' | 'archived';
+          start_date?: string;
+          end_date?: string;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+          published_at?: string | null;
+          published_by?: string | null;
+          version?: number;
+          is_active?: boolean;
+        }
+      }
       schedule_assignments: {
         Row: {
           id: string;
@@ -129,6 +173,53 @@ export type Database = {
           end_time?: string;
           created_at?: string;
           updated_at?: string;
+          version?: number;
+        }
+      }
+      time_requirements: {
+        Row: {
+          id: string;
+          schedule_id: string;
+          start_time: string;
+          end_time: string;
+          min_employees: number;
+          max_employees: number | null;
+          min_supervisors: number;
+          day_of_week: number;
+          created_at: string;
+          updated_at: string;
+          created_by: string | null;
+          updated_by: string | null;
+          version: number;
+        }
+        Insert: {
+          id?: string;
+          schedule_id: string;
+          start_time: string;
+          end_time: string;
+          min_employees: number;
+          max_employees?: number | null;
+          min_supervisors: number;
+          day_of_week: number;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
+          version?: number;
+        }
+        Update: {
+          id?: string;
+          schedule_id?: string;
+          start_time?: string;
+          end_time?: string;
+          min_employees?: number;
+          max_employees?: number | null;
+          min_supervisors?: number;
+          day_of_week?: number;
+          created_at?: string;
+          updated_at?: string;
+          created_by?: string | null;
+          updated_by?: string | null;
           version?: number;
         }
       }

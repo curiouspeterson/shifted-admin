@@ -1,76 +1,68 @@
 /**
- * Application Context Provider
- * Last Updated: 2024-03-20
+ * App Context Provider
+ * Last Updated: 2024-03-21
  * 
- * This module provides a React context for managing global application state.
- * It includes:
- * - Loading state management
- * - Error handling
- * - User preferences
- * - Theme management
+ * Global application context using modern React patterns.
+ * Provides app-wide state management with TypeScript support.
  */
 
-'use client'
+'use client';
 
-import React, { createContext, useContext, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
-import { errorLogger } from '@/lib/logging/error-logger'
+import { createContext, useContext, useReducer, type ReactNode } from 'react';
+
+interface AppState {
+  isOnline: boolean;
+  isSyncing: boolean;
+  lastSyncTime: string | null;
+}
+
+type AppAction = 
+  | { type: 'SET_ONLINE_STATUS'; payload: boolean }
+  | { type: 'SET_SYNC_STATUS'; payload: boolean }
+  | { type: 'SET_SYNC_TIME'; payload: string };
 
 interface AppContextType {
-  isLoading: boolean
-  setLoading: (loading: boolean) => void
-  error: Error | null
-  setError: (error: Error | null) => void
-  clearError: () => void
-  handleError: (error: unknown) => void
-  theme: 'light' | 'dark'
-  toggleTheme: () => void
+  state: AppState;
+  dispatch: React.Dispatch<AppAction>;
 }
 
-const AppContext = createContext<AppContextType | undefined>(undefined)
+const initialState: AppState = {
+  isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
+  isSyncing: false,
+  lastSyncTime: null,
+};
 
-export function AppProvider({ children }: { children: React.ReactNode }) {
-  const router = useRouter()
-  const [isLoading, setLoading] = useState(false)
-  const [error, setError] = useState<Error | null>(null)
-  const [theme, setTheme] = useState<'light' | 'dark'>('light')
+const AppContext = createContext<AppContextType | null>(null);
 
-  const clearError = useCallback(() => {
-    setError(null)
-  }, [])
+function appReducer(state: AppState, action: AppAction): AppState {
+  switch (action.type) {
+    case 'SET_ONLINE_STATUS':
+      return { ...state, isOnline: action.payload };
+    case 'SET_SYNC_STATUS':
+      return { ...state, isSyncing: action.payload };
+    case 'SET_SYNC_TIME':
+      return { ...state, lastSyncTime: action.payload };
+    default:
+      return state;
+  }
+}
 
-  const handleError = useCallback((error: unknown) => {
-    const formattedError = error instanceof Error ? error : new Error(String(error))
-    errorLogger.error('Application error', { error: formattedError })
-    setError(formattedError)
-  }, [])
-
-  const toggleTheme = useCallback(() => {
-    setTheme(current => current === 'light' ? 'dark' : 'light')
-  }, [])
-
+export function AppProvider({ children }: { children: ReactNode }) {
+  const [state, dispatch] = useReducer(appReducer, initialState);
+  
   return (
-    <AppContext.Provider
-      value={{
-        isLoading,
-        setLoading,
-        error,
-        setError,
-        clearError,
-        handleError,
-        theme,
-        toggleTheme,
-      }}
-    >
+    <AppContext.Provider value={{ state, dispatch }}>
       {children}
     </AppContext.Provider>
-  )
+  );
 }
 
-export function useApp() {
-  const context = useContext(AppContext)
-  if (context === undefined) {
-    throw new Error('useApp must be used within an AppProvider')
+export function useAppContext() {
+  const context = useContext(AppContext);
+  
+  if (!context) {
+    throw new Error('useAppContext must be used within an AppProvider');
   }
-  return context
+  
+  return context;
 } 

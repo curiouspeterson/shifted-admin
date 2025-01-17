@@ -1,217 +1,53 @@
 /**
- * Route Handler Module
- * Last Updated: 2025-01-15
+ * API Route Handler Utilities
+ * Last Updated: 2024-03-21
  * 
- * This module provides a factory function for creating API route handlers with
- * built-in validation, caching, rate limiting, and error handling.
- * 
- * Features:
- * - Request validation using Zod schemas
- * - Optional rate limiting
- * - Optional response caching
- * - Standardized error handling
- * - Request timing and metadata
+ * Utilities for handling API routes with rate limiting and error handling.
  */
 
-import { type NextRequest, NextResponse } from 'next/server';
-import { z } from 'zod';
-import { cacheService } from './cache';
-import { ApiError } from './errors';
-import { logger } from './logger';
-import { rateLimiter } from './rateLimit';
+import { NextRequest, NextResponse } from 'next/server';
+import { createRateLimiter, defaultRateLimits } from '@/lib/api/rate-limit';
 
-export type RouteContext = {
-  params?: Record<string, string>;
-  auth?: {
-    id: string;
-    roles: string[];
-  };
-};
+// Create rate limiter for API endpoints
+const rateLimiter = createRateLimiter(defaultRateLimits.api);
 
-type RouteConfig<TBody = unknown, TQuery = unknown> = {
-  auth?: {
-    required?: boolean;
-    roles?: string[];
-  };
-  validation?: {
-    body?: z.Schema<TBody>;
-    query?: z.Schema<TQuery>;
-  };
-  cache?: {
-    enabled: boolean;
-    tags?: string[];
-    ttl?: number;
-  };
-  rateLimit?: {
-    enabled: boolean;
-    requests: number;
-    window: number; // in seconds
-  };
-};
+interface RouteHandlerOptions {
+  requireAuth?: boolean;
+  requireAdmin?: boolean;
+  rateLimit?: boolean;
+}
 
-type HandlerContext<TBody = unknown, TQuery = unknown> = RouteContext & {
-  validatedBody?: TBody;
-  validatedQuery?: TQuery;
-};
-
-type ApiResponse<T = unknown> = {
-  data: T | null;
-  error: {
-    code: string;
-    message: string;
-    details?: unknown;
-  } | null;
-  metadata: {
-    timestamp: string;
-    requestId: string;
-  } & (
-    | { cached: true }
-    | { cached?: false; duration: number }
-  );
-};
-
-export function createRouteHandler<TResponse = unknown, TBody = unknown, TQuery = unknown>(
-  config: RouteConfig<TBody, TQuery>,
-  handler: (req: NextRequest, ctx: HandlerContext<TBody, TQuery>) => Promise<TResponse>
+/**
+ * Creates a route handler with rate limiting and error handling
+ */
+export function createRouteHandler<T>(
+  handler: (req: NextRequest) => Promise<T>,
+  options: RouteHandlerOptions = {}
 ) {
-  // Initialize services only if enabled
-  const useRateLimit = config.rateLimit?.enabled ?? false;
-  const useCache = config.cache?.enabled ?? false;
-
-  return async function routeHandler(
-    req: NextRequest,
-    context: RouteContext = {}
-  ): Promise<NextResponse> {
-    const startTime = Date.now();
-    const requestId = crypto.randomUUID();
-
+  return async function routeHandler(req: NextRequest) {
     try {
-      // Rate limiting check
-      if (useRateLimit) {
-        const { requests, window } = config.rateLimit!;
-        const isAllowed = await rateLimiter.check(req, requests, window);
+      // Check rate limit if enabled
+      if (options.rateLimit) {
+        const identifier = req.ip || 'unknown';
+        const isAllowed = await rateLimiter(identifier);
+        
         if (!isAllowed) {
-          throw new ApiError(
-            'RATE_LIMIT_EXCEEDED',
-            'Too many requests',
-            429
+          return NextResponse.json(
+            { error: 'Rate limit exceeded' },
+            { status: 429 }
           );
         }
       }
-
-      // Cache check
-      if (useCache) {
-        const cached = await cacheService.get(req);
-        if (cached) {
-          return NextResponse.json({
-            ...cached,
-            metadata: {
-              ...cached.metadata,
-              cached: true,
-            },
-          });
-        }
-      }
-
-      // Validation
-      let validatedBody: TBody | undefined;
-      let validatedQuery: TQuery | undefined;
-
-      if (config.validation?.body) {
-        const body = await req.json().catch(() => ({}));
-        validatedBody = await config.validation.body.parseAsync(body);
-      }
-
-      if (config.validation?.query) {
-        const query = Object.fromEntries(new URL(req.url).searchParams);
-        validatedQuery = await config.validation.query.parseAsync(query);
-      }
-
+      
       // Execute handler
-      const result = await handler(req, {
-        ...context,
-        validatedBody,
-        validatedQuery,
-      });
-
-      // Prepare response
-      const response: ApiResponse<TResponse> = {
-        data: result,
-        error: null,
-        metadata: {
-          timestamp: new Date().toISOString(),
-          requestId,
-          duration: Date.now() - startTime,
-        },
-      };
-
-      // Cache response if enabled
-      if (useCache) {
-        await cacheService.set(req, response);
-      }
-
-      return NextResponse.json(response);
-
+      const result = await handler(req);
+      
+      return NextResponse.json(result);
     } catch (error) {
-      logger.error('Route handler error', {
-        path: new URL(req.url).pathname,
-        error,
-        requestId,
-      });
-
-      const duration = Date.now() - startTime;
-
-      if (error instanceof z.ZodError) {
-        return NextResponse.json(
-          {
-            data: null,
-            error: {
-              code: 'VALIDATION_ERROR',
-              message: 'Invalid request data',
-              details: error.errors,
-            },
-            metadata: {
-              timestamp: new Date().toISOString(),
-              requestId,
-              duration,
-            },
-          },
-          { status: 400 }
-        );
-      }
-
-      if (error instanceof ApiError) {
-        return NextResponse.json(
-          {
-            data: null,
-            error: {
-              code: error.code,
-              message: error.message,
-              details: error.details,
-            },
-            metadata: {
-              timestamp: new Date().toISOString(),
-              requestId,
-              duration,
-            },
-          },
-          { status: error.statusCode }
-        );
-      }
-
+      console.error('Route handler error:', error);
+      
       return NextResponse.json(
-        {
-          data: null,
-          error: {
-            code: 'INTERNAL_SERVER_ERROR',
-            message: 'An unexpected error occurred',
-          },
-          metadata: {
-            timestamp: new Date().toISOString(),
-            requestId,
-            duration,
-          },
-        },
+        { error: error instanceof Error ? error.message : 'Internal server error' },
         { status: 500 }
       );
     }

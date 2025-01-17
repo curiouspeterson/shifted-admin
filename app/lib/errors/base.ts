@@ -1,126 +1,129 @@
 /**
  * Base Error Classes
- * Last Updated: 2024-01-17
+ * Last Updated: 2024-03-21
  * 
- * This module defines the base error classes used throughout the application.
+ * Core error classes for the application.
+ * Provides structured error handling with TypeScript support.
  */
 
-import { ErrorSeverity } from '../logging/error-logger';
+export enum ErrorSeverity {
+  LOW = 'low',
+  MEDIUM = 'medium',
+  HIGH = 'high',
+  CRITICAL = 'critical'
+}
 
-/**
- * Base application error class
- */
-export class AppError extends Error {
-  readonly code: string;
-  readonly status: number;
-  readonly details?: Record<string, unknown>;
+export enum ErrorCategory {
+  VALIDATION = 'validation',
+  AUTHENTICATION = 'authentication',
+  AUTHORIZATION = 'authorization',
+  BUSINESS = 'business',
+  SYSTEM = 'system',
+  NETWORK = 'network',
+  DATABASE = 'database'
+}
 
-  constructor(
-    message: string,
-    code = 'UNKNOWN_ERROR',
-    status = 500,
-    details?: Record<string, unknown>
-  ) {
+interface ErrorMetadata {
+  code: string;
+  severity: ErrorSeverity;
+  category: ErrorCategory;
+  details?: Record<string, unknown>;
+  source?: string;
+  timestamp?: string;
+}
+
+export class BaseError extends Error {
+  public readonly code: string;
+  public readonly severity: ErrorSeverity;
+  public readonly category: ErrorCategory;
+  public readonly details?: Record<string, unknown>;
+  public readonly source?: string;
+  public readonly timestamp: string;
+
+  constructor(message: string, metadata: ErrorMetadata) {
     super(message);
     this.name = this.constructor.name;
-    this.code = code;
-    this.status = status;
-    this.details = details;
+    this.code = metadata.code;
+    this.severity = metadata.severity;
+    this.category = metadata.category;
+    this.details = metadata.details;
+    this.source = metadata.source;
+    this.timestamp = metadata.timestamp || new Date().toISOString();
+
+    // Maintains proper stack trace
     Error.captureStackTrace(this, this.constructor);
   }
-}
 
-/**
- * Authentication error class
- */
-export class AuthenticationError extends AppError {
-  constructor(message = 'Authentication failed', details?: Record<string, unknown>) {
-    super(message, 'AUTHENTICATION_ERROR', 401, details);
+  public toJSON() {
+    return {
+      name: this.name,
+      message: this.message,
+      code: this.code,
+      severity: this.severity,
+      category: this.category,
+      details: this.details,
+      source: this.source,
+      timestamp: this.timestamp,
+      stack: this.stack
+    };
   }
 }
 
-/**
- * Authorization error class
- */
-export class AuthorizationError extends AppError {
-  constructor(message = 'Not authorized', details?: Record<string, unknown>) {
-    super(message, 'AUTHORIZATION_ERROR', 403, details);
+export class BusinessError extends BaseError {
+  constructor(
+    message: string,
+    code: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message, {
+      code,
+      severity: ErrorSeverity.MEDIUM,
+      category: ErrorCategory.BUSINESS,
+      details
+    });
   }
 }
 
-/**
- * Validation error class
- */
-export class ValidationError extends AppError {
-  constructor(message = 'Validation failed', details?: Record<string, unknown>) {
-    super(message, 'VALIDATION_ERROR', 400, details);
+export class SystemError extends BaseError {
+  constructor(
+    message: string,
+    code: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message, {
+      code,
+      severity: ErrorSeverity.HIGH,
+      category: ErrorCategory.SYSTEM,
+      details
+    });
   }
 }
 
-/**
- * Not found error class
- */
-export class NotFoundError extends AppError {
-  constructor(message = 'Resource not found', details?: Record<string, unknown>) {
-    super(message, 'NOT_FOUND', 404, details);
+export class ValidationError extends BaseError {
+  constructor(
+    message: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message, {
+      code: 'VALIDATION_ERROR',
+      severity: ErrorSeverity.LOW,
+      category: ErrorCategory.VALIDATION,
+      details
+    });
   }
 }
 
-/**
- * Database error class
- */
-export class DatabaseError extends AppError {
-  constructor(message = 'Database operation failed', details?: Record<string, unknown>) {
-    super(message, 'DATABASE_ERROR', 500, details);
+export class AuthError extends BaseError {
+  constructor(
+    message: string,
+    code = 'UNAUTHORIZED',
+    details?: Record<string, unknown>
+  ) {
+    super(message, {
+      code,
+      severity: ErrorSeverity.HIGH,
+      category: ErrorCategory.AUTHENTICATION,
+      details
+    });
   }
-}
-
-/**
- * Network error class
- */
-export class NetworkError extends AppError {
-  constructor(message = 'Network operation failed', details?: Record<string, unknown>) {
-    super(message, 'NETWORK_ERROR', 503, details);
-  }
-}
-
-/**
- * Rate limit error class
- */
-export class RateLimitError extends AppError {
-  constructor(message = 'Rate limit exceeded', details?: Record<string, unknown>) {
-    super(message, 'RATE_LIMIT_ERROR', 429, details);
-  }
-}
-
-/**
- * Time range error class
- */
-export class TimeRangeError extends AppError {
-  constructor(message = 'Invalid time range', details?: Record<string, unknown>) {
-    super(message, 'TIME_RANGE_ERROR', 400, details);
-  }
-}
-
-/**
- * Error utility functions
- */
-
-export function isAppError(error: unknown): error is AppError {
-  return error instanceof AppError;
-}
-
-export function formatError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return String(error);
-}
-
-export function isNetworkError(error: unknown): boolean {
-  return error instanceof NetworkError;
-}
-
-export function isOfflineError(error: unknown): boolean {
-  return error instanceof NetworkError && error.code === 'NETWORK_ERROR';
 } 

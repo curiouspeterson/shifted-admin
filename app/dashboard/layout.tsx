@@ -1,6 +1,6 @@
 /**
  * Dashboard Layout Component
- * Last Updated: 2024-03-20
+ * Last Updated: 2024-03-21
  * 
  * This layout wraps all dashboard pages and provides:
  * - Authentication check
@@ -10,8 +10,9 @@
 
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import DashboardNav from '@/components/DashboardNav'
-import { AppProvider } from '@/lib/context/appContext'
+import { cookies } from 'next/headers'
+import DashboardNav from '@/components/dashboard-nav'
+import { AppProvider } from '@/lib/context/app-context'
 
 /**
  * Dashboard Layout Component
@@ -22,7 +23,8 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const supabase = createClient()
+  const cookieStore = cookies()
+  const supabase = createClient(cookieStore)
   const { data: { session } } = await supabase.auth.getSession()
 
   if (!session) {

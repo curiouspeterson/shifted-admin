@@ -1,6 +1,6 @@
 /**
  * Schedules API Route Handler
- * Last Updated: 2025-01-15
+ * Last Updated: 2024-03-21
  * 
  * This module provides RESTful endpoints for managing schedules with:
  * - Type-safe request/response handling
@@ -11,7 +11,7 @@
  */
 
 import { z } from 'zod';
-import { createRouteHandler } from '@/lib/api';
+import { createRouteHandler } from '@/lib/api/route-handler';
 import { ApiError } from '@/lib/api/errors';
 import { scheduleRepository, type Schedule, type CreateScheduleBody, type UpdateScheduleBody, type ScheduleStatus } from '@/lib/api/repositories';
 

@@ -1,6 +1,6 @@
 /**
  * Staffing Requirements Component
- * Last Updated: 2024
+ * Last Updated: 2024-03-21
  * 
  * A client-side component that displays staffing requirements and current staffing levels
  * for different time blocks throughout the day. Shows requirements for both regular staff
@@ -21,7 +21,8 @@
 import React, { useEffect } from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { TimeBasedRequirement } from '@/app/lib/types/scheduling';
+import type { TimeBasedRequirement, Assignment } from '@/lib/types/scheduling';
+import type { RequirementStatus } from '@/lib/scheduling/utils/schedule.types';
 
 /**
  * Props for the StaffingRequirements component
@@ -36,18 +37,9 @@ import { TimeBasedRequirement } from '@/app/lib/types/scheduling';
 interface StaffingRequirementsProps {
   scheduleId: string;
   date: string;
-  assignments: any[];
+  assignments: Assignment[];
   timeRequirements: TimeBasedRequirement[];
-  requirementStatuses: {
-    date: string;
-    timeBlock: {
-      start: string;
-      end: string;
-    };
-    required: number;
-    actual: number;
-    type: 'total' | 'supervisor';
-  }[];
+  requirementStatuses: RequirementStatus[];
   isLoading?: boolean;
   error?: string | null;
 }

@@ -1,87 +1,98 @@
 /**
- * Rate Limiting Configuration
- * Last Updated: 2024-01-16
+ * Rate Limiting Utilities
+ * Last Updated: 2024-03-21
  * 
- * This module provides rate limiting configuration and utilities
- * for API endpoints using Postgres as the storage backend.
+ * Rate limiting implementation using Supabase for distributed rate limiting.
+ * Supports different limits for various API endpoints and authentication.
  */
 
-import { createClient } from '@/lib/supabase/server'
-import { RateLimitError } from '../errors'
-import { cookies } from 'next/headers'
+import { createClient } from '@/lib/supabase/server';
+import { cookies } from 'next/headers';
 
-// Default rate limit configurations
+export interface RateLimitConfig {
+  window: number;  // Time window in seconds
+  max: number;     // Maximum requests in window
+}
+
 export const defaultRateLimits = {
   api: {
-    limit: 100, // requests
-    window: 60, // seconds
-    identifier: 'api:default',
+    window: 60,    // 1 minute
+    max: 100       // 100 requests per minute
   },
   auth: {
-    limit: 5, // requests
-    window: 60, // seconds
-    identifier: 'auth:default',
+    window: 300,   // 5 minutes
+    max: 10        // 10 requests per 5 minutes
   }
-}
-
-interface RateLimitConfig {
-  limit: number
-  window: number
-  identifier: string
-}
-
-interface RateLimitInfo {
-  limit: number
-  remaining: number
-  reset: number
-}
+} as const;
 
 /**
  * Creates a rate limiter with the specified configuration
  */
 export function createRateLimiter(config: RateLimitConfig) {
-  const { limit, window: windowSeconds, identifier } = config
-
-  return {
-    /**
-     * Checks if the request is within rate limits using Postgres
-     */
-    async check(ip: string): Promise<RateLimitInfo> {
-      const cookieStore = cookies()
-      const supabase = createClient(cookieStore)
-      const now = Math.floor(Date.now() / 1000)
-      const windowStart = now - windowSeconds
-
-      // Use a transaction to ensure atomic operations
-      const { data, error } = await supabase.rpc('check_rate_limit', {
-        p_ip: ip,
-        p_identifier: identifier,
-        p_window_start: new Date(windowStart * 1000).toISOString(),
-        p_window: windowSeconds,
-        p_limit: limit
-      })
-
+  return async function checkRateLimit(identifier: string): Promise<boolean> {
+    const cookieStore = cookies();
+    const supabase = createClient(cookieStore);
+    const now = Math.floor(Date.now() / 1000);
+    const windowStart = now - config.window;
+    
+    try {
+      // Clean up old entries and get current count
+      const { data, error } = await supabase
+        .from('rate_limits')
+        .select('count')
+        .eq('identifier', identifier)
+        .gte('timestamp', new Date(windowStart * 1000).toISOString())
+        .limit(1)
+        .single();
+      
       if (error) {
-        console.error('Rate limit check failed:', error)
-        // If rate limiting fails, allow the request but log the error
-        return {
-          limit,
-          remaining: limit,
-          reset: now + windowSeconds
-        }
+        console.error('Rate limit check failed:', error);
+        return true; // Default to allowing the request if the check fails
       }
-
-      const { count, is_limited } = data
-
-      if (is_limited) {
-        throw new RateLimitError()
-      }
-
-      return {
-        limit,
-        remaining: Math.max(0, limit - count),
-        reset: now + windowSeconds
-      }
+      
+      return (data?.count || 0) < config.max;
+    } catch (error) {
+      console.error('Rate limit check failed:', error);
+      return true; // Default to allowing the request if the check fails
     }
+  };
+}
+
+/**
+ * Gets rate limit metrics for monitoring
+ */
+export async function getRateLimitMetrics(identifier: string): Promise<{
+  remaining: number;
+  reset: number;
+} | null> {
+  const cookieStore = cookies();
+  const supabase = createClient(cookieStore);
+  const now = Math.floor(Date.now() / 1000);
+  
+  try {
+    const { data, error } = await supabase
+      .from('rate_limits')
+      .select('timestamp')
+      .eq('identifier', identifier)
+      .gte('timestamp', now - defaultRateLimits.api.window)
+      .order('timestamp', { ascending: false });
+    
+    if (error) {
+      console.error('Failed to get rate limit metrics:', error);
+      return null;
+    }
+    
+    const used = data?.length || 0;
+    const remaining = defaultRateLimits.api.max - used;
+    const oldestTimestamp = data?.[0]?.timestamp || now;
+    const reset = oldestTimestamp + defaultRateLimits.api.window;
+    
+    return {
+      remaining: Math.max(0, remaining),
+      reset
+    };
+  } catch (error) {
+    console.error('Failed to get rate limit metrics:', error);
+    return null;
   }
 } 

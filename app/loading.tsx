@@ -1,31 +1,17 @@
 /**
- * Global Loading Component
- * Last Updated: 2024
+ * Root Loading Page
+ * Last Updated: 2024-03-21
  * 
- * Provides a full-screen loading indicator for route transitions and
- * data fetching states. This component is automatically used by
- * Next.js when loading new routes or during Suspense boundaries.
- * 
- * Features:
- * - Centered loading spinner
- * - Full viewport height
- * - Consistent loading state across routes
- * - Automatic integration with Next.js
+ * Global loading page for the application.
+ * Uses the Spinner component for loading indication.
  */
 
-import LoadingSpinner from '@/components/loading-spinner'
+import { Spinner } from '@/components/ui/spinner';
 
-/**
- * Loading Component
- * Renders a centered loading spinner in a full-screen container
- * Used automatically by Next.js for route transitions
- * 
- * @returns Full-screen loading indicator
- */
 export default function Loading() {
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <LoadingSpinner />
+    <div className="flex items-center justify-center min-h-screen">
+      <Spinner size="lg" />
     </div>
-  )
+  );
 } 

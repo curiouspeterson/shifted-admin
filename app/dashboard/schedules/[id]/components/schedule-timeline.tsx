@@ -1,6 +1,6 @@
 /**
  * Schedule Timeline Component
- * Last Updated: 2024
+ * Last Updated: 2024-03-21
  * 
  * A client-side component that provides a visual timeline representation of shifts
  * for a specific date. Shows shift blocks positioned on a 24-hour timeline with
@@ -18,7 +18,7 @@
 
 import React from 'react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import type { Assignment } from '@/app/lib/types/scheduling';
+import type { Assignment } from '@/lib/types/scheduling';
 
 /**
  * Props for the ScheduleTimeline component
