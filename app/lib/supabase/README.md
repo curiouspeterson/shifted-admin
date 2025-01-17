@@ -6,7 +6,7 @@ This directory contains the application-level integration with Supabase, includi
 
 ## Directory Structure
 
-```
+``` bash
 app/lib/supabase/
 ├── client/       # Browser client configuration
 ├── server/       # Server client configuration
@@ -212,4 +212,4 @@ Common issues and solutions:
 
 - [Next.js App Router Documentation](https://nextjs.org/docs/app)
 - [Supabase JavaScript Client](https://supabase.com/docs/reference/javascript)
-- [Supabase Auth Helpers](https://supabase.com/docs/guides/auth/auth-helpers) 
+- [Supabase Auth Helpers](https://supabase.com/docs/guides/auth/auth-helpers)
