@@ -24,7 +24,7 @@
 import { z } from 'zod';
 import { NextResponse } from 'next/server';
 import { createRouteHandler } from '@/lib/api';
-import type { ApiHandlerOptions, ExtendedNextRequest } from '@/lib/api/types';
+import type { ApiHandlerOptions, ExtendedNextRequest, QueryOptions, RouteContext } from '@/lib/api/types';
 import { EmployeesOperations } from '@/lib/api/database/employees';
 import {
   HTTP_STATUS_OK,
@@ -42,8 +42,23 @@ import {
   AuthorizationError,
   DatabaseError,
 } from '@/lib/errors';
+import type { DatabaseErrorDetail } from '@/lib/errors/database';
+import type { ValidationErrorDetail } from '@/lib/errors/validation';
+import { createClient } from '@/lib/supabase/server';
+import type { Database } from '@/lib/supabase/database.types';
 
-type EmployeeSortColumn = NonNullable<z.infer<typeof employeeSortSchema>['sort']>;
+const DEFAULT_PAGE_SIZE = 10;
+
+type EmployeeSortColumn = keyof Database['public']['Tables']['employees']['Row'];
+type QueryOptionsWithEmployeeSort = {
+  limit: number;
+  offset: number;
+  orderBy?: {
+    column: EmployeeSortColumn;
+    ascending?: boolean | undefined;
+  } | undefined;
+  filter?: Record<string, string | undefined> | undefined;
+};
 
 // Custom rate limits for employee operations
 const employeeRateLimits = {
@@ -80,40 +95,67 @@ const employeeCacheConfig = {
  */
 export const GET = createRouteHandler(
   async (req: ExtendedNextRequest) => {
-    const url = new URL(req.url);
-    const query = Object.fromEntries(url.searchParams);
-    const { supabase } = req;
+    try {
+      const context: RouteContext = {
+        req,
+        supabase: req.supabase,
+        user: req.user,
+        session: req.session
+      };
 
-    // Initialize database operations
-    const employees = new EmployeesOperations(supabase);
+      const searchParams = Object.fromEntries(new URL(req.url).searchParams);
+      
+      const filter: Record<string, string | undefined> = {};
+      if (searchParams['status']) filter['status'] = searchParams['status'];
+      if (searchParams['role']) filter['role'] = searchParams['role'];
+      if (searchParams['department']) filter['department'] = searchParams['department'];
+      
+      const queryParams: QueryOptionsWithEmployeeSort = {
+        limit: searchParams['limit'] ? parseInt(searchParams['limit'] as string, 10) : DEFAULT_PAGE_SIZE,
+        offset: searchParams['offset'] ? parseInt(searchParams['offset'] as string, 10) : 0,
+        orderBy: searchParams['sort'] ? {
+          column: searchParams['sort'] as EmployeeSortColumn,
+          ascending: searchParams['order'] ? searchParams['order'] === 'asc' : undefined
+        } : undefined,
+        filter
+      };
 
-    // Build query options using sanitized query parameters
-    const options = {
-      limit: query.limit ? parseInt(query.limit) : undefined,
-      offset: query.offset ? parseInt(query.offset) : undefined,
-      orderBy: query.sort
-        ? { column: query.sort as EmployeeSortColumn, ascending: query.order !== 'desc' }
-        : undefined,
-      filter: {
-        ...(query.status && { status: query.status }),
-        ...(query.role && { role: query.role }),
-        ...(query.department && { department: query.department }),
-      },
-    };
+      const { data: employees, error } = await context.supabase
+        .from('employees')
+        .select('*')
+        .range(queryParams.offset, queryParams.offset + queryParams.limit - 1)
+        .order(queryParams.orderBy?.column || 'created_at', {
+          ascending: queryParams.orderBy?.ascending ?? true
+        });
 
-    // Fetch employees
-    const result = await employees.findMany(options);
+      if (error) {
+        throw new DatabaseError('Failed to fetch employees', {
+          code: 'QUERY_ERROR',
+          table: 'employees'
+        });
+      }
 
-    if (result.error) {
-      throw new DatabaseError('Failed to fetch employees', { 
-        cause: result.error 
+      return NextResponse.json({ data: employees });
+
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        const validationError: ValidationErrorDetail = {
+          path: ['query'],
+          message: error.message,
+          code: 'INVALID_QUERY_PARAMS'
+        };
+        throw new ValidationError('Invalid query parameters', [validationError]);
+      }
+
+      if (error instanceof DatabaseError) {
+        throw error;
+      }
+
+      throw new DatabaseError('Failed to process request', {
+        code: 'UNKNOWN_ERROR',
+        table: 'employees'
       });
     }
-
-    return NextResponse.json({ 
-      data: result.data || [],
-      error: null,
-    }, { status: HTTP_STATUS_OK });
   },
   {
     validate: {

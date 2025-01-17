@@ -1,113 +1,55 @@
 /**
  * Error Chart Component
- * Last Updated: 2025-01-15
+ * Last Updated: 2025-01-17
  * 
- * This component provides a visualization of error trends over time.
+ * Displays error metrics in a visual chart format
  */
 
 'use client';
 
-import React from 'react';
-import { Card } from '@/components/ui/card';
+import { useMemo } from 'react';
+import { Card, CardContent } from '@/components/ui/card';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { ErrorSeverity } from '@/lib/logging/error-logger';
 
-interface ErrorDataPoint {
-  date: string;
-  critical: number;
-  error: number;
-  warning: number;
-  info: number;
+interface ErrorMetric {
+  title: string;
+  value: number;
+  change: number;
+  severity: ErrorSeverity;
 }
 
-const data: ErrorDataPoint[] = [
-  {
-    date: '2025-01-09',
-    critical: 3,
-    error: 15,
-    warning: 8,
-    info: 5,
-  },
-  {
-    date: '2025-01-10',
-    critical: 2,
-    error: 12,
-    warning: 10,
-    info: 6,
-  },
-  {
-    date: '2025-01-11',
-    critical: 4,
-    error: 18,
-    warning: 12,
-    info: 4,
-  },
-  {
-    date: '2025-01-12',
-    critical: 1,
-    error: 10,
-    warning: 15,
-    info: 8,
-  },
-  {
-    date: '2025-01-13',
-    critical: 5,
-    error: 20,
-    warning: 9,
-    info: 7,
-  },
-  {
-    date: '2025-01-14',
-    critical: 2,
-    error: 14,
-    warning: 11,
-    info: 9,
-  },
-  {
-    date: '2025-01-15',
-    critical: 3,
-    error: 16,
-    warning: 13,
-    info: 6,
-  },
-];
+interface ErrorChartProps {
+  data: ErrorMetric[];
+  title?: string;
+  height?: number;
+}
 
-export function ErrorChart() {
+export function ErrorChart({ data, title = 'Error Distribution', height = 300 }: ErrorChartProps) {
+  const chartData = useMemo(() => {
+    return data.map(metric => ({
+      name: metric.title,
+      count: metric.value,
+      change: metric.change
+    }));
+  }, [data]);
+
   return (
-    <div className="w-full">
-      <div className="mb-4 flex items-center justify-between">
-        <div className="space-y-1">
-          <h4 className="text-sm font-medium">Error Trends</h4>
-          <p className="text-sm text-muted-foreground">
-            Error occurrences over the past 7 days
-          </p>
+    <Card>
+      <CardContent className="p-4">
+        <h3 className="text-lg font-semibold mb-4">{title}</h3>
+        <div style={{ width: '100%', height }}>
+          <ResponsiveContainer>
+            <BarChart data={chartData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="name" />
+              <YAxis />
+              <Tooltip />
+              <Bar dataKey="count" fill="#3b82f6" name="Error Count" />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
-        <div className="flex items-center space-x-2">
-          <div className="flex items-center space-x-1">
-            <div className="h-3 w-3 rounded-full bg-red-500" />
-            <span className="text-sm text-muted-foreground">Critical</span>
-          </div>
-          <div className="flex items-center space-x-1">
-            <div className="h-3 w-3 rounded-full bg-orange-500" />
-            <span className="text-sm text-muted-foreground">Error</span>
-          </div>
-          <div className="flex items-center space-x-1">
-            <div className="h-3 w-3 rounded-full bg-yellow-500" />
-            <span className="text-sm text-muted-foreground">Warning</span>
-          </div>
-          <div className="flex items-center space-x-1">
-            <div className="h-3 w-3 rounded-full bg-green-500" />
-            <span className="text-sm text-muted-foreground">Info</span>
-          </div>
-        </div>
-      </div>
-      <div className="h-[200px] w-full">
-        {/* TODO: Implement chart visualization using a charting library */}
-        <div className="flex h-full items-center justify-center">
-          <p className="text-sm text-muted-foreground">
-            Chart visualization coming soon...
-          </p>
-        </div>
-      </div>
-    </div>
+      </CardContent>
+    </Card>
   );
 } 

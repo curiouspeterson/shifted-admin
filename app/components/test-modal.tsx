@@ -1,75 +1,105 @@
 /**
  * Test Modal Component
- * Last Updated: 2024
+ * Last Updated: 2025-01-17
  * 
- * A demonstration component showcasing the implementation of NextUI's
- * modal functionality. Provides a simple example of modal usage with
- * basic interaction elements.
- * 
- * Features:
- * - Modal trigger button
- * - Centered placement
- * - Header, body, and footer sections
- * - Text input field
- * - Action buttons
- * - NextUI integration
+ * A demonstration component showcasing the implementation of our
+ * custom modal component with proper error boundaries and debugging.
  */
 
 'use client'
 
-import { useState } from "react"
-import { Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, useDisclosure } from "@nextui-org/react"
+import { useState } from 'react'
+import { Button } from './client-wrappers/button-client'
+import { Input } from './client-wrappers/input-client'
+import { Modal } from './ui/modal'
+import { ErrorBoundary } from 'react-error-boundary'
 
-/**
- * Test Modal Component
- * Demonstrates modal functionality using NextUI components
- * 
- * @returns A button that opens a demo modal with example content
- */
+interface ErrorFallbackProps {
+  error: Error
+  resetErrorBoundary: () => void
+}
+
+function ErrorFallback({ error, resetErrorBoundary }: ErrorFallbackProps) {
+  return (
+    <div className="p-4 border border-red-500 rounded-md">
+      <h2 className="text-lg font-semibold text-red-600">Something went wrong:</h2>
+      <pre className="mt-2 text-sm text-red-500">{error.message}</pre>
+      <Button
+        onClick={resetErrorBoundary}
+        variant="outline"
+        className="mt-4"
+      >
+        Try again
+      </Button>
+    </div>
+  )
+}
+
 export default function TestModal() {
-  // Modal state management using NextUI's useDisclosure hook
-  const {isOpen, onOpen, onOpenChange} = useDisclosure()
+  const [isOpen, setIsOpen] = useState(false)
+  const [inputValue, setInputValue] = useState('')
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setInputValue(e.target.value)
+  }
+
+  const handleClose = () => {
+    setInputValue('')
+    setIsOpen(false)
+  }
 
   return (
-    <div>
-      {/* Modal Trigger Button */}
-      <Button onPress={onOpen} color="primary">Open Modal</Button>
+    <ErrorBoundary
+      FallbackComponent={ErrorFallback}
+      onReset={handleClose}
+      onError={(error: Error) => {
+        // Log errors in development
+        if (process.env.NODE_ENV === 'development') {
+          console.error('[Modal Error]', {
+            error,
+            timestamp: new Date().toISOString(),
+            componentStack: error.stack,
+          })
+        }
+      }}
+    >
+      <div className="flex flex-col gap-4">
+        {/* Basic Modal */}
+        <div>
+          <h2 className="mb-2 text-lg font-semibold">Basic Modal</h2>
+          <Button onClick={() => setIsOpen(true)}>
+            Open Basic Modal
+          </Button>
 
-      {/* Modal Component */}
-      <Modal 
-        isOpen={isOpen} 
-        onOpenChange={onOpenChange}
-        placement="center"
-      >
-        <ModalContent>
-          {(onClose) => (
-            <>
-              {/* Modal Header */}
-              <ModalHeader className="flex flex-col gap-1">Test Modal</ModalHeader>
-
-              {/* Modal Body with Example Content */}
-              <ModalBody>
-                <p>This is a test modal using NextUI.</p>
-                <input 
-                  type="text" 
-                  placeholder="Try typing here"
-                  className="w-full px-3 py-2 border rounded"
-                />
-              </ModalBody>
-
-              {/* Modal Footer with Action Buttons */}
-              <ModalFooter>
-                <Button color="danger" variant="light" onPress={onClose}>
-                  Close
+          <Modal
+            open={isOpen}
+            onOpenChange={setIsOpen}
+            title="Basic Modal Example"
+          >
+            <div className="space-y-4">
+              <p>This is a basic modal example using our custom Modal component.</p>
+              <Input
+                type="text"
+                placeholder="Try typing here"
+                className="w-full"
+                value={inputValue}
+                onChange={handleInputChange}
+              />
+              <div className="flex justify-end gap-2">
+                <Button 
+                  variant="outline" 
+                  onClick={handleClose}
+                >
+                  Cancel
                 </Button>
-                <Button color="primary" onPress={onClose}>
-                  Action
+                <Button onClick={() => setIsOpen(false)}>
+                  Confirm
                 </Button>
-              </ModalFooter>
-            </>
-          )}
-        </ModalContent>
-      </Modal>
-    </div>
+              </div>
+            </div>
+          </Modal>
+        </div>
+      </div>
+    </ErrorBoundary>
   )
 } 

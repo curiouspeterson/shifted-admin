@@ -1,162 +1,92 @@
 /**
- * API Types
+ * API Types and Interfaces
  * Last Updated: 2025-01-17
- * 
- * Type definitions for API handlers and responses.
  */
 
-import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { CacheControl } from './cache';
-import { SupabaseClient, User, Session } from '@supabase/supabase-js';
+import { SupabaseClient } from '@supabase/supabase-js';
+import type { User, Session } from '@supabase/supabase-js';
 import type { Database } from '../supabase/database.types';
 import type { RateLimiterOpts } from './rate-limit';
+import { NextRequest } from 'next/server';
 
-/**
- * Extended NextRequest with Supabase client and session
- */
 export interface ExtendedNextRequest extends NextRequest {
   supabase: SupabaseClient<Database>;
-  user?: User;
-  session?: Session;
+  user: User | null;
+  session: Session | null;
 }
 
-/**
- * Base query parameters
- */
 export interface BaseQueryParams {
-  page?: number;
-  limit?: number;
-  offset?: number;
+  [key: string]: string | string[] | undefined;
+  limit?: string;
+  offset?: string;
   sort?: string;
   order?: 'asc' | 'desc';
 }
 
-/**
- * Cache information
- */
 export interface CacheInfo {
-  hit: boolean;
-  ttl: number;
+  control: CacheControl;
+  revalidate?: number;
 }
 
-/**
- * Rate limit information
- */
 export interface RateLimit {
-  limit: number;
-  remaining: number;
-  reset: number;
+  points: number;
+  duration: number;
+  blockDuration?: number;
 }
 
-/**
- * API response metadata
- */
 export interface ResponseMetadata {
   requestId: string;
-  processingTime: number;
-  version: string;
   timestamp: string;
-  cache: CacheInfo | null;
-  rateLimit: RateLimit;
+  duration: number;
 }
 
-/**
- * API response structure
- */
-export interface ApiResponse<T = unknown> {
+export interface ApiResponse<T> {
   data: T;
-  error: null;
-  metadata: ResponseMetadata;
+  meta?: ResponseMetadata;
 }
 
-/**
- * Route context with typed request body and query parameters
- */
-export interface RouteContext<
-  TBody extends z.ZodSchema = z.ZodObject<any>,
-  TQuery extends BaseQueryParams = BaseQueryParams
-> {
-  req: NextRequest;
-  params?: Record<string, string>;
-  body?: z.infer<TBody>;
-  query: TQuery;
+export interface RouteContext {
+  req: ExtendedNextRequest;
+  supabase: SupabaseClient<Database>;
+  user: User | null;
+  session: Session | null;
 }
 
-/**
- * Database query options
- */
 export interface QueryOptions {
-  limit?: number;
-  offset?: number;
+  limit?: number | undefined;
+  offset?: number | undefined;
   orderBy?: {
-    column: string;
-    ascending: boolean;
-  };
-  filter?: Partial<Record<string | number | symbol, string | number | boolean | undefined>>;
+    column: keyof Database['public']['Tables'];
+    ascending?: boolean | undefined;
+  } | undefined;
+  filter?: Record<string, unknown> | undefined;
 }
 
-/**
- * Database operation result
- */
-export interface DatabaseResult<T> {
-  data: T | null;
-  error: Error | null;
-}
-
-/**
- * Pagination metadata
- */
 export interface PaginationMeta {
-  page: number;
-  pageSize: number;
   total: number;
-  totalPages: number;
+  limit: number;
+  offset: number;
   hasMore: boolean;
 }
 
-/**
- * Cache configuration options
- */
 export interface CacheConfig {
   control: CacheControl;
   revalidate?: number;
-  tags?: string[];
-  prefix?: string;
-  includeQuery?: boolean;
-  excludeParams?: readonly string[];
 }
 
-/**
- * API handler options
- */
 export interface ApiHandlerOptions<T = unknown> {
-  cache?: CacheConfig;
-  rateLimit?: {
-    windowMs: number;
-    maxRequests: number;
-    identifier?: string;
-  };
-  validate?: {
-    body?: z.ZodSchema<T>;
-    query?: z.ZodSchema;
-    params?: z.ZodSchema;
-  };
-}
-
-export interface RouteHandlerConfig<T extends z.ZodType> {
-  schema?: T;
-  handler: (
-    req: NextRequest,
-    data?: z.infer<T>
-  ) => Promise<unknown>;
+  schema?: z.ZodType<T>;
   rateLimit?: RateLimiterOpts;
+  cache?: CacheConfig;
 }
 
-export interface ApiContext<T> {
-  req: NextRequest;
-  params?: Record<string, string>;
-  headers: Headers;
-  body?: T;
-  query: URLSearchParams;
-} 
+export type ApiHandler<T = unknown> = (context: RouteContext) => Promise<ApiResponse<T>>;
+
+export type RouteHandlerConfig<T = unknown> = {
+  schema?: z.ZodType<T>;
+  handler: ApiHandler<T>;
+  rateLimit?: RateLimiterOpts;
+  cache?: CacheConfig;
+}; 

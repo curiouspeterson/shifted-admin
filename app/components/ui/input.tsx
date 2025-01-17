@@ -1,24 +1,23 @@
-'use client';
-
 /**
  * Input Component
- * Last Updated: 2024-03
+ * Last Updated: 2025-01-17
  * 
- * A reusable input component for forms.
+ * A modern input component built with React.
  * Features:
- * - Custom styling
- * - File input support
- * - Focus states
- * - Disabled states
- * - Accessibility support
+ * - Consistent styling with our design system
+ * - Support for different states (disabled, error)
+ * - Full accessibility support
+ * - Integration with forms
  */
 
-import * as React from 'react';
-import { cn } from '@/lib/utils';
+'use client'
+
+import * as React from 'react'
+import { cn } from '@/lib/utils'
 
 export interface InputProps
   extends React.InputHTMLAttributes<HTMLInputElement> {
-  error?: boolean;
+  error?: boolean
 }
 
 const Input = React.forwardRef<HTMLInputElement, InputProps>(
@@ -34,9 +33,9 @@ const Input = React.forwardRef<HTMLInputElement, InputProps>(
         ref={ref}
         {...props}
       />
-    );
+    )
   }
-);
-Input.displayName = 'Input';
+)
+Input.displayName = 'Input'
 
-export { Input };
+export { Input }

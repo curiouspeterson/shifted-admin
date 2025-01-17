@@ -1,10 +1,10 @@
 /**
  * Validation Error Types
- * Last updated: 2025-01-17
+ * Last Updated: 2025-01-17
  */
 
 import { AppError } from './base';
-import { HTTP_STATUS_BAD_REQUEST } from '../api/constants';
+import { HTTP_STATUS_BAD_REQUEST } from '@/lib/constants/http';
 
 export interface ValidationErrorDetail {
   path: string[];
@@ -20,6 +20,18 @@ export class ValidationError extends AppError {
       code: 'VALIDATION_ERROR',
       details: { errors: details }
     });
+  }
+}
+
+export class TimeRangeError extends ValidationError {
+  constructor(message: string, start?: Date, end?: Date) {
+    super(message, [{
+      path: ['timeRange'],
+      message,
+      code: 'INVALID_TIME_RANGE',
+      ...(start && { start: start.toISOString() }),
+      ...(end && { end: end.toISOString() })
+    }]);
   }
 }
 

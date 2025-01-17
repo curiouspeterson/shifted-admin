@@ -1,10 +1,13 @@
 /**
  * Database Error Types
- * Last updated: 2025-01-17
+ * Last Updated: 2025-01-17
  */
 
 import { AppError } from './base';
-import { HTTP_STATUS_INTERNAL_SERVER_ERROR } from '../api/constants';
+import { 
+  HTTP_STATUS_INTERNAL_SERVER_ERROR,
+  HTTP_STATUS_NOT_FOUND 
+} from '@/lib/constants/http';
 
 export interface DatabaseErrorDetail extends Record<string, unknown> {
   code: string;
@@ -21,6 +24,20 @@ export class DatabaseError extends AppError {
       code: 'DATABASE_ERROR',
       details
     });
+  }
+}
+
+export class NotFoundError extends DatabaseError {
+  constructor(resource: string, identifier?: string | number) {
+    super(
+      `${resource}${identifier ? ` with ID ${identifier}` : ''} not found`,
+      {
+        code: 'NOT_FOUND',
+        status: HTTP_STATUS_NOT_FOUND,
+        resource,
+        ...(identifier && { identifier: String(identifier) })
+      }
+    );
   }
 }
 

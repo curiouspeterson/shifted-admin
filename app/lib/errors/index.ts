@@ -1,28 +1,38 @@
 /**
- * Error Types Index
- * Last updated: 2025-01-17
- * 
- * This file exports all error types used in the application.
+ * Error Types and Utilities
+ * Last Updated: 2025-01-17
  */
 
-// Export base error types
+// Base error types
 export type { ErrorConfig } from './base';
 export { AppError } from './base';
 
-// Export auth errors
-export { AuthError, TokenExpiredError, InvalidTokenError, MissingTokenError } from './auth';
+// Auth error types
+export { 
+  AuthError,
+  TokenExpiredError,
+  InvalidTokenError,
+  MissingTokenError,
+  AuthenticationError,
+  AuthorizationError 
+} from './auth';
 
-// Export database errors
-export { DatabaseError } from './database';
+// Database error types
+export { DatabaseError, NotFoundError } from './database';
 
-// Export validation errors
-export { ValidationError } from './validation';
+// Validation error types
+export { ValidationError, TimeRangeError } from './validation';
 
-// Export monitoring errors
+// API error types
+export { 
+  ApiError,
+  ApiErrorCode,
+  createApiError,
+  formatApiError 
+} from './api';
+
+// Monitoring error types
 export { MonitoringError } from './monitoring';
 
-// Export analytics errors
-export { AnalyticsError } from './analytics';
-
-// Export API errors
-export { ApiError } from './api'; 
+// Analytics error types
+export { AnalyticsError } from './analytics'; 

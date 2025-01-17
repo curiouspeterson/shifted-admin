@@ -1,10 +1,10 @@
 /**
  * Monitoring Error Types
- * Last updated: 2025-01-17
+ * Last Updated: 2025-01-17
  */
 
 import { AppError } from './base';
-import { HTTP_STATUS_INTERNAL_SERVER_ERROR } from '../api/constants';
+import { HTTP_STATUS_INTERNAL_SERVER_ERROR } from '@/lib/constants/http';
 
 export interface MonitoringErrorDetail extends Record<string, unknown> {
   service: string;
