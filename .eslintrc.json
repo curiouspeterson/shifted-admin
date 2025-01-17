@@ -7,14 +7,67 @@
     "@typescript-eslint"
   ],
   "rules": {
-    "@typescript-eslint/no-unused-vars": "error",
+    "@typescript-eslint/no-unused-vars": ["error", {
+      "argsIgnorePattern": "^_",
+      "varsIgnorePattern": "^_",
+      "ignoreRestSiblings": true
+    }],
     "@typescript-eslint/no-explicit-any": "warn",
     "@typescript-eslint/explicit-function-return-type": "off",
     "@typescript-eslint/explicit-module-boundary-types": "off",
+    "@typescript-eslint/no-empty-interface": ["error", {
+      "allowSingleExtends": true
+    }],
+    "@typescript-eslint/ban-ts-comment": ["error", {
+      "ts-expect-error": "allow-with-description",
+      "ts-ignore": false,
+      "ts-nocheck": false,
+      "ts-check": false
+    }],
     "react-hooks/rules-of-hooks": "error",
     "react-hooks/exhaustive-deps": "warn",
-    "no-console": ["warn", { "allow": ["warn", "error"] }]
+    "react/no-unescaped-entities": ["error", {
+      "forbid": [
+        {
+          "char": "'",
+          "alternatives": ["&apos;"]
+        },
+        {
+          "char": "\"",
+          "alternatives": ["&quot;"]
+        },
+        {
+          "char": ">",
+          "alternatives": ["&gt;"]
+        },
+        {
+          "char": "}",
+          "alternatives": ["&#125;"]
+        }
+      ]
+    }],
+    "no-console": ["warn", {
+      "allow": ["warn", "error"]
+    }],
+    "prefer-const": "error",
+    "no-var": "error"
   },
+  "overrides": [
+    {
+      "files": ["**/__tests__/**/*.[jt]s?(x)", "**/?(*.)+(spec|test).[jt]s?(x)"],
+      "rules": {
+        "@typescript-eslint/no-explicit-any": "off",
+        "no-console": "off"
+      }
+    },
+    {
+      "files": ["**/sw.ts", "**/service-worker.ts"],
+      "rules": {
+        "@typescript-eslint/no-explicit-any": "off",
+        "no-console": "off"
+      }
+    }
+  ],
   "settings": {
     "next": {
       "rootDir": "app"

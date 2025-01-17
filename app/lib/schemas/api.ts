@@ -261,10 +261,17 @@ export const listEmployeesQuerySchema = z.object({
 });
 
 // POST /api/employees request body
-export const createEmployeeSchema = employeeSchema.omit({
-  id: true,
-  createdAt: true,
-  updatedAt: true,
+const employeeBaseSchema = z.object(employeeSchema.shape);
+export const createEmployeeSchema = employeeBaseSchema.pick({
+  first_name: true,
+  last_name: true,
+  email: true,
+  phone: true,
+  role: true,
+  status: true,
+  department: true,
+  position: true,
+  metadata: true
 });
 
 // PATCH /api/employees/[id] request body
@@ -278,16 +285,39 @@ export const updateEmployeeSchema = createEmployeeSchema.partial();
 export const listTimeRequirementsQuerySchema = z.object({
   ...paginationSchema.shape,
   ...timeRequirementSortSchema.shape,
-  schedule_id: z.string().uuid().optional(),
-  day_of_week: z.nativeEnum(DayOfWeek).optional(),
-  requires_supervisor: z.boolean().optional(),
+  schedule_id: z.string().uuid().nullish(),
+  day_of_week: z.nativeEnum(DayOfWeek).nullish(),
+  requires_supervisor: z.boolean().nullish(),
 });
 
 // POST /api/time-requirements request body
-export const createTimeRequirementSchema = timeRequirementInputSchema.extend({});
+export const createTimeRequirementSchema = timeRequirementInputSchema;
 
 // PATCH /api/time-requirements/[id] request body
-export const updateTimeRequirementSchema = timeRequirementInputSchema.partial();
+const partialTimeRequirementSchema = z.object({
+  scheduleId: z.string().uuid().optional(),
+  dayOfWeek: z.enum([
+    DayOfWeek.MONDAY,
+    DayOfWeek.TUESDAY,
+    DayOfWeek.WEDNESDAY,
+    DayOfWeek.THURSDAY,
+    DayOfWeek.FRIDAY,
+    DayOfWeek.SATURDAY,
+    DayOfWeek.SUNDAY
+  ]).optional(),
+  startTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/, {
+    message: 'Time must be in 24-hour format (HH:MM:SS)'
+  }).optional(),
+  endTime: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d):([0-5]\d)$/, {
+    message: 'Time must be in 24-hour format (HH:MM:SS)'
+  }).optional(),
+  minStaff: z.number().int().min(1).optional(),
+  requiresSupervisor: z.boolean().optional(),
+  notes: z.string().max(1000).nullish(),
+  metadata: z.record(z.unknown()).nullish()
+}).superRefine(validateTimeRange);
+
+export const updateTimeRequirementSchema = partialTimeRequirementSchema;
 
 /**
  * API Response Schemas

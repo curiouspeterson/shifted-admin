@@ -1,8 +1,9 @@
 /**
  * Core Utilities Module
- * Last Updated: 2024-01-15
+ * Last Updated: 2025-01-16
  * 
  * This module provides basic utility functions used throughout the application.
+ * All functions are type-safe and well-documented.
  */
 
 import { type ClassValue, clsx } from 'clsx'
@@ -53,10 +54,16 @@ export function generateId(): string {
   return Math.random().toString(36).substring(2, 9)
 }
 
+type AnyFunction = (...args: unknown[]) => unknown;
+
 /**
- * Debounces a function
+ * Debounces a function call
+ * @template T - Type of the function to debounce
+ * @param func - The function to debounce
+ * @param wait - The number of milliseconds to delay
+ * @returns A debounced version of the function
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends AnyFunction>(
   func: T,
   wait: number
 ): (...args: Parameters<T>) => void {
@@ -75,15 +82,22 @@ export function debounce<T extends (...args: any[]) => any>(
 
 /**
  * Deep clones an object
+ * @template T - Type of the object to clone
+ * @param obj - The object to clone
+ * @returns A deep clone of the object
  */
 export function deepClone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj))
 }
 
+type EmptyValue = null | undefined | string | unknown[] | Record<string, unknown>;
+
 /**
  * Checks if a value is empty
+ * @param value - The value to check
+ * @returns True if the value is empty, false otherwise
  */
-export function isEmpty(value: any): boolean {
+export function isEmpty(value: EmptyValue): boolean {
   if (value === null || value === undefined) return true
   if (typeof value === 'string') return value.trim().length === 0
   if (Array.isArray(value)) return value.length === 0

@@ -1,6 +1,6 @@
 /**
  * Data Actions
- * Last Updated: 2024-03-21
+ * Last Updated: 2025-01-16
  * 
  * Server actions for data mutations following Next.js 14 best practices.
  * Uses Supabase for data storage and implements proper cache invalidation.
@@ -14,7 +14,7 @@ import type { Database } from '@/lib/database/database.types'
 import { toast } from 'sonner'
 
 type Tables = Database['public']['Tables']
-type ScheduleStatusType = Database['public']['Enums']['schedule_status_type']
+type ScheduleStatus = 'draft' | 'published' | 'archived'
 
 /**
  * Create employee
@@ -103,7 +103,7 @@ export async function createSchedule(data: {
   description?: string | null
   start_date: string
   end_date: string
-  status?: ScheduleStatusType
+  status?: ScheduleStatus
 }) {
   try {
     const supabase = createServerComponentClient()
@@ -142,7 +142,7 @@ export async function updateSchedule(
     description: string | null
     start_date: string
     end_date: string
-    status: ScheduleStatusType
+    status: ScheduleStatus
   }>
 ) {
   try {

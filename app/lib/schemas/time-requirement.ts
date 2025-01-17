@@ -1,6 +1,6 @@
 /**
  * Time-Based Requirement Schema Types
- * Last Updated: 2024-03-21
+ * Last Updated: 2025-01-16
  * 
  * Defines the domain types and validation schemas for time-based staffing requirements.
  */
@@ -19,6 +19,19 @@ export const DayOfWeek = {
 } as const;
 
 export type DayOfWeek = typeof DayOfWeek[keyof typeof DayOfWeek];
+
+// Validation functions
+const validateTimeRange = (data: { startTime: string; endTime: string }, ctx: z.RefinementCtx): void => {
+  const start = new Date(`1970-01-01T${data.startTime}`);
+  const end = new Date(`1970-01-01T${data.endTime}`);
+  if (!(end > start)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'End time must be after start time',
+      path: ['endTime'],
+    });
+  }
+};
 
 // Base time requirement fields
 const timeRequirementBase = {
@@ -40,16 +53,16 @@ const timeRequirementBase = {
   }),
   minStaff: z.number().int().min(1),
   requiresSupervisor: z.boolean().default(false),
-  notes: z.string().max(1000).optional(),
-  metadata: z.record(z.unknown()).optional()
+  notes: z.string().max(1000).nullish(),
+  metadata: z.record(z.unknown()).nullish()
 };
 
 // Time requirement input schema
 export const timeRequirementInputSchema = z.object({
   ...timeRequirementBase,
-  createdBy: z.string().uuid().optional(),
-  updatedBy: z.string().uuid().optional()
-});
+  createdBy: z.string().uuid().nullish(),
+  updatedBy: z.string().uuid().nullish()
+}).superRefine(validateTimeRange);
 
 // Time requirement schema (includes all fields)
 export const timeBasedRequirementSchema = z.object({
@@ -60,14 +73,7 @@ export const timeBasedRequirementSchema = z.object({
   createdBy: z.string().uuid().nullable(),
   updatedBy: z.string().uuid().nullable(),
   version: z.number().int().min(1)
-}).refine(data => {
-  const start = new Date(`1970-01-01T${data.startTime}`);
-  const end = new Date(`1970-01-01T${data.endTime}`);
-  return end > start;
-}, {
-  message: 'End time must be after start time',
-  path: ['endTime']
-});
+}).superRefine(validateTimeRange);
 
 // Infer types from schemas
 export type TimeRequirement = z.infer<typeof timeBasedRequirementSchema>;

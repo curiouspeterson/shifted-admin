@@ -1,11 +1,13 @@
 /**
  * API Error Handling
- * Last Updated: 2024-01-16
+ * Last Updated: 2025-01-16
  * 
  * Error handling utilities for API requests and responses.
+ * Includes type-safe error codes and response structures.
  */
 
-import { AppError } from './base'
+import { BaseError, ErrorSeverity, ErrorCategory, ErrorContext } from './base'
+import { Json } from '@/lib/types/json'
 
 /**
  * API error codes
@@ -18,18 +20,38 @@ export enum ApiErrorCode {
   CONFLICT = 'CONFLICT',
   INTERNAL_ERROR = 'INTERNAL_ERROR',
   BAD_REQUEST = 'BAD_REQUEST',
-  SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE'
+  SERVICE_UNAVAILABLE = 'SERVICE_UNAVAILABLE',
+  INVALID_RESPONSE = 'INVALID_RESPONSE',
+  REQUEST_FAILED = 'REQUEST_FAILED'
+}
+
+/**
+ * Extended error context for API errors
+ */
+export interface ApiErrorContext extends ErrorContext {
+  statusCode: number;
+}
+
+/**
+ * API error details structure
+ */
+export interface ApiErrorDetails extends Record<string, unknown> {
+  code?: ApiErrorCode;
+  details?: Record<string, Json>;
+  resource?: string;
+  requestId?: string;
+  cause?: unknown;
+  stack?: string;
 }
 
 /**
  * API error response structure
  */
 export interface ApiErrorResponse {
-  code: ApiErrorCode
-  message: string
-  details?: unknown
-  requestId?: string
-  timestamp: string
+  code: ApiErrorCode;
+  message: string;
+  details?: ApiErrorDetails;
+  timestamp: string;
 }
 
 /**
@@ -38,14 +60,12 @@ export interface ApiErrorResponse {
 export function createApiError(
   code: ApiErrorCode,
   message: string,
-  details?: unknown,
-  requestId?: string
+  details?: ApiErrorDetails
 ): ApiErrorResponse {
   return {
     code,
     message,
     details,
-    requestId,
     timestamp: new Date().toISOString()
   }
 }
@@ -54,12 +74,11 @@ export function createApiError(
  * Format an error for API response
  */
 export function formatApiError(error: unknown): ApiErrorResponse {
-  if (error instanceof AppError) {
+  if (error instanceof BaseError) {
     return createApiError(
       error.code as ApiErrorCode,
       error.message,
-      error.details,
-      undefined
+      error.details as ApiErrorDetails
     )
   }
 
@@ -67,16 +86,14 @@ export function formatApiError(error: unknown): ApiErrorResponse {
     return createApiError(
       ApiErrorCode.INTERNAL_ERROR,
       error.message,
-      { stack: error.stack },
-      undefined
+      { stack: error.stack } as ApiErrorDetails
     )
   }
   
   return createApiError(
     ApiErrorCode.INTERNAL_ERROR,
     'An unexpected error occurred',
-    error instanceof Object ? error : undefined,
-    undefined
+    error instanceof Object ? error as ApiErrorDetails : undefined
   )
 }
 
@@ -93,30 +110,26 @@ export function parseApiError(response: Response): Promise<ApiErrorResponse> {
 
 /**
  * API Error Class
- * Last Updated: 2024-03-21
  * 
  * Custom error class for API errors with status code and details.
  */
-
-/**
- * API error class
- * 
- * @example
- * ```ts
- * throw new ApiError('Not found', 404)
- * 
- * throw new ApiError('Validation failed', 400, {
- *   errors: ['Invalid email']
- * })
- * ```
- */
-export class ApiError extends Error {
+export class ApiError extends BaseError {
   constructor(
     message: string,
     public status: number,
-    public details?: unknown
+    details?: ApiErrorDetails
   ) {
-    super(message)
+    super(message, {
+      code: 'API_ERROR',
+      severity: ErrorSeverity.HIGH,
+      category: ErrorCategory.NETWORK,
+      details,
+      source: 'api',
+      context: {
+        statusCode: status
+      },
+      timestamp: new Date().toISOString()
+    })
     this.name = 'ApiError'
   }
-} 
+}
