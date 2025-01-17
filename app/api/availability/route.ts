@@ -1,235 +1,139 @@
 /**
- * Employee Availability API Route Handler
- * Last Updated: 2024-03
+ * Availability Route Handler
+ * Last Updated: 2025-01-17
  * 
- * This file implements the API endpoints for managing employee availability:
- * - GET: List all availability entries for the authenticated employee
- * - POST: Create or update availability for a specific day
- * 
- * Features:
- * - Role-based access control (employee access)
- * - Input validation using Zod schemas
- * - Response caching for list operations
- * - Database type safety
- * 
- * Error Handling:
- * - 400: Invalid request data
- * - 401: Not authenticated
- * - 404: Employee not found
- * - 429: Rate limit exceeded
- * - 500: Server error
+ * Handles employee availability management with rate limiting and validation.
  */
 
-import { z } from 'zod';
-import { createRouteHandler } from '@/lib/api/handler';
-import type { ApiResponse, RouteContext } from '@/lib/api/types';
-import { HTTP_STATUS_OK, HTTP_STATUS_CREATED } from '@/lib/constants/http';
-import { defaultRateLimits } from '@/lib/api/rate-limit';
-import { cacheConfigs } from '@/lib/api/cache';
-import {
-  ValidationError,
-  AuthorizationError,
-  DatabaseError,
-  NotFoundError,
-} from '@/lib/errors';
-import type { Database } from '@/lib/supabase/database.types';
+import { RateLimiter } from '@/lib/rate-limiting'
+import { createRouteHandler, type ApiResponse } from '@/lib/api'
+import { createClient } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
+import { z } from 'zod'
 
-// Database types for type safety
-type Availability = Database['public']['Tables']['employee_availability']['Row'];
-type AvailabilityInsert = Database['public']['Tables']['employee_availability']['Insert'];
+// Rate limiter: 100 requests per minute
+const rateLimiter = new RateLimiter({
+  points: 100,
+  duration: 60, // 1 minute
+  blockDuration: 300, // 5 minutes
+  keyPrefix: 'availability'
+})
 
-// Availability validation schemas
+// Validation schemas
 const availabilitySchema = z.object({
-  id: z.string().uuid(),
-  employee_id: z.string().uuid(),
-  day_of_week: z.number().min(0).max(6),
-  start_time: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/),
-  end_time: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/),
-  is_available: z.boolean(),
-  created_at: z.string().datetime(),
-  updated_at: z.string().datetime(),
-});
+  employeeId: z.string().uuid(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  startTime: z.string().regex(/^\d{2}:\d{2}$/),
+  endTime: z.string().regex(/^\d{2}:\d{2}$/),
+  status: z.enum(['available', 'unavailable', 'preferred']),
+  notes: z.string().optional()
+})
 
-const availabilityInputSchema = z.object({
-  day_of_week: z.number().min(0).max(6),
-  start_time: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/),
-  end_time: z.string().regex(/^([0-1][0-9]|2[0-3]):[0-5][0-9]$/),
-  is_available: z.boolean(),
-});
+interface AvailabilityResponse {
+  id: string
+  employeeId: string
+  date: string
+  startTime: string
+  endTime: string
+  status: 'available' | 'unavailable' | 'preferred'
+  notes?: string
+  createdAt: string
+  updatedAt: string
+}
 
-// Custom rate limits for availability operations
-const availabilityRateLimits = {
-  // List availability (100 requests per minute)
-  list: {
-    ...defaultRateLimits.api,
-    limit: 100,
-    identifier: 'availability:list',
-  },
-  // Update availability (50 requests per minute)
-  update: {
-    ...defaultRateLimits.api,
-    limit: 50,
-    identifier: 'availability:update',
-  },
-} as const;
-
-// Cache configuration for availability
-const availabilityCacheConfig = {
-  // List operation (30 seconds cache)
-  list: {
-    ...cacheConfigs.short,
-    ttl: 30,
-    prefix: 'api:availability:list',
-  },
-};
-
-// Middleware configuration
-const middlewareConfig = {
-  maxSize: 100 * 1024, // 100KB
-  requireContentType: true,
-  allowedContentTypes: ['application/json'],
-};
-
-/**
- * GET /api/availability
- * List all availability entries for the authenticated employee
- */
-export const GET = createRouteHandler({
-  methods: ['GET'],
-  requireAuth: true,
-  rateLimit: availabilityRateLimits.list,
-  middleware: middlewareConfig,
-  cache: availabilityCacheConfig.list,
-  cors: true,
-  handler: async ({ 
-    supabase,
-    session,
-    cache,
-  }: RouteContext): Promise<ApiResponse> => {
-    if (!session) {
-      throw new AuthorizationError('Authentication required');
-    }
-
-    // Get employee ID for the authenticated user
-    const { data: employee, error: employeeError } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('user_id', session.user.id)
-      .single();
-
-    if (employeeError || !employee) {
-      throw new NotFoundError('Employee record not found');
-    }
-
-    // Fetch availability entries for the employee
-    const { data: availability, error } = await supabase
-      .from('employee_availability')
-      .select('*')
-      .eq('employee_id', employee.id)
-      .order('day_of_week');
-
-    if (error) {
-      throw new DatabaseError('Failed to fetch availability', error);
-    }
-
-    // Validate availability data
-    const validatedAvailability = availability?.map(entry => {
-      try {
-        return availabilitySchema.parse(entry);
-      } catch (err) {
-        throw new ValidationError('Invalid availability data format', err);
-      }
-    }) || [];
-
-    return {
-      data: validatedAvailability,
-      error: null,
-      status: HTTP_STATUS_OK,
-      metadata: {
-        count: validatedAvailability.length,
-        timestamp: new Date().toISOString(),
-        ...(cache && {
-          cached: true,
-          cacheHit: cache.hit,
-          cacheTtl: cache.ttl,
-        }),
-      },
-    };
-  },
-});
-
-/**
- * POST /api/availability
- * Create or update availability for a specific day
- */
 export const POST = createRouteHandler({
-  methods: ['POST'],
-  requireAuth: true,
-  rateLimit: availabilityRateLimits.update,
-  middleware: middlewareConfig,
-  cors: true,
-  handler: async ({ 
-    supabase,
-    session,
-    body,
-  }: RouteContext): Promise<ApiResponse> => {
-    if (!session) {
-      throw new AuthorizationError('Authentication required');
-    }
-
-    if (!body) {
-      throw new ValidationError('Request body is required');
-    }
-
-    // Get employee ID for the authenticated user
-    const { data: employee, error: employeeError } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('user_id', session.user.id)
-      .single();
-
-    if (employeeError || !employee) {
-      throw new NotFoundError('Employee record not found');
-    }
-
-    // Validate request body
-    let validatedData;
-    try {
-      validatedData = availabilityInputSchema.parse(body);
-    } catch (err) {
-      throw new ValidationError('Invalid availability data', err);
-    }
-
-    // Prepare availability data
-    const now = new Date().toISOString();
-    const newAvailability: AvailabilityInsert = {
-      ...validatedData,
-      employee_id: employee.id,
-      created_at: now,
-      updated_at: now,
-    };
-
-    // Create or update availability
-    const { data: availability, error } = await supabase
-      .from('employee_availability')
-      .upsert(newAvailability)
-      .select()
-      .single();
-
-    if (error) {
-      throw new DatabaseError('Failed to update availability', error);
-    }
-
-    // Validate created/updated availability
-    const validatedAvailability = availabilitySchema.parse(availability);
-
-    return {
-      data: validatedAvailability,
-      error: null,
-      status: HTTP_STATUS_CREATED,
-      metadata: {
-        timestamp: new Date().toISOString(),
-      },
-    };
+  rateLimit: rateLimiter,
+  validate: {
+    body: availabilitySchema
   },
-}); 
+  handler: async (req) => {
+    const body = await req.json()
+    const { employeeId, date, startTime, endTime, status, notes } = availabilitySchema.parse(body)
+
+    const supabase = createClient(cookies())
+    
+    const { data, error } = await supabase
+      .from('availability')
+      .insert({
+        employee_id: employeeId,
+        date,
+        start_time: startTime,
+        end_time: endTime,
+        status,
+        notes
+      })
+      .select()
+      .single()
+
+    if (error !== null || data === null) {
+      return NextResponse.json<ApiResponse<AvailabilityResponse>>(
+        { error: error !== null ? error.message : 'Failed to create availability' },
+        { status: 400 }
+      )
+    }
+
+    return NextResponse.json<ApiResponse<AvailabilityResponse>>({
+      data: {
+        id: data.id,
+        employeeId: data.employee_id,
+        date: data.date,
+        startTime: data.start_time,
+        endTime: data.end_time,
+        status: data.status,
+        notes: data.notes,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at
+      }
+    })
+  }
+})
+
+export const GET = createRouteHandler({
+  rateLimit: rateLimiter,
+  handler: async (req) => {
+    const { searchParams } = new URL(req.url)
+    const employeeId = searchParams.get('employeeId')
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
+
+    if (typeof employeeId !== 'string' || employeeId === '' || 
+        typeof startDate !== 'string' || startDate === '' || 
+        typeof endDate !== 'string' || endDate === '') {
+      return NextResponse.json<ApiResponse<AvailabilityResponse[]>>(
+        { error: 'Missing required query parameters' },
+        { status: 400 }
+      )
+    }
+
+    const supabase = createClient(cookies())
+    
+    const { data, error } = await supabase
+      .from('availability')
+      .select()
+      .eq('employee_id', employeeId)
+      .gte('date', startDate)
+      .lte('date', endDate)
+
+    if (error !== null) {
+      return NextResponse.json<ApiResponse<AvailabilityResponse[]>>(
+        { error: error.message },
+        { status: 400 }
+      )
+    }
+
+    return NextResponse.json<ApiResponse<AvailabilityResponse[]>>({
+      data: data.map(item => ({
+        id: item.id,
+        employeeId: item.employee_id,
+        date: item.date,
+        startTime: item.start_time,
+        endTime: item.end_time,
+        status: item.status,
+        notes: item.notes,
+        createdAt: item.created_at,
+        updatedAt: item.updated_at
+      }))
+    })
+  }
+}) 

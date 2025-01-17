@@ -2,45 +2,59 @@
  * Sign In Route Handler
  * Last Updated: 2025-01-17
  * 
- * Handles user sign in requests.
+ * Handles user sign in with rate limiting and validation.
  */
 
-import { NextResponse } from 'next/server';
-import { createRouteHandler } from '@/lib/api';
-import type { ExtendedNextRequest } from '@/lib/api/types';
-import { z } from 'zod';
-import { AuthenticationError } from '@/lib/errors';
+import { RateLimiter } from '@/lib/rate-limiting'
+import { 
+  loginRequestSchema, 
+  type LoginResponse 
+} from '@/lib/validations/auth'
+import { createRouteHandler, type ApiResponse } from '@/lib/api'
+import { createClient } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
 
-// Validation schema for sign-in credentials
-const signInSchema = z.object({
-  email: z.string().email('Invalid email format'),
-  password: z.string().min(8, 'Password must be at least 8 characters')
-});
+// Rate limiter: 5 attempts per 15 minutes
+const rateLimiter = new RateLimiter({
+  points: 5,
+  duration: 15 * 60, // 15 minutes
+  blockDuration: 30 * 60, // 30 minutes
+  keyPrefix: 'sign-in'
+})
 
-export const POST = createRouteHandler(async (req: ExtendedNextRequest) => {
-  const data = await req.json();
-  
-  // Validate request body
-  const result = await signInSchema.safeParseAsync(data);
-  if (!result.success) {
-    throw new AuthenticationError('Invalid credentials');
-  }
+export const POST = createRouteHandler({
+  rateLimit: rateLimiter,
+  validate: {
+    body: loginRequestSchema
+  },
+  handler: async (req) => {
+    const body = await req.json()
+    const { email, password } = loginRequestSchema.parse(body)
 
-  // Attempt sign in
-  const { email, password } = result.data;
-  const { data: authData, error } = await req.supabase.auth.signInWithPassword({
-    email,
-    password
-  });
+    const supabase = createClient(cookies())
+    
+    const { data: { user, session }, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    })
 
-  if (error) {
-    throw new AuthenticationError(error.message);
-  }
-
-  return NextResponse.json({ 
-    data: {
-      user: authData.user,
-      session: authData.session
+    if (error !== null || user === null || session === null) {
+      return NextResponse.json<ApiResponse<LoginResponse>>(
+        { error: error !== null ? error.message : 'Failed to sign in' },
+        { status: 400 }
+      )
     }
-  });
-}); 
+
+    return NextResponse.json<ApiResponse<LoginResponse>>({
+      data: {
+        user: {
+          id: user.id,
+          email: user.email!,
+          firstName: user.user_metadata['firstName'],
+          lastName: user.user_metadata['lastName']
+        }
+      }
+    })
+  }
+}) 

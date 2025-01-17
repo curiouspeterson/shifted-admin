@@ -1,128 +1,111 @@
 /**
- * Swagger UI Route
- * Last Updated: 2024-03
+ * API Documentation UI Route Handler
+ * Last Updated: 2025-01-17
  * 
- * This route serves the Swagger UI for the API documentation.
- * Features:
- * - Long-term caching for static content
- * - CORS enabled for cross-origin access
- * - HTML content type headers
- * - No authentication required (public access)
+ * Serves the Swagger UI for API documentation with proper caching.
  */
 
-import { NextResponse } from 'next/server';
-import { HTTP_STATUS_OK, HTTP_STATUS_INTERNAL_SERVER_ERROR } from '@/lib/constants/http';
-import { AppError } from '@/lib/errors';
+import { RateLimiter } from '@/lib/rate-limiting'
+import { createRouteHandler, type ApiResponse } from '@/lib/api'
+import { cacheConfigs } from '@/lib/cache'
+import { NextResponse } from 'next/server'
 
-// HTML template for Swagger UI
-const swaggerHtml = `
+// Rate limiter: 100 requests per minute
+const rateLimiter = new RateLimiter({
+  points: 100,
+  duration: 60, // 1 minute
+  blockDuration: 300, // 5 minutes
+  keyPrefix: 'docs-ui'
+})
+
+// Cache configuration for docs UI
+const docsUiCacheConfig = {
+  ...cacheConfigs.static,
+  prefix: 'api:docs:ui'
+}
+
+interface SwaggerUIResponse {
+  html: string
+}
+
+export const GET = createRouteHandler({
+  rateLimit: rateLimiter,
+  handler: async () => {
+    try {
+      const html = `
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="24/7 Dispatch Center API Documentation" />
-  <title>24/7 Dispatch Center API</title>
-  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Shifted Admin API Documentation" />
+    <title>Shifted Admin API</title>
+    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui.css" />
 </head>
 <body>
-  <div id="swagger-ui"></div>
-  <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js" crossorigin></script>
-  <script>
-    window.onload = () => {
-      window.ui = SwaggerUIBundle({
-        url: '/api/docs',
-        dom_id: '#swagger-ui',
-        deepLinking: true,
-        presets: [
-          SwaggerUIBundle.presets.apis,
-          SwaggerUIBundle.SwaggerUIStandalonePreset
-        ],
-        plugins: [
-          SwaggerUIBundle.plugins.DownloadUrl
-        ],
-        layout: "BaseLayout",
-        defaultModelsExpandDepth: 1,
-        defaultModelExpandDepth: 1,
-        defaultModelRendering: 'model',
-        displayOperationId: false,
-        displayRequestDuration: true,
-        docExpansion: 'list',
-        filter: true,
-        showExtensions: true,
-        showCommonExtensions: true,
-        tryItOutEnabled: true,
-      });
-    };
-  </script>
-  <style>
-    body {
-      margin: 0;
-      padding: 0;
-    }
-    .swagger-ui .topbar {
-      display: none;
-    }
-    .swagger-ui .info {
-      margin: 30px 0;
-    }
-    .swagger-ui .info .title {
-      color: #3b4151;
-    }
-    .swagger-ui .scheme-container {
-      box-shadow: none;
-      padding: 0;
-    }
-  </style>
+    <div id="swagger-ui"></div>
+    <script src="https://unpkg.com/swagger-ui-dist@5.11.0/swagger-ui-bundle.js" crossorigin></script>
+    <script>
+        window.onload = () => {
+            window.ui = SwaggerUIBundle({
+                url: '/api/docs',
+                dom_id: '#swagger-ui',
+                deepLinking: true,
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIBundle.SwaggerUIStandalonePreset
+                ],
+                plugins: [
+                    SwaggerUIBundle.plugins.DownloadUrl
+                ],
+                layout: "BaseLayout",
+                supportedSubmitMethods: ['get', 'post', 'put', 'delete', 'patch'],
+                defaultModelsExpandDepth: 2,
+                defaultModelExpandDepth: 2,
+                displayRequestDuration: true,
+                docExpansion: "list",
+                filter: true,
+                showExtensions: true,
+                showCommonExtensions: true,
+                tryItOutEnabled: true
+            });
+        };
+    </script>
+    <style>
+        body {
+            margin: 0;
+            background: #fafafa;
+        }
+        .swagger-ui .topbar {
+            background-color: #000;
+            padding: 10px 0;
+        }
+        .swagger-ui .info {
+            margin: 20px 0;
+        }
+        .swagger-ui .scheme-container {
+            background-color: #fff;
+            box-shadow: 0 1px 2px 0 rgba(0,0,0,0.1);
+        }
+    </style>
 </body>
-</html>
-`;
+</html>`
 
-/**
- * GET /api/docs/ui
- * Serves the Swagger UI HTML page
- */
-export async function GET() {
-  try {
-    const headers = new Headers();
-    
-    // Set content type to HTML
-    headers.set('Content-Type', 'text/html');
-    
-    // Enable CORS
-    headers.set('Access-Control-Allow-Origin', '*');
-    headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-    headers.set('Access-Control-Allow-Headers', 'Content-Type');
-    
-    // Enable caching
-    headers.set('Cache-Control', 'public, max-age=86400'); // 24 hours
-    headers.set('X-Cache-TTL', '86400');
-
-    return new NextResponse(swaggerHtml, {
-      status: HTTP_STATUS_OK,
-      headers,
-    });
-  } catch (error) {
-    throw new AppError(
-      'Failed to serve Swagger UI',
-      HTTP_STATUS_INTERNAL_SERVER_ERROR,
-      'Error generating documentation UI'
-    );
+      return NextResponse.json<ApiResponse<SwaggerUIResponse>>(
+        { data: { html } },
+        {
+          headers: {
+            'Content-Type': 'text/html',
+            'Cache-Control': docsUiCacheConfig.control
+          }
+        }
+      )
+    } catch (error) {
+      console.error('Failed to serve Swagger UI:', error)
+      return NextResponse.json<ApiResponse<SwaggerUIResponse>>(
+        { error: 'Failed to generate documentation UI' },
+        { status: 500 }
+      )
+    }
   }
-}
-
-/**
- * OPTIONS /api/docs/ui
- * Handles CORS preflight requests
- */
-export async function OPTIONS() {
-  const headers = new Headers();
-  headers.set('Access-Control-Allow-Origin', '*');
-  headers.set('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  headers.set('Access-Control-Allow-Headers', 'Content-Type');
-  
-  return new NextResponse(null, {
-    status: HTTP_STATUS_OK,
-    headers,
-  });
-} 
+}) 

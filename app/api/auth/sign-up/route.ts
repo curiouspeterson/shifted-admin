@@ -1,87 +1,66 @@
 /**
- * Sign-Up API Route Handler
- * Last Updated: 2024-01-17
+ * Sign Up Route Handler
+ * Last Updated: 2025-01-17
  * 
- * This file implements the user registration endpoint.
- * It handles:
- * - User account creation in Supabase Auth
- * - Employee record creation in the database
- * - Automatic email confirmation
- * - Rollback on partial failures
+ * Handles user sign up with rate limiting and validation.
  */
 
-import { createRouteHandler } from '@/lib/api/handler';
-import { AppError } from '@/lib/errors/base';
-import { createServerClient } from '@/lib/supabase';
-import type { ApiResponse } from '@/lib/api/handler';
-import { z } from 'zod';
+import { RateLimiter } from '@/lib/rate-limiting'
+import { 
+  registerRequestSchema, 
+  type RegisterResponse 
+} from '@/lib/validations/auth'
+import { createRouteHandler, type ApiResponse } from '@/lib/api'
+import { createClient } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
+import { NextResponse } from 'next/server'
 
-const signUpSchema = z.object({
-  email: z.string().email('Invalid email format'),
-  password: z.string().min(8, 'Password must be at least 8 characters'),
-  firstName: z.string().min(1, 'First name is required'),
-  lastName: z.string().min(1, 'Last name is required'),
-  position: z.string().default('dispatcher')
-});
-
-type SignUpBody = z.infer<typeof signUpSchema>;
+// Rate limiter: 5 attempts per 15 minutes
+const rateLimiter = new RateLimiter({
+  points: 5,
+  duration: 15 * 60, // 15 minutes
+  blockDuration: 30 * 60, // 30 minutes
+  keyPrefix: 'sign-up'
+})
 
 export const POST = createRouteHandler({
-  methods: ['POST'],
-  requireAuth: false,
-  bodySchema: signUpSchema,
-  handler: async ({ body }) => {
-    const { email, password, firstName, lastName, position } = body as SignUpBody;
+  rateLimit: rateLimiter,
+  validate: {
+    body: registerRequestSchema
+  },
+  handler: async (req) => {
+    const body = await req.json()
+    const { email, password, firstName, lastName } = registerRequestSchema.parse(body)
 
-    const supabase = createServerClient();
-
-    // Create user account
-    const { data: { user }, error: createError } = await supabase.auth.admin.createUser({
+    const supabase = createClient(cookies())
+    
+    const { data: { user }, error } = await supabase.auth.signUp({
       email,
       password,
-      email_confirm: true,
-      user_metadata: {
-        first_name: firstName,
-        last_name: lastName,
-        full_name: `${firstName} ${lastName}`.trim(),
-      },
-    });
+      options: {
+        data: {
+          firstName,
+          lastName
+        }
+      }
+    })
 
-    if (createError) {
-      throw new AppError(createError.message, 'AUTH_ERROR', 400);
+    if (error !== null || user === null) {
+      return NextResponse.json<ApiResponse<RegisterResponse>>(
+        { error: error !== null ? error.message : 'Failed to create user' },
+        { status: 400 }
+      )
     }
 
-    if (!user) {
-      throw new AppError('Failed to create user', 'AUTH_ERROR', 500);
-    }
-
-    // Create employee record
-    const { data: employee, error: employeeError } = await supabase
-      .from('employees')
-      .insert([{
-        user_id: user.id,
-        first_name: firstName,
-        last_name: lastName,
-        email: email,
-        position: position,
-        department: 'operations',
-        is_active: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        version: 1
-      }])
-      .select()
-      .single();
-
-    if (employeeError) {
-      // Rollback user creation
-      await supabase.auth.admin.deleteUser(user.id);
-      throw new AppError('Failed to create employee record', 'DATABASE_ERROR', 500);
-    }
-
-    return {
-      data: { user, employee },
-      error: null
-    } as ApiResponse;
+    return NextResponse.json<ApiResponse<RegisterResponse>>({
+      data: {
+        user: {
+          id: user.id,
+          email: user.email!,
+          firstName: user.user_metadata['firstName'],
+          lastName: user.user_metadata['lastName']
+        }
+      }
+    })
   }
-});
+})
