@@ -1,10 +1,9 @@
 /**
  * Supabase Database Types
- * Last Updated: 2024-03-21
+ * Last Updated: 2025-01-16
  * 
- * This file defines TypeScript types for the Supabase database schema.
- * It includes table definitions, relationships, and common types used
- * across the application.
+ * Type definitions for the Supabase database schema.
+ * These types are used to ensure type safety when interacting with the database.
  */
 
 /**
@@ -402,8 +401,8 @@ export interface Database {
         ]
       }
     }
-    Views: {}
-    Functions: {}
+    Views: Record<string, never>
+    Functions: Record<string, never>
     Enums: {
       schedule_status: ScheduleStatus
       assignment_status: AssignmentStatus

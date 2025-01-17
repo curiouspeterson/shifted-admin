@@ -14,7 +14,7 @@ import type { Database } from '@/lib/database/database.types'
 import { toast } from 'sonner'
 
 type Tables = Database['public']['Tables']
-type ScheduleStatus = 'draft' | 'published' | 'archived'
+type ScheduleStatusType = Database['public']['Enums']['schedule_status']
 
 /**
  * Create employee
@@ -103,7 +103,7 @@ export async function createSchedule(data: {
   description?: string | null
   start_date: string
   end_date: string
-  status?: ScheduleStatus
+  status?: ScheduleStatusType
 }) {
   try {
     const supabase = createServerComponentClient()
@@ -142,7 +142,7 @@ export async function updateSchedule(
     description: string | null
     start_date: string
     end_date: string
-    status: ScheduleStatus
+    status: ScheduleStatusType
   }>
 ) {
   try {

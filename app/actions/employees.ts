@@ -1,17 +1,30 @@
+/**
+ * Employee Actions
+ * Last Updated: 2025-01-16
+ * 
+ * Server actions for employee management.
+ */
+
 'use server'
 
-import { createServerClient } from '@/lib/supabase/server'
+import { createClient } from '@/lib/supabase/server'
 import { revalidatePath } from 'next/cache'
+import { cookies } from 'next/headers'
 import { z } from 'zod'
+import { errorLogger } from '@/lib/logging/error-logger'
 
+// Employee schema for validation and type inference
 const employeeSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
   position: z.string().min(2),
 })
 
-export async function addEmployee(data: z.infer<typeof employeeSchema>) {
-  const supabase = createServerClient()
+// Export the type for use in components
+export type EmployeeFormData = z.infer<typeof employeeSchema>
+
+export async function addEmployee(data: EmployeeFormData) {
+  const supabase = createClient(cookies())
 
   const { error } = await supabase
     .from('employees')
@@ -24,7 +37,14 @@ export async function addEmployee(data: z.infer<typeof employeeSchema>) {
     })
 
   if (error) {
-    console.error('Error adding employee:', error)
+    errorLogger.error('Failed to add employee', {
+      error,
+      context: {
+        name: data.name,
+        email: data.email,
+        position: data.position
+      }
+    })
     throw new Error('Failed to add employee')
   }
 

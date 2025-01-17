@@ -64,7 +64,7 @@ export function OfflineFallback({
           {!isOnline ? (
             <>
               <WifiOff className="h-12 w-12 text-gray-400" />
-              <h3 className="text-lg font-semibold text-gray-900">You're Offline</h3>
+              <h3 className="text-lg font-semibold text-gray-900">You&apos;re Offline</h3>
               <p className="text-sm text-gray-600">
                 Check your internet connection and try again.
               </p>

@@ -1,6 +1,6 @@
 /**
  * Toast Utilities
- * Last Updated: 2024-03-21
+ * Last Updated: 2025-01-16
  * 
  * Common toast notifications and messages for the application.
  */
@@ -21,6 +21,11 @@ export const toastMessages = {
   offline: {
     title: 'Offline',
     description: 'You are now offline',
+    type: 'error' as const
+  },
+  maxRetries: {
+    title: 'Connection Failed',
+    description: 'Maximum retry attempts reached',
     type: 'error' as const
   },
 

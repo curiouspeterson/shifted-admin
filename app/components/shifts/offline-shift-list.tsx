@@ -1,6 +1,6 @@
 /**
  * Offline-Capable Shift List Component
- * Last Updated: 2024-03-20
+ * Last Updated: 2025-01-16
  * 
  * This component demonstrates the usage of offline functionality hooks
  * with proper error handling and user feedback.
@@ -10,9 +10,9 @@
 
 import { useOfflineData } from '@/hooks/use-offline-data'
 import { useOfflineFallback } from '@/hooks/use-offline-fallback'
-import { LoadingSpinner } from '@/components/ui/LoadingSpinner'
-import { OfflineIndicator } from '@/components/ui/OfflineIndicator'
-import { ErrorBoundary } from '@/components/error/ErrorBoundary'
+import { LoadingSpinner } from '@/components/ui/loading-spinner'
+import { OfflineIndicator } from '@/components/ui/offline-indicator'
+import { ErrorBoundary } from '@/components/error/error-boundary'
 import { type Shift } from '@/lib/schemas/base/shift'
 
 interface OfflineShiftListProps {
@@ -42,7 +42,6 @@ export default function OfflineShiftList({ storeId }: OfflineShiftListProps) {
     error,
     isSyncing,
     lastSynced,
-    saveData,
     syncData
   } = useOfflineData<Shift[]>({
     store: 'shifts',
@@ -53,14 +52,14 @@ export default function OfflineShiftList({ storeId }: OfflineShiftListProps) {
   const {
     isOnline,
     isChecking,
-    retryCount,
     lastOnline,
     retry,
     canRetry
   } = useOfflineFallback({
     onRetry: syncData,
-    checkInterval: 30000,
-    maxRetries: 3
+    onMaxRetries: () => {
+      // Handle max retries case
+    }
   })
 
   // Handle loading state
@@ -90,7 +89,7 @@ export default function OfflineShiftList({ storeId }: OfflineShiftListProps) {
         <p>No shifts found</p>
         {!isOnline && (
           <p className="mt-2 text-sm">
-            You're offline. Some data may not be available.
+            You&apos;re offline. Some data may not be available.
           </p>
         )}
       </div>
@@ -104,7 +103,7 @@ export default function OfflineShiftList({ storeId }: OfflineShiftListProps) {
         <OfflineIndicator
           isOnline={isOnline}
           isChecking={isChecking}
-          lastOnline={lastOnline}
+          lastOnline={lastOnline ? new Date(lastOnline) : null}
           onRetry={canRetry ? retry : undefined}
         />
         {isSyncing && (

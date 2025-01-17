@@ -38,7 +38,7 @@ export function ShiftList({ shifts, isOffline, isLoading }: ShiftListProps) {
         <p>No shifts found</p>
         {isOffline && (
           <p className="mt-2 text-sm">
-            You're offline. Some data may not be available.
+            You&apos;re offline. Some data may not be available.
           </p>
         )}
       </div>

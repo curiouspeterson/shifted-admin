@@ -1,6 +1,6 @@
 /**
  * useOfflineFallback Hook
- * Last Updated: 2024-01-17
+ * Last Updated: 2025-01-16
  * 
  * A hook for handling offline fallback data and error states.
  */
@@ -9,7 +9,7 @@
 
 import { useEffect, useReducer, useCallback, useRef } from 'react'
 import { toast, toastMessages } from '@/lib/utils/toast'
-import { formatError, isNetworkError, isOfflineError } from '@/lib/errors/base'
+import { formatError, isNetworkError, isOfflineError } from '@/lib/errors/utils'
 import { errorLogger } from '@/lib/logging/error-logger'
 
 // Constants
@@ -29,6 +29,12 @@ interface UseOfflineFallbackOptions {
   onOffline?: () => void
   onRetry?: () => void
   onMaxRetries?: () => void
+  checkInterval?: number
+}
+
+interface UseOfflineFallbackReturn extends OfflineFallbackState {
+  retry: () => Promise<void>
+  canRetry: boolean
 }
 
 /**
@@ -91,19 +97,36 @@ export function useOfflineFallback({
   onOnline,
   onOffline,
   onRetry,
-  onMaxRetries
-}: UseOfflineFallbackOptions = {}): void {
-  const initialState: OfflineFallbackState = {
+  onMaxRetries,
+  checkInterval = RETRY_DELAY
+}: UseOfflineFallbackOptions = {}): UseOfflineFallbackReturn {
+  // Refs for callbacks to prevent unnecessary re-renders
+  const callbacksRef = useRef({
+    onOnline,
+    onOffline,
+    onRetry,
+    onMaxRetries
+  })
+
+  // Update callback refs when they change
+  useEffect(() => {
+    callbacksRef.current = {
+      onOnline,
+      onOffline,
+      onRetry,
+      onMaxRetries
+    }
+  }, [onOnline, onOffline, onRetry, onMaxRetries])
+
+  const [state, dispatch] = useReducer(reducer, {
     isOnline: getInitialOnlineState(),
     isChecking: false,
     retryCount: 0,
     lastOnline: getInitialTimestamp()
-  }
+  })
 
-  const [state, dispatch] = useReducer(reducer, initialState)
-  const abortControllerRef = useRef<AbortController | null>(null)
+  const abortControllerRef = useRef<AbortController>()
 
-  // Check connection status
   const checkConnection = useCallback(async () => {
     if (state.isChecking || !window.navigator) return
 
@@ -127,14 +150,18 @@ export function useOfflineFallback({
       if (!state.isOnline) {
         dispatch({ type: 'SET_ONLINE', payload: true })
         dispatch({ type: 'RESET_RETRY' })
-        onOnline?.()
-        toast(toastMessages.online)
+        callbacksRef.current.onOnline?.()
+        toast(toastMessages.online.title, {
+          description: toastMessages.online.description
+        })
       }
     } catch (error) {
       if (state.isOnline) {
         dispatch({ type: 'SET_ONLINE', payload: false })
-        onOffline?.()
-        toast(toastMessages.offline)
+        callbacksRef.current.onOffline?.()
+        toast(toastMessages.offline.title, {
+          description: toastMessages.offline.description
+        })
       }
 
       // Log error if not aborted or offline
@@ -148,17 +175,19 @@ export function useOfflineFallback({
       // Increment retry count if network error
       if (isNetworkError(error)) {
         dispatch({ type: 'INCREMENT_RETRY' })
-        onRetry?.()
+        callbacksRef.current.onRetry?.()
 
         if (state.retryCount >= MAX_RETRIES) {
-          onMaxRetries?.()
-          toast(toastMessages.maxRetries)
+          callbacksRef.current.onMaxRetries?.()
+          toast(toastMessages.maxRetries.title, {
+            description: toastMessages.maxRetries.description
+          })
         }
       }
     } finally {
       dispatch({ type: 'END_CHECK' })
     }
-  }, [state.isChecking, state.isOnline, state.retryCount, onOnline, onOffline, onRetry, onMaxRetries])
+  }, [state.isChecking, state.isOnline, state.retryCount])
 
   // Handle online/offline events
   useEffect(() => {
@@ -171,8 +200,10 @@ export function useOfflineFallback({
 
     const handleOffline = () => {
       dispatch({ type: 'SET_ONLINE', payload: false })
-      onOffline?.()
-      toast(toastMessages.offline)
+      callbacksRef.current.onOffline?.()
+      toast(toastMessages.offline.title, {
+        description: toastMessages.offline.description
+      })
     }
 
     window.addEventListener('online', handleOnline)
@@ -182,19 +213,15 @@ export function useOfflineFallback({
       window.removeEventListener('online', handleOnline)
       window.removeEventListener('offline', handleOffline)
     }
-  }, [checkConnection, onOffline])
+  }, [checkConnection])
 
   // Periodic connection check when offline
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (state.isOnline) return
+    if (typeof window === 'undefined' || state.isOnline) return
 
-    const intervalId = setInterval(() => {
-      void checkConnection()
-    }, RETRY_DELAY)
-
+    const intervalId = setInterval(checkConnection, checkInterval)
     return () => clearInterval(intervalId)
-  }, [state.isOnline, checkConnection])
+  }, [state.isOnline, checkConnection, checkInterval])
 
   // Cleanup AbortController on unmount
   useEffect(() => {
@@ -202,4 +229,10 @@ export function useOfflineFallback({
       abortControllerRef.current?.abort()
     }
   }, [])
+
+  return {
+    ...state,
+    retry: checkConnection,
+    canRetry: state.retryCount < MAX_RETRIES
+  }
 } 

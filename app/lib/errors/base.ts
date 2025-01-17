@@ -8,11 +8,12 @@
 
 import { ValidationErrorCode, ValidationErrorDetails } from './validation';
 import { Json } from '@/lib/types/json';
+import { errorLogger } from '@/lib/logging/error-logger'
 
 export enum ErrorSeverity {
-  LOW = 'low',
-  MEDIUM = 'medium',
-  HIGH = 'high',
+  INFO = 'info',
+  WARNING = 'warning',
+  ERROR = 'error',
   CRITICAL = 'critical'
 }
 
@@ -35,6 +36,8 @@ export interface ErrorContext {
   statusCode?: number;
   component?: string;
   action?: string;
+  details?: Record<string, unknown>;
+  timestamp?: string;
 }
 
 interface ErrorMetadata {
@@ -60,6 +63,7 @@ export class BaseError extends Error {
   public readonly context?: ErrorContext;
   public readonly timestamp: string;
   public readonly isOperational: boolean;
+  public readonly cause?: Error;
 
   constructor(
     message: string, 
@@ -76,6 +80,7 @@ export class BaseError extends Error {
     this.context = metadata.context;
     this.timestamp = metadata.timestamp || new Date().toISOString();
     this.isOperational = isOperational;
+    this.cause = metadata.cause;
 
     // Maintains proper stack trace
     Error.captureStackTrace(this, this.constructor);
@@ -101,7 +106,12 @@ export class BaseError extends Error {
       context: this.context,
       timestamp: this.timestamp,
       stack: this.stack,
-      isOperational: this.isOperational
+      isOperational: this.isOperational,
+      cause: this.cause instanceof Error ? {
+        name: this.cause.name,
+        message: this.cause.message,
+        stack: this.cause.stack
+      } : this.cause
     };
   }
 
@@ -123,7 +133,19 @@ export class BaseError extends Error {
    */
   private logError() {
     // TODO: Implement actual error logging
-    console.error('Critical Error:', this.toJSON());
+    errorLogger.error('Critical Error:', this.toJSON());
+  }
+
+  /**
+   * Log critical errors automatically
+   */
+  public logCritical() {
+    if (this.severity === ErrorSeverity.CRITICAL) {
+      errorLogger.error('Critical application error', {
+        error: this.toJSON(),
+        context: this.context
+      })
+    }
   }
 }
 

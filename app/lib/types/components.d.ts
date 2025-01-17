@@ -5,6 +5,17 @@
  * Type declarations for UI components and their exports.
  */
 
+/**
+ * Component Type Definitions
+ * Last Updated: 2025-01-16
+ * 
+ * Type definitions for UI components. These types extend base HTML attributes
+ * and are intentionally kept as branded types for future extensibility.
+ */
+
+import { ButtonHTMLAttributes, InputHTMLAttributes, HTMLAttributes } from 'react'
+import { VariantProps } from 'class-variance-authority'
+
 // Button Component
 declare module '@/components/ui/button' {
   import { ButtonHTMLAttributes } from 'react';
@@ -70,10 +81,20 @@ declare module '@/components/ui/form' {
 
 // Input Component
 declare module '@/components/ui/input' {
-  import { InputHTMLAttributes } from 'react';
+  type InputProps = InputHTMLAttributes<HTMLInputElement>
+  export const Input: React.ForwardRefExoticComponent<InputProps>
+}
 
-  export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {}
-  export const Input: React.ForwardRefExoticComponent<InputProps>;
+// Badge Component
+declare module '@/components/ui/badge' {
+  const badgeVariants: (props?: {
+    variant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'success'
+  }) => string
+
+  type BadgeProps = HTMLAttributes<HTMLDivElement> & VariantProps<typeof badgeVariants>
+
+  export const Badge: React.ForwardRefExoticComponent<BadgeProps>
+  export { badgeVariants }
 }
 
 // Label Component
@@ -97,23 +118,6 @@ declare module '@/components/ui/select' {
   export const SelectLabel: typeof SelectPrimitive.Label;
   export const SelectItem: typeof SelectPrimitive.Item;
   export const SelectSeparator: typeof SelectPrimitive.Separator;
-}
-
-// Badge Component
-declare module '@/components/ui/badge' {
-  import { HTMLAttributes } from 'react';
-  import { VariantProps } from 'class-variance-authority';
-
-  const badgeVariants: (props?: {
-    variant?: 'default' | 'secondary' | 'destructive' | 'outline' | 'success';
-  }) => string;
-
-  export interface BadgeProps
-    extends HTMLAttributes<HTMLDivElement>,
-      VariantProps<typeof badgeVariants> {}
-
-  export const Badge: React.ForwardRefExoticComponent<BadgeProps>;
-  export { badgeVariants };
 }
 
 // Skeleton Component

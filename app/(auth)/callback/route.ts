@@ -1,17 +1,17 @@
 /**
  * Authentication Callback Route Handler
- * Last Updated: 2024-01-16
+ * Last Updated: 2025-01-16
  * 
  * This file implements the OAuth callback endpoint for Supabase authentication.
  * It handles the exchange of authorization codes for session tokens after successful
  * authentication with an OAuth provider or email confirmation.
  */
 
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import type { Database } from '@/lib/database/database.types'
-import { getSupabaseCookies } from '@/lib/supabase/cookies'
+import { errorLogger } from '@/lib/logging/error-logger'
 
 /**
  * GET /auth/callback
@@ -39,6 +39,14 @@ export async function GET(request: NextRequest) {
     const next = requestUrl.searchParams.get('next') || '/dashboard'
 
     if (!code) {
+      errorLogger.warn('OAuth callback received without code', {
+        context: {
+          url: request.url,
+          next,
+          headers: Object.fromEntries(request.headers)
+        }
+      })
+
       return NextResponse.redirect(
         new URL('/sign-in?error=No code provided', request.url)
       )
@@ -53,10 +61,10 @@ export async function GET(request: NextRequest) {
           get(name: string) {
             return request.cookies.get(name)?.value
           },
-          set(name: string, value: string, options: any) {
+          set(name: string, value: string, options: CookieOptions) {
             response.cookies.set({ name, value, ...options })
           },
-          remove(name: string, options: any) {
+          remove(name: string, options: CookieOptions) {
             response.cookies.delete({ name, ...options })
           },
         },
@@ -64,11 +72,28 @@ export async function GET(request: NextRequest) {
     )
 
     const { error } = await supabase.auth.exchangeCodeForSession(code)
-    if (error) throw error
+    if (error) {
+      errorLogger.error('Failed to exchange auth code for session', {
+        error,
+        context: {
+          url: request.url,
+          next,
+          headers: Object.fromEntries(request.headers)
+        }
+      })
+      throw error
+    }
 
     return NextResponse.redirect(new URL(next, request.url))
   } catch (error) {
-    console.error('Error in auth callback:', error)
+    errorLogger.error('Unexpected error in auth callback', {
+      error,
+      context: {
+        url: request.url,
+        headers: Object.fromEntries(request.headers)
+      }
+    })
+
     return NextResponse.redirect(
       new URL('/sign-in?error=Failed to authenticate', request.url)
     )

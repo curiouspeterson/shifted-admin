@@ -1,6 +1,6 @@
 /**
  * Register API Route
- * Last Updated: 2024-03-21
+ * Last Updated: 2025-01-16
  * 
  * Handles user registration with rate limiting and validation.
  */
@@ -9,20 +9,30 @@ import { NextRequest } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { createRateLimiter, defaultRateLimits } from '@/lib/api/rate-limit';
-import { ApiResponse } from '@/lib/api/types';
 import { 
   HTTP_STATUS_BAD_REQUEST,
   HTTP_STATUS_CONFLICT,
+  HTTP_STATUS_TOO_MANY_REQUESTS,
 } from '@/lib/constants/http';
+import { errorLogger } from '@/lib/logging/error-logger';
 
 // Create rate limiter for auth endpoints
-const authRateLimiter = createRateLimiter(defaultRateLimits.auth);
+const checkAuthRateLimit = createRateLimiter(defaultRateLimits.auth);
 
 export async function POST(request: NextRequest): Promise<Response> {
   try {
     // Check rate limit
     const ip = request.ip || request.headers.get('x-forwarded-for') || 'unknown';
-    await authRateLimiter.check(ip);
+    const isAllowed = await checkAuthRateLimit(ip);
+    
+    if (!isAllowed) {
+      return Response.json({
+        error: {
+          message: 'Too many requests',
+          code: 'auth/rate-limit-exceeded'
+        }
+      }, { status: HTTP_STATUS_TOO_MANY_REQUESTS });
+    }
 
     // Parse request body
     const body = await request.json();
@@ -62,6 +72,15 @@ export async function POST(request: NextRequest): Promise<Response> {
     });
 
     if (signUpError) {
+      errorLogger.error('Failed to create user account', {
+        error: signUpError,
+        context: {
+          email: body.email,
+          position: body.position,
+          role: body.role
+        }
+      });
+
       return Response.json({
         error: {
           message: signUpError.message,
@@ -75,7 +94,14 @@ export async function POST(request: NextRequest): Promise<Response> {
       error: null
     });
   } catch (error) {
-    console.error('Registration error:', error);
+    errorLogger.error('Unexpected error during registration', {
+      error,
+      context: {
+        url: request.url,
+        method: request.method
+      }
+    });
+
     return Response.json({
       error: {
         message: error instanceof Error ? error.message : 'Registration failed',
