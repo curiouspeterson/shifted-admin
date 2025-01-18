@@ -1,88 +1,126 @@
 /**
  * Authentication Actions
- * Last Updated: 2025-01-16
+ * Last Updated: 2025-03-19
  * 
- * Server actions for authentication operations.
+ * Server actions for handling authentication.
  */
 
 'use server'
 
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
-import { errorLogger } from '@/lib/logging/error-logger'
+import { createServerClient } from '@supabase/ssr'
+import type { Database } from '@/app/lib/types/supabase'
 
-/**
- * Sign in with email and password
- */
-export async function signIn(email: string, password: string) {
+export async function signIn(formData: FormData): Promise<void> {
   const cookieStore = cookies()
-  const supabase = createClient(cookieStore)
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options: any) {
+          cookieStore.set({ name, value, ...options })
+        },
+        remove(name: string) {
+          cookieStore.delete(name)
+        },
+      },
+    }
+  )
 
   try {
-    errorLogger.info('Sign in attempt', {
-      context: {
-        email,
-        timestamp: new Date().toISOString()
-      }
-    })
+    const email = formData.get('email')?.toString()
+    const password = formData.get('password')?.toString()
 
-    const { data: { session }, error: signInError } = await supabase.auth.signInWithPassword({
+    if (!email || !password) {
+      throw new Error('Email and password are required')
+    }
+
+    const { error } = await supabase.auth.signInWithPassword({
       email,
       password
     })
 
-    if (signInError) {
-      errorLogger.error('Sign in failed', {
-        error: signInError,
-        context: {
-          email,
-          timestamp: new Date().toISOString()
-        }
-      })
-      return { error: signInError.message }
-    }
-
-    if (!session) {
-      errorLogger.error('No session after sign in', {
-        context: {
-          email,
-          timestamp: new Date().toISOString()
-        }
-      })
-      return { error: 'Authentication failed' }
-    }
-
-    // Verify session is valid
-    const { error: sessionError } = await supabase.auth.getSession()
-    if (sessionError) {
-      errorLogger.error('Session verification failed', {
-        error: sessionError,
-        context: {
-          email,
-          timestamp: new Date().toISOString()
-        }
-      })
-      return { error: 'Session verification failed' }
-    }
-
-    errorLogger.info('Sign in successful', {
-      context: {
-        email,
-        userId: session.user.id,
-        timestamp: new Date().toISOString()
-      }
-    })
+    if (error) throw error
 
     redirect('/dashboard')
   } catch (error) {
-    errorLogger.error('Unexpected error during sign in', {
-      error,
-      context: {
-        email,
-        timestamp: new Date().toISOString()
+    if (error instanceof Error) {
+      throw error
+    }
+    throw new Error('An unexpected error occurred')
+  }
+}
+
+export async function signInWithGoogle(): Promise<void> {
+  const cookieStore = cookies()
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options: any) {
+          cookieStore.set({ name, value, ...options })
+        },
+        remove(name: string) {
+          cookieStore.delete(name)
+        },
+      },
+    }
+  )
+
+  try {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
       }
     })
-    return { error: 'An unexpected error occurred' }
+
+    if (error) throw error
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error
+    }
+    throw new Error('An unexpected error occurred')
+  }
+}
+
+export async function signOut(): Promise<void> {
+  const cookieStore = cookies()
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+        set(name: string, value: string, options: any) {
+          cookieStore.set({ name, value, ...options })
+        },
+        remove(name: string) {
+          cookieStore.delete(name)
+        },
+      },
+    }
+  )
+
+  try {
+    const { error } = await supabase.auth.signOut()
+    if (error) throw error
+    redirect('/sign-in')
+  } catch (error) {
+    if (error instanceof Error) {
+      throw error
+    }
+    throw new Error('An unexpected error occurred')
   }
 } 

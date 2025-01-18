@@ -1,12 +1,12 @@
 /**
  * Base Error Classes
- * Last Updated: 2025-01-17
+ * Last Updated: 2025-03-19
  */
 
 import { 
   HTTP_STATUS_INTERNAL_SERVER_ERROR,
   HTTP_STATUS_NOT_FOUND 
-} from '@/lib/constants/http';
+} from '@/app/lib/constants/http';
 
 export interface ErrorConfig {
   message: string;

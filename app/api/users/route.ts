@@ -6,7 +6,8 @@
  */
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/client-side'
+import { createClient } from '@/app/lib/supabase/server'
+import { errorLogger } from '@/app/lib/logging/error-logger'
 import type { Database } from '@/app/lib/supabase/database.types'
 
 type User = Database['public']['Tables']['employees']['Row']

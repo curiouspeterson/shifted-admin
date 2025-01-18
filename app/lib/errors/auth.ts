@@ -1,13 +1,13 @@
 /**
  * Authentication Error Types
- * Last Updated: 2025-01-17
+ * Last Updated: 2025-03-19
  */
 
 import { AppError } from './base';
 import { 
   HTTP_STATUS_UNAUTHORIZED, 
   HTTP_STATUS_FORBIDDEN 
-} from '@/lib/constants/http';
+} from '@/app/lib/constants/http';
 
 export class AuthError extends AppError {
   constructor(message: string, details?: Record<string, unknown>) {

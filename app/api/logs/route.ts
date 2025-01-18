@@ -6,7 +6,8 @@
  */
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/client-side'
+import { createClient } from '@/app/lib/supabase/server'
+import { errorLogger } from '@/app/lib/logging/error-logger'
 import type { Database } from '@/app/lib/supabase/database.types'
 
 export async function GET() {
@@ -19,7 +20,8 @@ export async function GET() {
       .limit(100)
 
     if (error) {
-      throw error
+      errorLogger.error('Error fetching logs:', error)
+      return NextResponse.json({ error: 'Failed to fetch logs' }, { status: 500 })
     }
 
     return NextResponse.json(data)

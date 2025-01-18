@@ -6,7 +6,8 @@
  */
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/client-side'
+import { createClient } from '@/app/lib/supabase/server'
+import { errorLogger } from '@/app/lib/logging/error-logger'
 import * as z from 'zod'
 
 const signUpSchema = z.object({
@@ -40,6 +41,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Sign up error:', error)
+    errorLogger.log(error)
     return NextResponse.json(
       { error: 'Failed to sign up' },
       { status: 500 }

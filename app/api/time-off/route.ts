@@ -6,40 +6,49 @@
  */
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/client-side'
-import type { Database } from '@/app/lib/supabase/database.types'
-
-type TimeOffRequest = Database['public']['Tables']['time_off_requests']['Row']
-type TimeOffRequestInsert = Database['public']['Tables']['time_off_requests']['Insert']
+import { createClient } from '@/app/lib/supabase/server'
+import { errorLogger } from '@/app/lib/logging/error-logger'
 
 export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url)
+  const status = searchParams.get('status')
+  const employeeId = searchParams.get('employeeId')
+
   try {
-    const { searchParams } = new URL(request.url)
-    const employeeId = searchParams.get('employeeId')
-    const status = searchParams.get('status')
-    
     const supabase = createClient()
-    let query = supabase
-      .from('time_off_requests')
-      .select<'time_off_requests', TimeOffRequest>()
-    
+    let query = supabase.from('time_off_requests').select('*')
+
+    if (status) {
+      query = query.eq('status', status)
+    }
+
     if (employeeId) {
       query = query.eq('employee_id', employeeId)
     }
-    
-    if (status) {
-      query = query.eq('status', status as TimeOffRequest['status'])
-    }
-    
+
     const { data, error } = await query
-    
-    if (error) throw error
-    
+
+    if (error) {
+      errorLogger.error('Failed to fetch time-off requests', error, {
+        context: {
+          component: 'TimeOffAPI',
+          action: 'GET',
+          params: { status, employeeId }
+        }
+      })
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Error fetching time-off requests:', error)
+    errorLogger.error('Unexpected error in time-off requests API', error, {
+      context: {
+        component: 'TimeOffAPI',
+        action: 'GET'
+      }
+    })
     return NextResponse.json(
-      { error: 'Failed to fetch time-off requests' },
+      { error: 'An unexpected error occurred' },
       { status: 500 }
     )
   }
@@ -47,31 +56,36 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
     const supabase = createClient()
-    
-    const timeOffRequest: TimeOffRequestInsert = {
-      employee_id: body.employeeId,
-      start_date: body.startDate,
-      end_date: body.endDate,
-      type: body.type,
-      status: 'pending',
-      reason: body.reason
-    }
-    
+    const body = await request.json()
+
     const { data, error } = await supabase
       .from('time_off_requests')
-      .insert([timeOffRequest])
+      .insert(body)
       .select()
       .single()
-    
-    if (error) throw error
-    
+
+    if (error) {
+      errorLogger.error('Failed to create time-off request', error, {
+        context: {
+          component: 'TimeOffAPI',
+          action: 'POST',
+          body
+        }
+      })
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Error creating time-off request:', error)
+    errorLogger.error('Unexpected error in time-off requests API', error, {
+      context: {
+        component: 'TimeOffAPI',
+        action: 'POST'
+      }
+    })
     return NextResponse.json(
-      { error: 'Failed to create time-off request' },
+      { error: 'An unexpected error occurred' },
       { status: 500 }
     )
   }

@@ -2,92 +2,86 @@
  * Schedules Page
  * Last Updated: 2025-03-19
  * 
- * This page displays a list of schedules with filtering and pagination.
- * It allows supervisors to:
- * - View all schedules
- * - Create new schedules
- * - Filter and sort schedules
- * - Navigate to individual schedule details
+ * Displays a list of schedules with filtering and sorting options.
  */
 
-import { Suspense } from 'react';
-import { getSchedules } from '@/app/lib/actions/schedule';
-import { Button } from '@/app/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { Skeleton } from '@/app/components/ui/skeleton';
-import { Plus } from 'lucide-react';
-import Link from 'next/link';
-import ScheduleFilters from './_components/schedule-filters';
-import ScheduleList from './_components/schedule-list';
-import CreateScheduleButton from './_components/create-schedule-button';
+import { Suspense } from 'react'
+import { createClient } from '@/app/lib/supabase/server'
+import { errorLogger } from '@/app/lib/logging/error-logger'
+import ScheduleFilters from '@/app/components/schedule/schedule-filters'
+import ScheduleList from './_components/schedule-list'
+import { LoadingSpinner } from '@/app/components/ui/loading-spinner'
+import type { Database } from '@/app/lib/types/supabase'
+
+type Schedule = Database['public']['Tables']['schedules']['Row']
 
 interface PageProps {
   searchParams: {
-    limit?: string;
-    offset?: string;
-    sort?: string;
-    order?: string;
-    status?: string;
-  };
+    status?: Schedule['status']
+    sort?: string
+    order?: 'asc' | 'desc'
+  }
 }
 
 export default async function SchedulesPage({ searchParams }: PageProps) {
-  // Parse query parameters
-  const params = {
-    limit: searchParams.limit ? parseInt(searchParams.limit) : 10,
-    offset: searchParams.offset ? parseInt(searchParams.offset) : 0,
-    sort: searchParams.sort as 'start_date' | 'end_date' | 'status' | 'created_at',
-    order: searchParams.order as 'asc' | 'desc',
-    status: searchParams.status as 'draft' | 'published' | 'archived',
-  };
+  try {
+    const supabase = createClient()
+    
+    let query = supabase
+      .from('schedules')
+      .select('*')
+      .order('created_at', { ascending: false })
 
-  // Fetch schedules with default values for optional parameters
-  const schedules = await getSchedules({
-    limit: params.limit,
-    offset: params.offset,
-    sort: params.sort || 'created_at',
-    order: params.order || 'desc',
-    status: params.status || 'draft'
-  });
+    if (searchParams.status && searchParams.status !== 'all') {
+      query = query.eq('status', searchParams.status)
+    }
 
-  return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold">Schedules</h1>
-        <CreateScheduleButton />
-      </div>
+    if (searchParams.sort) {
+      query = query.order(searchParams.sort, {
+        ascending: searchParams.order === 'asc'
+      })
+    }
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ScheduleFilters />
-        </CardContent>
-      </Card>
+    const { data: schedules, error } = await query
 
-      <Suspense fallback={<ScheduleListSkeleton />}>
-        <ScheduleList schedules={schedules} />
-      </Suspense>
-    </div>
-  );
-}
+    if (error) {
+      errorLogger.error('Failed to fetch schedules', error, {
+        context: {
+          component: 'SchedulesPage',
+          action: 'fetchSchedules',
+          params: searchParams
+        }
+      })
+      throw error
+    }
 
-function ScheduleListSkeleton() {
-  return (
-    <Card>
-      <CardContent className="p-0">
-        <div className="divide-y">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <div key={i} className="p-4">
-              <div className="space-y-3">
-                <Skeleton className="h-4 w-1/4" />
-                <Skeleton className="h-4 w-1/2" />
-              </div>
-            </div>
-          ))}
+    return (
+      <div className="container mx-auto py-8">
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-3xl font-bold">Schedules</h1>
         </div>
-      </CardContent>
-    </Card>
-  );
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <aside>
+            <Suspense fallback={<LoadingSpinner />}>
+              <ScheduleFilters />
+            </Suspense>
+          </aside>
+          <main className="md:col-span-3">
+            <Suspense fallback={<LoadingSpinner />}>
+              <ScheduleList schedules={schedules || []} />
+            </Suspense>
+          </main>
+        </div>
+      </div>
+    )
+  } catch (error) {
+    errorLogger.error('Error in schedules page', {
+      error,
+      context: {
+        component: 'SchedulesPage',
+        action: 'render'
+      }
+    })
+    throw error // Let error boundary handle the UI
+  }
 } 

@@ -6,7 +6,8 @@
  */
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/client-side'
+import { createClient } from '@/app/lib/supabase/server'
+import { errorLogger } from '@/app/lib/logging/error-logger'
 import type { Database } from '@/app/lib/supabase/database.types'
 
 export async function GET(request: Request) {
@@ -37,7 +38,7 @@ export async function GET(request: Request) {
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Availability error:', error)
+    errorLogger('Availability error:', error)
     return NextResponse.json(
       { error: 'Failed to fetch availability' },
       { status: 500 }
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Availability error:', error)
+    errorLogger('Availability error:', error)
     return NextResponse.json(
       { error: 'Failed to save availability' },
       { status: 500 }

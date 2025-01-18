@@ -6,17 +6,15 @@
  */
 
 import { Suspense } from 'react'
-import { cookies } from 'next/headers'
 import { createClient } from '@/app/lib/supabase/server'
 import { errorLogger } from '@/app/lib/logging/error-logger'
-import { EmployeeList } from './employee-list'
-import { Employee } from './types'
+import EmployeeList from './employee-list'
+import type { Employee } from '@/app/lib/types/employees'
 import { LoadingSpinner } from '@/app/components/ui/loading-spinner'
 
 export default async function EmployeesPage() {
   try {
-    const cookieStore = cookies()
-    const supabase = createClient(cookieStore)
+    const supabase = createClient()
     
     const { data: employees, error } = await supabase
       .from('employees')

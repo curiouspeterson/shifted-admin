@@ -1,104 +1,46 @@
 /**
  * Schedule Filters Component
- * Last Updated: 2024-03-21
+ * Last Updated: 2025-03-19
  * 
- * Client Component for filtering schedules.
- * Uses React Server Actions for state updates.
+ * Provides filtering controls for the schedule list.
  */
 
-'use client';
+'use client'
 
-import { useCallback, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
-import { Search } from 'lucide-react';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Button } from '@/app/components/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select'
 
-const statusOptions = [
-  { value: 'all', label: 'All statuses' },
-  { value: 'draft', label: 'Draft' },
-  { value: 'published', label: 'Published' },
-  { value: 'archived', label: 'Archived' }
-] as const;
+interface ScheduleFiltersProps {
+  onFilterChange?: (filters: { status?: string }) => void
+}
 
-export function ScheduleFilters() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  
-  const [search, setSearch] = useState(searchParams.get('search') || '');
-  const [status, setStatus] = useState(searchParams.get('status') || 'all');
-  
-  const handleSearch = useCallback((value: string) => {
-    setSearch(value);
-    const params = new URLSearchParams(searchParams);
-    
-    if (value) {
-      params.set('search', value);
-    } else {
-      params.delete('search');
-    }
-    
-    router.push(`?${params.toString()}`);
-  }, [router, searchParams]);
-  
-  const handleStatusChange = useCallback((value: string) => {
-    setStatus(value);
-    const params = new URLSearchParams(searchParams);
-    
-    if (value !== 'all') {
-      params.set('status', value);
-    } else {
-      params.delete('status');
-    }
-    
-    router.push(`?${params.toString()}`);
-  }, [router, searchParams]);
-  
+export default function ScheduleFilters({ onFilterChange }: ScheduleFiltersProps) {
   return (
-    <div className="flex flex-col sm:flex-row gap-4">
-      <div className="relative flex-1">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-500" />
-        <Input
-          placeholder="Search schedules..."
-          value={search}
-          onChange={(e) => handleSearch(e.target.value)}
-          className="pl-9"
-        />
-      </div>
-      
-      <Select
-        value={status}
-        onValueChange={handleStatusChange}
-      >
-        <SelectTrigger className="w-full sm:w-[180px]">
-          <SelectValue placeholder="Status" />
-        </SelectTrigger>
-        <SelectContent>
-          {statusOptions.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      
-      <Button
-        variant="outline"
-        onClick={() => {
-          setSearch('');
-          setStatus('all');
-          router.push('');
-        }}
-      >
-        Reset filters
-      </Button>
-    </div>
-  );
+    <Card>
+      <CardHeader>
+        <CardTitle>Filters</CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div>
+          <Select
+            onValueChange={(value) => onFilterChange?.({ status: value })}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All</SelectItem>
+              <SelectItem value="draft">Draft</SelectItem>
+              <SelectItem value="published">Published</SelectItem>
+              <SelectItem value="archived">Archived</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <Button variant="outline" onClick={() => onFilterChange?.({})}>
+          Reset Filters
+        </Button>
+      </CardContent>
+    </Card>
+  )
 } 

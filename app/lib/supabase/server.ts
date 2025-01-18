@@ -1,24 +1,17 @@
 /**
- * Server-side Supabase Client
- * Last Updated: 2025-01-16
+ * Supabase Server Client
+ * Last Updated: 2025-03-19
  * 
- * Creates a Supabase client configured for server-side usage
- * with proper cookie handling for Next.js server components and actions.
+ * Creates a Supabase client for server-side operations with proper cookie handling.
  */
 
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
-import type { Database } from '@/lib/database/database.types'
-import type { CookieOptions } from '@supabase/ssr'
+import { Database } from './database.types'
 
-const cookieOptions: CookieOptions = {
-  path: '/',
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax'
-}
+export const createClient = () => {
+  const cookieStore = cookies()
 
-export function createClient(cookieStore = cookies()) {
   return createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -27,18 +20,18 @@ export function createClient(cookieStore = cookies()) {
         get(name: string) {
           return cookieStore.get(name)?.value
         },
-        set(name: string, value: string, options: CookieOptions = cookieOptions) {
+        set(name: string, value: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value, ...options })
           } catch (error) {
-            // Handle cookies.set error in read-only contexts
+            // Handle cookies in edge functions
           }
         },
-        remove(name: string, options: CookieOptions = cookieOptions) {
+        remove(name: string, options: CookieOptions) {
           try {
             cookieStore.set({ name, value: '', ...options })
           } catch (error) {
-            // Handle cookies.delete error in read-only contexts
+            // Handle cookies in edge functions
           }
         },
       },

@@ -1,16 +1,16 @@
 /**
  * Utility Functions
- * Last Updated: 2025-01-17
+ * Last Updated: 2025-03-19
  * 
- * Common utility functions used throughout the application
+ * Common utility functions used throughout the application.
  */
 
 import { type ClassValue, clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
 /**
- * Merges class names using clsx and tailwind-merge
- * Ensures proper handling of Tailwind CSS classes
+ * Merges class names using clsx and tailwind-merge.
+ * This ensures proper handling of Tailwind CSS classes.
  */
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));

@@ -6,7 +6,8 @@
  */
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/client-side'
+import { createClient } from '@/app/lib/supabase/server'
+import { errorLogger } from '@/app/lib/logging/error-logger'
 import type { Database } from '@/app/lib/supabase/database.types'
 
 type Params = {
@@ -30,7 +31,7 @@ export async function GET(request: Request, { params }: Params) {
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Schedule fetch error:', error)
+    errorLogger.error('Schedule fetch error:', error)
     return NextResponse.json(
       { error: 'Failed to fetch schedule' },
       { status: 500 }
@@ -60,7 +61,7 @@ export async function PUT(request: Request, { params }: Params) {
 
     return NextResponse.json(data)
   } catch (error) {
-    console.error('Schedule update error:', error)
+    errorLogger.error('Schedule update error:', error)
     return NextResponse.json(
       { error: 'Failed to update schedule' },
       { status: 500 }
@@ -82,7 +83,7 @@ export async function DELETE(request: Request, { params }: Params) {
 
     return new NextResponse(null, { status: 204 })
   } catch (error) {
-    console.error('Schedule delete error:', error)
+    errorLogger.error('Schedule delete error:', error)
     return NextResponse.json(
       { error: 'Failed to delete schedule' },
       { status: 500 }

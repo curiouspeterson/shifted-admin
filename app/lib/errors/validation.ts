@@ -1,10 +1,10 @@
 /**
  * Validation Error Types
- * Last Updated: 2025-01-17
+ * Last Updated: 2025-03-19
  */
 
 import { AppError } from './base';
-import { HTTP_STATUS_BAD_REQUEST } from '@/lib/constants/http';
+import { HTTP_STATUS_BAD_REQUEST } from '@/app/lib/constants/http';
 
 export interface ValidationErrorDetail {
   path: string[];

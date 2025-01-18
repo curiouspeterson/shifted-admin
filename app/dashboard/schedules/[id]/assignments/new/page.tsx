@@ -2,48 +2,56 @@
  * New Assignment Page
  * Last Updated: 2025-03-19
  * 
- * Page for creating new schedule assignments.
+ * Server Component for creating new schedule assignments.
  */
 
-'use client'
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
+import type { Database } from '@/app/lib/types/supabase'
 
-import { useRouter } from 'next/navigation'
-import { Alert, AlertDescription } from '@/app/components/ui/alert'
-import { Spinner } from '@/app/components/ui/spinner'
-import { useAppContext } from '@/app/lib/context/app-context'
-import { createClient } from '@/app/lib/supabase/client-side'
+type Params = {
+  params: {
+    id: string
+  }
+}
 
-export default function NewAssignmentPage({
-  params,
-}: {
-  params: { id: string }
-}) {
-  const router = useRouter()
-  const { isLoading, setIsLoading, error, setError } = useAppContext()
-  const supabase = createClient()
+export default async function NewAssignmentPage({ params }: Params) {
+  const cookieStore = cookies()
+  const supabase = createServerClient<Database>(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return cookieStore.get(name)?.value
+        },
+      },
+    }
+  )
 
-  if (isLoading) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Spinner className="h-8 w-8" />
-      </div>
-    )
+  const { data: schedule, error: scheduleError } = await supabase
+    .from('schedules')
+    .select('*')
+    .eq('id', params.id)
+    .single()
+
+  if (scheduleError) {
+    throw scheduleError
   }
 
-  if (error) {
-    return (
-      <Alert variant="destructive">
-        <AlertDescription>
-          Failed to load schedule: {error.message}
-        </AlertDescription>
-      </Alert>
-    )
+  const { data: employees, error: employeesError } = await supabase
+    .from('employees')
+    .select('*')
+    .eq('is_active', true)
+
+  if (employeesError) {
+    throw employeesError
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <h1 className="mb-8 text-2xl font-bold">New Assignment</h1>
-      <p className="text-gray-600">This feature is under development.</p>
+    <div className="container mx-auto py-8">
+      <h1 className="text-3xl font-bold mb-8">New Assignment</h1>
+      {/* Add assignment form component here */}
     </div>
   )
 } 

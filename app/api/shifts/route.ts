@@ -6,7 +6,8 @@
  */
 
 import { NextResponse } from 'next/server'
-import { createClient } from '@/app/lib/supabase/client-side'
+import { createClient } from '@/app/lib/supabase/server'
+import { errorLogger } from '@/app/lib/logging/error-logger'
 import type { Database } from '@/app/lib/supabase/database.types'
 
 export async function GET() {
@@ -18,6 +19,7 @@ export async function GET() {
       .order('created_at', { ascending: false })
 
     if (error) {
+      errorLogger('GET /api/shifts', error)
       throw error
     }
 

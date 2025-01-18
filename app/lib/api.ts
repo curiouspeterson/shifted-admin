@@ -1,14 +1,13 @@
 /**
  * API Utilities
- * Last Updated: 2024-01-22
+ * Last Updated: 2025-03-19
  * 
- * Provides utilities for API route handlers including rate limiting and validation.
+ * Provides utilities for API route handlers including validation and error handling.
  */
 
 import { NextResponse, type NextRequest } from 'next/server'
 import { z } from 'zod'
-import { RateLimiter } from './rate-limiting'
-import { isAppError } from '@/lib/errors/types'
+import { isAppError } from '@/app/lib/errors/types'
 
 export interface ApiResponse<T> {
   data?: T
@@ -22,7 +21,6 @@ export interface ValidatedRequest<T> {
 }
 
 export interface ApiHandlerOptions<TResponse, TRequest = unknown> {
-  rateLimit?: RateLimiter
   validate?: {
     body?: z.ZodType<TRequest>
     query?: z.ZodSchema
@@ -53,19 +51,6 @@ export const createRouteHandler = <TResponse, TRequest = unknown>(
 ): ((req: NextRequest) => Promise<NextResponse<ApiResponse<TResponse>>>) => {
   return async (req: NextRequest) => {
     try {
-      // Check rate limit if enabled
-      if (options.rateLimit) {
-        const identifier = getRequestIdentifier(req)
-        const isLimited = await options.rateLimit.isRateLimited(identifier)
-        
-        if (isLimited) {
-          return NextResponse.json<ApiResponse<TResponse>>(
-            { error: 'Rate limit exceeded' },
-            { status: 429 }
-          )
-        }
-      }
-
       // Validate request body if schema provided
       let validatedBody: TRequest | undefined
       if (options.validate?.body && req.method !== 'GET') {
