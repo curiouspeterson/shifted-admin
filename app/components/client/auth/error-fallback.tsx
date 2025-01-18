@@ -10,13 +10,9 @@
 import { Button } from '@/app/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { AlertCircle } from 'lucide-react'
+import type { FallbackProps } from 'react-error-boundary'
 
-interface AuthErrorFallbackProps {
-  error: Error
-  reset: () => void
-}
-
-export function AuthErrorFallback({ error, reset }: AuthErrorFallbackProps) {
+export function AuthErrorFallback({ error, resetErrorBoundary }: FallbackProps) {
   return (
     <Card className="w-full max-w-md mx-auto">
       <CardHeader>
@@ -30,10 +26,10 @@ export function AuthErrorFallback({ error, reset }: AuthErrorFallbackProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         <p className="text-sm text-muted-foreground">
-          {error.message || 'Please try again or contact support if the problem persists.'}
+          {error instanceof Error ? error.message : 'Please try again or contact support if the problem persists.'}
         </p>
         <div className="flex gap-4">
-          <Button onClick={reset} variant="default">
+          <Button onClick={resetErrorBoundary} variant="default">
             Try Again
           </Button>
           <Button onClick={() => window.location.reload()} variant="outline">

@@ -6,9 +6,11 @@
  */
 
 import { ErrorBoundary } from 'react-error-boundary'
-import { AuthErrorFallback } from '@/app/components/error-boundary/auth-error-fallback'
+import { AuthErrorFallback } from '@/app/components/client/auth/error-fallback'
 import { SignInButton, SignInWithGoogleButton } from './components'
 import { signIn, signInWithGoogle } from '../actions'
+import { Input } from '@/app/components/ui/input'
+import { Label } from '@/app/components/ui/label'
 
 export default function SignInPage() {
   return (
@@ -39,7 +41,28 @@ export default function SignInPage() {
           </div>
           <ErrorBoundary FallbackComponent={AuthErrorFallback}>
             <div className="space-y-4">
-              <form action={signIn}>
+              <form action={signIn} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    name="email"
+                    type="email"
+                    placeholder="name@example.com"
+                    required
+                    autoComplete="email"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    name="password"
+                    type="password"
+                    required
+                    autoComplete="current-password"
+                  />
+                </div>
                 <SignInButton />
               </form>
               <div className="relative">
