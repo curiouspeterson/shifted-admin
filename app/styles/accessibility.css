@@ -1,0 +1,144 @@
+/**
+ * Accessibility Styles
+ * Last Updated: 2025-03-19
+ * 
+ * Implements WCAG 2.1 Level AA compliance styles
+ * for focus management and keyboard navigation.
+ */
+
+/* Focus Management */
+:focus-visible {
+  outline: 3px solid #2563eb !important; /* High contrast blue */
+  outline-offset: 2px !important;
+  border-radius: 4px;
+}
+
+/* Skip Links */
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 0;
+  background: #2563eb;
+  color: white;
+  padding: 8px;
+  z-index: 100;
+  transition: top 0.2s;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* High Contrast Mode */
+@media (forced-colors: active) {
+  :root {
+    --focus-ring-color: Highlight;
+  }
+  
+  .interactive-element {
+    border: 1px solid transparent;
+  }
+  
+  .interactive-element:focus {
+    border-color: Highlight;
+  }
+}
+
+/* Screen Reader Only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Keyboard Focus Indicators */
+[tabindex]:not([tabindex="-1"]):focus {
+  outline: 3px solid #2563eb !important;
+  outline-offset: 2px !important;
+}
+
+/* Form Field Accessibility */
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 3px solid #2563eb !important;
+  outline-offset: 2px !important;
+  border-color: #2563eb !important;
+}
+
+/* Error States */
+[aria-invalid="true"] {
+  border-color: #dc2626 !important;
+}
+
+[aria-invalid="true"]:focus {
+  outline-color: #dc2626 !important;
+}
+
+/* Loading States */
+[aria-busy="true"] {
+  cursor: progress;
+}
+
+/* Interactive Elements */
+button,
+[role="button"],
+a {
+  cursor: pointer;
+}
+
+button:disabled,
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+/* Focus Within for Complex Components */
+.focus-group:focus-within {
+  outline: 2px solid #2563eb;
+  outline-offset: 4px;
+}
+
+/* Live Regions */
+[aria-live] {
+  position: relative;
+}
+
+/* Landmark Regions */
+[role="banner"],
+[role="complementary"],
+[role="contentinfo"],
+[role="main"],
+[role="navigation"],
+[role="region"],
+[role="search"] {
+  margin: 8px 0;
+}
+
+/* Dialog Focus Management */
+[role="dialog"],
+[role="alertdialog"] {
+  outline: none;
+}
+
+[role="dialog"]:focus,
+[role="alertdialog"]:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.5);
+} 

@@ -22,15 +22,16 @@ export function SignInForm() {
 
   const validateForm = React.useCallback(() => {
     try {
-      loginRequestSchema.parse({ email, password })
+      const result = loginRequestSchema.safeParse({ email, password })
+      if (!result.success) {
+        const errorMessage = result.error.errors[0]?.message
+        setValidationError(errorMessage ?? 'Invalid form data')
+        return false
+      }
       setValidationError(null)
       return true
     } catch (err) {
-      if (err instanceof Error) {
-        setValidationError(err.message)
-      } else {
-        setValidationError('Invalid form data')
-      }
+      setValidationError('Invalid form data')
       return false
     }
   }, [email, password])
@@ -47,13 +48,12 @@ export function SignInForm() {
       await signIn(email, password)
     } catch (err) {
       console.error('Sign in failed:', err)
-      // Error will be handled by error boundary
-      throw err
+      setValidationError(err instanceof Error ? err.message : 'Sign in failed')
     }
   }, [email, password, signIn, validateForm])
 
   const handleEmailChange = React.useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    setEmail(e.target.value)
+    setEmail(e.target.value.trim())
     setValidationError(null)
   }, [])
 
@@ -63,8 +63,8 @@ export function SignInForm() {
   }, [])
 
   const hasValidationError = Boolean(validationError)
-  const errorMessage = validationError || (authError?.message ?? '')
-  const showError = errorMessage.length > 0
+  const errorMessage = validationError ?? authError?.message ?? ''
+  const showError = Boolean(errorMessage)
 
   return (
     <form onSubmit={handleSubmit} className="mt-8 space-y-6">
@@ -79,6 +79,7 @@ export function SignInForm() {
             onChange={handleEmailChange}
             aria-invalid={hasValidationError}
             aria-describedby={hasValidationError ? 'form-error' : undefined}
+            autoComplete="email"
           />
         </div>
         <div>
@@ -91,6 +92,7 @@ export function SignInForm() {
             onChange={handlePasswordChange}
             aria-invalid={hasValidationError}
             aria-describedby={hasValidationError ? 'form-error' : undefined}
+            autoComplete="current-password"
           />
         </div>
       </div>
