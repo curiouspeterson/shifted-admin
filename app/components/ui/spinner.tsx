@@ -1,39 +1,41 @@
 /**
  * Spinner Component
- * Last Updated: 2024-03-21
+ * Last Updated: 2025-03-19
  * 
- * Reusable loading spinner component with size variants.
- * Uses Tailwind CSS for styling and animations.
+ * A loading spinner component with customizable size and color.
  */
 
-'use client';
+import * as React from 'react'
+import { cn } from '@/lib/utils'
 
-import { memo } from 'react';
-import { cn } from '@/lib/utils';
-import { Loader2 } from 'lucide-react';
-
-interface SpinnerProps {
-  size?: 'sm' | 'md' | 'lg';
-  className?: string;
+interface SpinnerProps extends React.HTMLAttributes<HTMLDivElement> {
+  size?: 'sm' | 'md' | 'lg'
 }
 
 const sizeClasses = {
-  sm: 'h-4 w-4',
-  md: 'h-6 w-6',
-  lg: 'h-8 w-8'
-};
+  sm: 'h-4 w-4 border-2',
+  md: 'h-6 w-6 border-2',
+  lg: 'h-8 w-8 border-3',
+}
 
-export const Spinner = memo(function Spinner({ 
-  size = 'md',
-  className
-}: SpinnerProps) {
-  return (
-    <Loader2 
-      className={cn(
-        'animate-spin text-gray-500',
-        sizeClasses[size],
-        className
-      )}
-    />
-  );
-}); 
+const Spinner = React.forwardRef<HTMLDivElement, SpinnerProps>(
+  ({ className, size = 'md', ...props }, ref) => {
+    return (
+      <div
+        ref={ref}
+        className={cn(
+          'animate-spin rounded-full border-primary border-t-transparent',
+          sizeClasses[size],
+          className
+        )}
+        {...props}
+      >
+        <span className="sr-only">Loading...</span>
+      </div>
+    )
+  }
+)
+
+Spinner.displayName = 'Spinner'
+
+export { Spinner } 

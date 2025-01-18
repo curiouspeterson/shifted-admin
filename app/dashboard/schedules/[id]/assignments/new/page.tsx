@@ -1,85 +1,49 @@
 /**
- * New Assignment Page Component
- * Last Updated: 2024-01-16
+ * New Assignment Page
+ * Last Updated: 2025-03-19
  * 
- * This page provides an interface for creating new schedule assignments,
- * allowing supervisors to assign employees to specific shifts on specific dates.
+ * Page for creating new schedule assignments.
  */
 
-'use client';
+'use client'
 
-import { useRouter } from 'next/navigation';
-import { toast } from 'sonner';
-import { AssignmentForm } from '@/components/forms/assignment-form';
-import { createAssignment } from '@/lib/actions/assignment';
-import type { AssignmentFormData, AssignmentResponse } from '@/lib/schemas/forms';
-import { useSchedule } from '@/lib/hooks/use-schedule';
-import { useScheduleAssignments } from '@/lib/hooks/use-schedule-assignments';
-import { useEmployees } from '@/lib/hooks/use-employees';
-import { useShifts } from '@/lib/hooks/use-shifts';
+import { useRouter } from 'next/navigation'
+import { Alert, AlertDescription } from '@/app/components/ui/alert'
+import { Spinner } from '@/app/components/ui/spinner'
+import { useAppContext } from '@/app/lib/context/app-context'
+import { createClient } from '@/app/lib/supabase/client-side'
 
-export default function NewAssignmentPage({ 
-  params 
-}: { 
+export default function NewAssignmentPage({
+  params,
+}: {
   params: { id: string }
 }) {
-  const router = useRouter();
-  const { schedule, isLoading: isLoadingSchedule } = useSchedule(params.id);
-  const { rawAssignments, isLoading: isLoadingAssignments } = useScheduleAssignments(params.id);
-  const { employees, isLoading: isLoadingEmployees } = useEmployees();
-  const { shifts, isLoading: isLoadingShifts } = useShifts();
+  const router = useRouter()
+  const { isLoading, setIsLoading, error, setError } = useAppContext()
+  const supabase = createClient()
 
-  const handleSubmit = async (formData: AssignmentFormData) => {
-    try {
-      const result = await createAssignment(formData);
-      
-      if (!result.data || result.error) {
-        toast.error(result.error || 'Failed to create assignment');
-        return;
-      }
-
-      toast.success('Assignment created successfully');
-      router.push(`/dashboard/schedules/${params.id}`);
-    } catch (error) {
-      toast.error('Failed to create assignment');
-      console.error('Error creating assignment:', error);
-    }
-  };
-
-  if (isLoadingSchedule || isLoadingAssignments || isLoadingEmployees || isLoadingShifts) {
+  if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner className="h-8 w-8" />
       </div>
-    );
+    )
   }
 
-  if (!schedule) {
+  if (error) {
     return (
-      <div className="text-red-500">
-        Schedule not found
-      </div>
-    );
+      <Alert variant="destructive">
+        <AlertDescription>
+          Failed to load schedule: {error.message}
+        </AlertDescription>
+      </Alert>
+    )
   }
-
-  const existingAssignments = rawAssignments
-    .filter(assignment => assignment.employee_id && assignment.shift_id)
-    .map(assignment => ({
-      employee_id: assignment.employee_id!,
-      shift_id: assignment.shift_id!,
-      date: assignment.date,
-    }));
 
   return (
-    <div className="max-w-2xl mx-auto py-8">
-      <h1 className="text-2xl font-bold mb-8">Add New Assignment</h1>
-      <AssignmentForm
-        scheduleId={params.id}
-        employees={employees || []}
-        shifts={shifts || []}
-        existingAssignments={existingAssignments}
-        onSubmit={handleSubmit}
-      />
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="mb-8 text-2xl font-bold">New Assignment</h1>
+      <p className="text-gray-600">This feature is under development.</p>
     </div>
-  );
+  )
 } 

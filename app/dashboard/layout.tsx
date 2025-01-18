@@ -1,6 +1,6 @@
 /**
  * Dashboard Layout Component
- * Last Updated: 2024-03-21
+ * Last Updated: 2025-03-19
  * 
  * This layout wraps all dashboard pages and provides:
  * - Authentication check
@@ -9,10 +9,10 @@
  */
 
 import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@/app/lib/supabase/server'
 import { cookies } from 'next/headers'
-import DashboardNav from '@/components/dashboard-nav'
-import { AppProvider } from '@/lib/context/app-context'
+import { DashboardNav } from '@/app/components/dashboard-nav'
+import { AppProvider } from '@/app/lib/context/app-context'
 
 /**
  * Dashboard Layout Component

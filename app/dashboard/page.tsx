@@ -1,58 +1,58 @@
 /**
- * Dashboard Page Component
- * Last Updated: 2024-03-20
+ * Dashboard Page
+ * Last Updated: 2025-03-19
  * 
- * This is the main dashboard page of the application.
- * It displays the user's schedule and relevant information.
+ * Main dashboard view showing overview and key metrics.
  */
 
 'use client'
 
-import { useApp } from '@/lib/context/app-context'
-import { Spinner } from '@/components/ui/spinner'
+import { useAppContext } from '@/app/lib/context/app-context'
+import { Spinner } from '@/app/components/ui/spinner'
 import { useEffect } from 'react'
 
-/**
- * Dashboard Component
- * Displays user's schedule and relevant information
- */
 export default function DashboardPage() {
-  const { isLoading, setLoading, error, handleError } = useApp()
+  const { isLoading, setIsLoading, error, setError } = useAppContext()
 
   useEffect(() => {
-    const loadDashboardData = async () => {
+    // Initialize dashboard data
+    const initDashboard = async () => {
       try {
-        setLoading(true)
-        // Load dashboard data here
-      } catch (error) {
-        handleError(error)
+        setIsLoading(true)
+        // Fetch dashboard data here
+      } catch (err) {
+        setError(err instanceof Error ? err : new Error('Failed to load dashboard'))
       } finally {
-        setLoading(false)
+        setIsLoading(false)
       }
     }
 
-    loadDashboardData()
-  }, [setLoading, handleError])
+    initDashboard()
+  }, [setIsLoading, setError])
 
   if (isLoading) {
-    return <Spinner size="lg" className="min-h-screen" />
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner className="h-8 w-8" />
+      </div>
+    )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-red-500">
-          <h2 className="text-xl font-semibold">Error Loading Dashboard</h2>
-          <p>{error.message}</p>
+      <div className="flex min-h-screen flex-col items-center justify-center">
+        <div className="text-center">
+          <h2 className="mb-2 text-lg font-semibold">Error Loading Dashboard</h2>
+          <p className="text-sm text-gray-600">{error.message}</p>
         </div>
       </div>
     )
   }
 
   return (
-    <main className="container mx-auto px-4 py-8">
-      <h1 className="text-3xl font-bold mb-8">Dashboard</h1>
-      {/* Dashboard content goes here */}
-    </main>
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="mb-8 text-2xl font-bold">Dashboard</h1>
+      {/* Add dashboard content here */}
+    </div>
   )
 } 

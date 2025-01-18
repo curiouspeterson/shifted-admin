@@ -1,6 +1,6 @@
 /**
  * Schedules Page
- * Last Updated: 2024
+ * Last Updated: 2025-03-19
  * 
  * This page displays a list of schedules with filtering and pagination.
  * It allows supervisors to:
@@ -11,15 +11,15 @@
  */
 
 import { Suspense } from 'react';
-import { getSchedules } from '@/lib/actions/schedule';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { getSchedules } from '@/app/lib/actions/schedule';
+import { Button } from '@/app/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { Skeleton } from '@/app/components/ui/skeleton';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
-import { ScheduleFilters } from './_components/schedule-filters';
-import { ScheduleList } from './_components/schedule-list';
-import { CreateScheduleButton } from './_components/create-schedule-button';
+import ScheduleFilters from './_components/schedule-filters';
+import ScheduleList from './_components/schedule-list';
+import CreateScheduleButton from './_components/create-schedule-button';
 
 interface PageProps {
   searchParams: {
@@ -36,13 +36,19 @@ export default async function SchedulesPage({ searchParams }: PageProps) {
   const params = {
     limit: searchParams.limit ? parseInt(searchParams.limit) : 10,
     offset: searchParams.offset ? parseInt(searchParams.offset) : 0,
-    sort: searchParams.sort as 'start_date' | 'end_date' | 'status' | 'created_at' | undefined,
-    order: searchParams.order as 'asc' | 'desc' | undefined,
-    status: searchParams.status as 'draft' | 'published' | 'archived' | undefined,
+    sort: searchParams.sort as 'start_date' | 'end_date' | 'status' | 'created_at',
+    order: searchParams.order as 'asc' | 'desc',
+    status: searchParams.status as 'draft' | 'published' | 'archived',
   };
 
-  // Fetch schedules
-  const schedules = await getSchedules(params);
+  // Fetch schedules with default values for optional parameters
+  const schedules = await getSchedules({
+    limit: params.limit,
+    offset: params.offset,
+    sort: params.sort || 'created_at',
+    order: params.order || 'desc',
+    status: params.status || 'draft'
+  });
 
   return (
     <div className="container mx-auto py-6 space-y-6">

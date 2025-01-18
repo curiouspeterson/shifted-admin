@@ -1,40 +1,42 @@
 /**
  * Dashboard Navigation Component
- * Last Updated: 2024-03-21
+ * Last Updated: 2025-03-19
  * 
- * Main navigation component for the dashboard.
- * Uses app context for online/offline status.
+ * Main navigation component for the dashboard layout.
+ * Uses Next.js App Router patterns for type-safe navigation.
  */
 
-'use client';
+'use client'
 
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useAppContext } from '@/lib/context/app-context';
-import { cn } from '@/lib/utils';
-import { 
+import * as React from 'react'
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { cn } from '@/lib/utils'
+import {
   Calendar,
   Clock,
-  FileText,
-  Home,
   Users,
-  AlertTriangle
-} from 'lucide-react';
+  FileText,
+  BarChart2,
+  Settings,
+  LogOut
+} from 'lucide-react'
 
-const navItems = [
-  {
-    title: 'Dashboard',
-    href: '/dashboard',
-    icon: Home
-  },
+interface NavItem {
+  title: string
+  href: string
+  icon: React.ElementType
+}
+
+const navItems: Array<NavItem> = [
   {
     title: 'Schedules',
     href: '/dashboard/schedules',
     icon: Calendar
   },
   {
-    title: 'Shifts',
-    href: '/dashboard/shifts',
+    title: 'Time Off',
+    href: '/dashboard/time-off-requests',
     icon: Clock
   },
   {
@@ -43,44 +45,55 @@ const navItems = [
     icon: Users
   },
   {
-    title: 'Requests',
-    href: '/dashboard/requests',
+    title: 'Requirements',
+    href: '/dashboard/requirements',
     icon: FileText
   },
   {
-    title: 'Error Reports',
-    href: '/dashboard/error-reports',
-    icon: AlertTriangle,
-    adminOnly: true
+    title: 'Analytics',
+    href: '/dashboard/analytics',
+    icon: BarChart2
+  },
+  {
+    title: 'Settings',
+    href: '/dashboard/settings',
+    icon: Settings
   }
-];
+]
 
-export default function DashboardNav() {
-  const pathname = usePathname();
-  const { state } = useAppContext();
-  
+export function DashboardNav() {
+  const pathname = usePathname()
+
   return (
-    <nav className="grid items-start gap-2">
+    <nav className="flex flex-col gap-2">
       {navItems.map((item) => {
-        const Icon = item.icon;
-        const isActive = pathname === item.href;
-        
+        const Icon = item.icon
+        const href = { pathname: item.href }
         return (
           <Link
             key={item.href}
-            href={item.href}
+            href={href}
             className={cn(
-              'group flex items-center rounded-md px-3 py-2 text-sm font-medium hover:bg-accent hover:text-accent-foreground',
-              isActive ? 'bg-accent' : 'transparent',
-              !state.isOnline && 'opacity-50 cursor-not-allowed'
+              'flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+              pathname === item.href
+                ? 'bg-primary text-primary-foreground'
+                : 'hover:bg-accent hover:text-accent-foreground'
             )}
-            onClick={(e) => !state.isOnline && e.preventDefault()}
           >
-            <Icon className="mr-2 h-4 w-4" />
-            <span>{item.title}</span>
+            <Icon className="h-4 w-4" />
+            {item.title}
           </Link>
-        );
+        )
       })}
+      <button
+        className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-destructive hover:bg-destructive/10 transition-colors mt-auto"
+        onClick={() => {
+          // Handle logout
+        }}
+      >
+        <LogOut className="h-4 w-4" />
+        Sign Out
+      </button>
     </nav>
-  );
+  )
 } 

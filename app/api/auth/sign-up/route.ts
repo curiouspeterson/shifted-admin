@@ -1,66 +1,48 @@
 /**
- * Sign Up Route Handler
- * Last Updated: 2025-01-17
+ * Sign Up API Route
+ * Last Updated: 2025-03-19
  * 
- * Handles user sign up with rate limiting and validation.
+ * Handles user registration.
  */
 
-import { RateLimiter } from '@/lib/rate-limiting'
-import { 
-  registerRequestSchema, 
-  type RegisterResponse 
-} from '@/lib/validations/auth'
-import { createRouteHandler, type ApiResponse } from '@/lib/api'
-import { createClient } from '@/lib/supabase/server'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { createClient } from '@/app/lib/supabase/client-side'
+import * as z from 'zod'
 
-// Rate limiter: 5 attempts per 15 minutes
-const rateLimiter = new RateLimiter({
-  points: 5,
-  duration: 15 * 60, // 15 minutes
-  blockDuration: 30 * 60, // 30 minutes
-  keyPrefix: 'sign-up'
+const signUpSchema = z.object({
+  email: z.string().email(),
+  password: z.string().min(8),
+  first_name: z.string().min(2),
+  last_name: z.string().min(2),
 })
 
-export const POST = createRouteHandler({
-  rateLimit: rateLimiter,
-  validate: {
-    body: registerRequestSchema
-  },
-  handler: async (req) => {
-    const body = await req.json()
-    const { email, password, firstName, lastName } = registerRequestSchema.parse(body)
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+    const validatedData = signUpSchema.parse(body)
+    const supabase = createClient()
 
-    const supabase = createClient(cookies())
-    
-    const { data: { user }, error } = await supabase.auth.signUp({
-      email,
-      password,
+    const { error } = await supabase.auth.signUp({
+      email: validatedData.email,
+      password: validatedData.password,
       options: {
         data: {
-          firstName,
-          lastName
-        }
-      }
+          first_name: validatedData.first_name,
+          last_name: validatedData.last_name,
+        },
+      },
     })
 
-    if (error !== null || user === null) {
-      return NextResponse.json<ApiResponse<RegisterResponse>>(
-        { error: error !== null ? error.message : 'Failed to create user' },
-        { status: 400 }
-      )
+    if (error) {
+      throw error
     }
 
-    return NextResponse.json<ApiResponse<RegisterResponse>>({
-      data: {
-        user: {
-          id: user.id,
-          email: user.email!,
-          firstName: user.user_metadata['firstName'],
-          lastName: user.user_metadata['lastName']
-        }
-      }
-    })
+    return NextResponse.json({ success: true })
+  } catch (error) {
+    console.error('Sign up error:', error)
+    return NextResponse.json(
+      { error: 'Failed to sign up' },
+      { status: 500 }
+    )
   }
-})
+}

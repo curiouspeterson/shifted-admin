@@ -1,17 +1,17 @@
 /**
  * Employees Page
- * Last Updated: 2025-01-16
+ * Last Updated: 2025-03-19
  * 
  * Main page component for displaying and managing employees.
  */
 
 import { Suspense } from 'react'
 import { cookies } from 'next/headers'
-import { createClient } from '@/lib/supabase/server'
-import { errorLogger } from '@/lib/logging/error-logger'
+import { createClient } from '@/app/lib/supabase/server'
+import { errorLogger } from '@/app/lib/logging/error-logger'
 import { EmployeeList } from './employee-list'
 import { Employee } from './types'
-import { LoadingSpinner } from '@/components/ui/loading-spinner'
+import { LoadingSpinner } from '@/app/components/ui/loading-spinner'
 
 export default async function EmployeesPage() {
   try {

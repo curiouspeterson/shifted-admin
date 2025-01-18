@@ -1,103 +1,69 @@
 /**
- * Schedule Requirements Route Handler
- * Last Updated: 2025-01-17
+ * Schedule Requirements API Route
+ * Last Updated: 2025-03-19
  * 
- * Handles CRUD operations for schedule requirements with rate limiting.
+ * Handles CRUD operations for schedule requirements.
  */
 
-import { RateLimiter } from '@/lib/rate-limiting'
-import { createRouteHandler } from '@/lib/api'
-import { createClient } from '@/lib/supabase/server'
-import { TimeRequirementsOperations } from '@/lib/operations/time-requirements'
-import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
+import { createClient } from '@/app/lib/supabase/client-side'
+import type { Database } from '@/app/lib/supabase/database.types'
 
-// Rate limiter: 100 requests per minute
-const rateLimiter = new RateLimiter({
-  points: 100,
-  duration: 60, // 1 minute
-  blockDuration: 300, // 5 minutes
-  keyPrefix: 'schedule-requirements'
-})
+type Params = {
+  params: {
+    id: string
+  }
+}
 
-export const GET = createRouteHandler({
-  rateLimit: rateLimiter,
-  handler: async (req) => {
-    const { searchParams } = new URL(req.url)
-    const scheduleId = searchParams.get('scheduleId')
-
-    if (scheduleId === null || scheduleId.trim() === '') {
-      return NextResponse.json(
-        { error: 'Schedule ID is required' },
-        { status: 400 }
-      )
-    }
-
-    const supabase = createClient(cookies())
-    const timeRequirements = new TimeRequirementsOperations(supabase)
-    const { data, error } = await timeRequirements.getByScheduleId(scheduleId)
+export async function GET(request: Request, { params }: Params) {
+  try {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('schedules')
+      .select('*, requirements(*)')
+      .eq('id', params.id)
+      .single()
 
     if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      )
+      throw error
     }
 
-    return NextResponse.json({ data })
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error('Schedule requirements fetch error:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch schedule requirements' },
+      { status: 500 }
+    )
   }
-})
+}
 
-export const POST = createRouteHandler({
-  rateLimit: rateLimiter,
-  handler: async (req) => {
-    const { searchParams } = new URL(req.url)
-    const scheduleId = searchParams.get('scheduleId')
+export async function POST(request: Request, { params }: Params) {
+  try {
+    const body = await request.json()
+    const supabase = createClient()
 
-    if (scheduleId === null || scheduleId.trim() === '') {
-      return NextResponse.json(
-        { error: 'Schedule ID is required' },
-        { status: 400 }
-      )
+    const requirementData: Database['public']['Tables']['requirements']['Insert'] = {
+      ...body,
+      schedule_id: params.id
     }
 
-    try {
-      // Parse request body
-      const requirement = await req.json()
+    const { data, error } = await supabase
+      .from('requirements')
+      .insert(requirementData)
+      .select()
+      .single()
 
-      // Create Supabase client
-      const supabase = createClient(cookies())
-
-      // Initialize database operations
-      const timeRequirements = new TimeRequirementsOperations(supabase)
-
-      // Create requirement
-      const { data: newRequirement, error } = await timeRequirements.create({
-        ...requirement,
-        schedule_id: scheduleId
-      })
-
-      if (error !== null && typeof error === 'object') {
-        return NextResponse.json(
-          { 
-            error: error.message,
-            details: 'details' in error ? error.details : undefined,
-            code: 'requirements/create-failed'
-          },
-          { status: 400 }
-        )
-      }
-
-      return NextResponse.json({ data: newRequirement })
-    } catch (error) {
-      console.error('Requirement creation error:', error)
-      return NextResponse.json(
-        {
-          error: error instanceof Error ? error.message : 'Failed to create requirement',
-          code: 'requirements/unknown-error'
-        },
-        { status: 500 }
-      )
+    if (error) {
+      throw error
     }
+
+    return NextResponse.json(data, { status: 201 })
+  } catch (error) {
+    console.error('Schedule requirement creation error:', error)
+    return NextResponse.json(
+      { error: 'Failed to create schedule requirement' },
+      { status: 500 }
+    )
   }
-})
+}

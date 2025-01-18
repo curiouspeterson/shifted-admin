@@ -13,7 +13,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
 import * as z from "zod"
 import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
+import { Button } from "@/app/components/ui/button/index"
 import {
   Form,
   FormControl,
@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
-import { createClientComponentClient } from "@/lib/supabase/client-side"
+import { createClient } from '@/app/lib/supabase/client-side'
 
 const employeeFormSchema = z.object({
   first_name: z.string().min(2, {

@@ -1,18 +1,21 @@
 /**
  * Sentry Example API Route
- * Last Updated: 2025-01-17
+ * Last Updated: 2025-03-19
  * 
- * Example route to demonstrate Sentry error monitoring.
+ * Example route demonstrating Sentry error tracking.
  */
 
-import { createRouteHandler } from '@/lib/api';
-import { Errors } from '@/lib/errors/types';
+import { NextResponse } from 'next/server'
+import * as Sentry from '@sentry/nextjs'
 
-export const dynamic = "force-dynamic";
-
-// A faulty API route to test Sentry's error monitoring
-export const GET = createRouteHandler({
-  handler: async () => {
-    throw Errors.unknown("Sentry Example API Route Error");
+export async function GET() {
+  try {
+    throw new Error('Sentry Example API Route Error')
+  } catch (error) {
+    Sentry.captureException(error)
+    return NextResponse.json(
+      { error: 'Internal Server Error' },
+      { status: 500 }
+    )
   }
-});
+}

@@ -1,139 +1,125 @@
 /**
  * Requests Page
- * Last Updated: 2024-01-15
+ * Last Updated: 2025-03-19
  * 
- * Displays a list of time-off requests and allows users to create, update and delete requests.
+ * Displays and manages time-off requests.
  */
 
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Spinner } from '@/components/ui/spinner'
-import RequestForm from '@/components/request/request-form'
+import { Alert, AlertDescription } from '@/app/components/ui/alert'
+import { Button } from '@/app/components/ui/button/index'
+import { 
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger
+} from '@/app/components/ui/dialog'
+import { Spinner } from '@/app/components/ui/spinner'
+import RequestForm from '@/app/components/request/request-form'
+import { createClient } from '@/app/lib/supabase/client-side'
+import type { TimeOffRequest, CreateTimeOffRequest } from '@/app/lib/types/requests'
 
 export default function RequestsPage() {
-  const router = useRouter()
-  const [isOpen, setIsOpen] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  
-  const { data: requests, error: fetchError, isLoading, mutate } = useSWR('/api/requests')
+  const { data, error, isLoading, mutate } = useSWR<TimeOffRequest[]>('/api/requests')
+  const supabase = createClient()
 
   if (isLoading) {
-    return <Spinner />
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner className="h-8 w-8" />
+      </div>
+    )
   }
 
-  if (fetchError) {
+  if (error instanceof Error) {
     return (
       <Alert variant="destructive">
         <AlertDescription>
-          Failed to load requests. Please try again later.
+          Failed to load requests: {error.message}
         </AlertDescription>
       </Alert>
     )
   }
 
-  const handleSubmit = async (data: any) => {
-    try {
-      setError(null)
-      // API call to create/update request
-      await mutate()
-      setIsOpen(false)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save request')
+  const handleSubmit = async (formData: {
+    type: string
+    startDate: Date
+    endDate: Date
+    reason: string
+  }) => {
+    const newRequest: CreateTimeOffRequest = {
+      type: formData.type as TimeOffRequest['type'],
+      start_date: formData.startDate.toISOString(),
+      end_date: formData.endDate.toISOString(),
+      reason: formData.reason,
+      status: 'pending'
     }
+
+    const { error: submitError } = await supabase
+      .from('requests')
+      .insert([newRequest])
+
+    if (submitError) {
+      throw new Error(submitError.message)
+    }
+
+    await mutate()
   }
 
   return (
-    <div className="container mx-auto py-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Time Off Requests</h1>
-        <Button onClick={() => setIsOpen(true)}>
-          New Request
-        </Button>
+    <div className="container mx-auto px-4 py-8">
+      <div className="mb-8 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">Time-Off Requests</h1>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button>New Request</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create Time-Off Request</DialogTitle>
+            </DialogHeader>
+            <RequestForm onSubmit={handleSubmit} />
+          </DialogContent>
+        </Dialog>
       </div>
 
-      {error && (
-        <Alert variant="destructive" className="mb-6">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>New Time Off Request</DialogTitle>
-          </DialogHeader>
-          <RequestForm 
-            onSubmit={handleSubmit}
-            onCancel={() => setIsOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Request list table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
-            <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Start Date
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                End Date
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Type
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Status
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Actions
-              </th>
-            </tr>
-          </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {requests?.map((request: any) => (
-              <tr key={request.id}>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(request.startTime).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {new Date(request.endTime).toLocaleDateString()}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {request.type}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                    request.status === 'APPROVED' 
+      {data && data.length > 0 ? (
+        <div className="space-y-4">
+          {data.map((request) => (
+            <div
+              key={request.id}
+              className="rounded-lg border p-4 shadow-sm"
+            >
+              <h3 className="font-medium">{request.type}</h3>
+              <p className="text-sm text-gray-600">
+                {new Date(request.startDate).toLocaleDateString()} -{' '}
+                {new Date(request.endDate).toLocaleDateString()}
+              </p>
+              <p className="mt-2 text-sm">{request.reason}</p>
+              <div className="mt-4">
+                <span
+                  className={`inline-flex rounded-full px-2 py-1 text-xs font-medium ${
+                    request.status === 'approved'
                       ? 'bg-green-100 text-green-800'
-                      : request.status === 'DENIED'
+                      : request.status === 'rejected'
                       ? 'bg-red-100 text-red-800'
                       : 'bg-yellow-100 text-yellow-800'
-                  }`}>
-                    {request.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {/* Handle edit */}}
-                  >
-                    Edit
-                  </Button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                  }`}
+                >
+                  {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Alert>
+          <AlertDescription>No requests found.</AlertDescription>
+        </Alert>
+      )}
     </div>
   )
 } 

@@ -1,70 +1,60 @@
 /**
- * Logs API Route Handler
- * Last Updated: 2025-01-17
+ * Logs API Route
+ * Last Updated: 2025-03-19
  * 
- * Handles incoming log entries and stores them appropriately
+ * Handles system log operations.
  */
 
-import { NextRequest } from 'next/server';
-import { z } from 'zod';
-import { apiLogger } from '@/lib/api/logger';
+import { NextResponse } from 'next/server'
+import { createClient } from '@/app/lib/supabase/client-side'
+import type { Database } from '@/app/lib/supabase/database.types'
 
-const logEntrySchema = z.object({
-  level: z.enum(['debug', 'info', 'warn', 'error']),
-  message: z.string(),
-  timestamp: z.string().datetime(),
-  context: z.record(z.unknown()).optional(),
-});
-
-const logsPayloadSchema = z.object({
-  logs: z.array(logEntrySchema),
-});
-
-export async function POST(request: NextRequest) {
+export async function GET() {
   try {
-    const json = await request.json();
-    const { logs } = logsPayloadSchema.parse(json);
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('logs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100)
 
-    // In production, you would store these logs in a proper logging service
-    // For now, we'll just log them using the API logger
-    for (const log of logs) {
-      await apiLogger[log.level](log.message, {
-        ...log.context,
-        clientTimestamp: log.timestamp,
-      });
+    if (error) {
+      throw error
     }
 
-    return new Response(null, { status: 204 });
+    return NextResponse.json(data)
   } catch (error) {
-    await apiLogger.error('Failed to process logs', { error });
-    return new Response(
-      JSON.stringify({ error: 'Invalid log format' }),
-      { 
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
+    console.error('Logs fetch error:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch logs' },
+      { status: 500 }
+    )
   }
 }
 
-export async function GET() {
-  // This endpoint could be used to retrieve logs in development
-  // In production, you would typically use a proper logging service UI
-  if (process.env.NODE_ENV !== 'development') {
-    return new Response(
-      JSON.stringify({ error: 'Not available in production' }),
-      { 
-        status: 403,
-        headers: { 'Content-Type': 'application/json' },
-      }
-    );
-  }
+export async function POST(request: Request) {
+  try {
+    const body = await request.json()
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('logs')
+      .insert({
+        ...body,
+        created_at: new Date().toISOString()
+      })
+      .select()
+      .single()
 
-  return new Response(
-    JSON.stringify({ message: 'Logs endpoint is working' }),
-    { 
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
+    if (error) {
+      throw error
     }
-  );
+
+    return NextResponse.json(data, { status: 201 })
+  } catch (error) {
+    console.error('Log creation error:', error)
+    return NextResponse.json(
+      { error: 'Failed to create log entry' },
+      { status: 500 }
+    )
+  }
 } 

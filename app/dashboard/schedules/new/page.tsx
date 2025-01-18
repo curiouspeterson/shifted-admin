@@ -1,14 +1,14 @@
 /**
  * New Schedule Page
- * Last Updated: 2024-03-21
+ * Last Updated: 2025-03-19
  * 
  * Server Component for creating a new schedule.
  * Uses Suspense for loading states and error boundaries for error handling.
  */
 
 import { Suspense } from 'react';
-import { Spinner } from '@/components/ui/spinner';
-import { ScheduleForm } from '@/components/schedule/schedule-form';
+import { Spinner } from '@/app/components/ui/spinner';
+import { ScheduleForm } from '@/app/components/schedule/schedule-form';
 
 export default function NewSchedulePage() {
   return (

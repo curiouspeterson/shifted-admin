@@ -1,158 +1,210 @@
 /**
  * Request Form Component
- * Last Updated: 2024-01-15
+ * Last Updated: 2025-03-19
  * 
- * Form component for creating and updating time-off requests.
+ * Form for creating and editing time-off requests.
  */
 
 'use client'
 
-import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import * as React from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
-import { Button } from '@/components/ui/button'
-import { Alert, AlertDescription } from '@/components/ui/alert'
-import { DateTimePicker } from '@/components/ui/date-time-picker'
-import { Textarea } from '@/components/ui/textarea'
-import { Loader2 } from 'lucide-react'
+import { useForm } from 'react-hook-form'
+import * as z from 'zod'
+import { toast } from 'sonner'
+import { Alert, AlertDescription } from '@/app/components/ui/alert'
+import { Button } from '@/app/components/ui/button/index'
+import { Calendar } from '@/app/components/ui/calendar'
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/app/components/ui/form'
+import { Textarea } from '@/app/components/ui/textarea'
+import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover'
+import { cn } from '@/lib/utils'
+import { format } from 'date-fns'
+import { CalendarIcon } from 'lucide-react'
 
-// Request form schema
-const requestSchema = z.object({
-  startTime: z.string()
-    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/, 'Invalid time format')
-    .refine(time => !isNaN(Date.parse(time)), 'Invalid time'),
-  endTime: z.string()
-    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/, 'Invalid time format')
-    .refine(time => !isNaN(Date.parse(time)), 'Invalid time'),
-  reason: z.string()
-    .min(1, 'Reason is required')
-    .max(500, 'Reason must be 500 characters or less'),
-  type: z.enum(['VACATION', 'SICK', 'PERSONAL', 'OTHER']),
-  notes: z.string()
-    .max(1000, 'Notes must be 1000 characters or less')
-    .optional()
-    .nullable()
+const requestFormSchema = z.object({
+  type: z.enum(['vacation', 'sick', 'personal'] as const),
+  startDate: z.date(),
+  endDate: z.date(),
+  reason: z.string().min(10, {
+    message: 'Reason must be at least 10 characters.',
+  }),
 })
 
-type RequestFormData = z.infer<typeof requestSchema>
+type RequestFormValues = z.infer<typeof requestFormSchema>
 
 interface RequestFormProps {
-  request?: RequestFormData
-  onSubmit: (data: RequestFormData) => Promise<void>
-  onCancel?: () => void
+  onSubmit: (data: RequestFormValues) => Promise<void>
 }
 
-export default function RequestForm({ request, onSubmit, onCancel }: RequestFormProps) {
-  const [error, setError] = useState<string | null>(null)
-  
-  const {
-    register,
-    handleSubmit,
-    control,
-    formState: { errors, isSubmitting }
-  } = useForm<RequestFormData>({
-    resolver: zodResolver(requestSchema),
-    defaultValues: request || {
-      startTime: '',
-      endTime: '',
+export default function RequestForm({ onSubmit }: RequestFormProps) {
+  const [error, setError] = React.useState<string | null>(null)
+  const form = useForm<RequestFormValues>({
+    resolver: zodResolver(requestFormSchema),
+    defaultValues: {
+      type: 'vacation',
       reason: '',
-      type: 'VACATION',
-      notes: null
-    }
+    },
   })
 
-  const onFormSubmit = async (data: RequestFormData) => {
+  async function handleSubmit(data: RequestFormValues) {
     try {
       setError(null)
       await onSubmit(data)
+      form.reset()
+      toast.success('Request submitted successfully')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save request')
+      const errorMessage = err instanceof Error ? err.message : 'Failed to submit request'
+      setError(errorMessage)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-4">
-      {error && (
-        <Alert variant="destructive">
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label htmlFor="startTime" className="text-sm font-medium">
-            Start Time
-          </label>
-          <DateTimePicker
-            name="startTime"
-            control={control}
-            error={errors.startTime?.message}
-          />
-        </div>
-
-        <div className="space-y-2">
-          <label htmlFor="endTime" className="text-sm font-medium">
-            End Time
-          </label>
-          <DateTimePicker
-            name="endTime"
-            control={control}
-            error={errors.endTime?.message}
-          />
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <label htmlFor="reason" className="text-sm font-medium">
-          Reason
-        </label>
-        <Textarea
-          id="reason"
-          {...register('reason')}
-          className={errors.reason ? 'border-red-500' : ''}
-        />
-        {errors.reason && (
-          <p className="text-sm text-red-500">{errors.reason.message}</p>
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
+        {error !== null && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
         )}
-      </div>
 
-      <div className="space-y-2">
-        <label htmlFor="notes" className="text-sm font-medium">
-          Additional Notes
-        </label>
-        <Textarea
-          id="notes"
-          {...register('notes')}
-          className={errors.notes ? 'border-red-500' : ''}
-        />
-        {errors.notes && (
-          <p className="text-sm text-red-500">{errors.notes.message}</p>
-        )}
-      </div>
-
-      <div className="flex justify-end space-x-4">
-        {onCancel && (
-          <Button
-            type="button"
-            variant="outline"
-            onClick={onCancel}
-            disabled={isSubmitting}
-          >
-            Cancel
-          </Button>
-        )}
-        <Button type="submit" disabled={isSubmitting}>
-          {isSubmitting ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Saving...
-            </>
-          ) : (
-            'Submit Request'
+        <FormField
+          control={form.control}
+          name="type"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Request Type</FormLabel>
+              <FormControl>
+                <select
+                  {...field}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2"
+                >
+                  <option value="vacation">Vacation</option>
+                  <option value="sick">Sick Leave</option>
+                  <option value="personal">Personal Leave</option>
+                </select>
+              </FormControl>
+              <FormMessage />
+            </FormItem>
           )}
-        </Button>
-      </div>
-    </form>
+        />
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField
+            control={form.control}
+            name="startDate"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Start Date</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          'w-full pl-3 text-left font-normal',
+                          field.value === undefined && 'text-muted-foreground'
+                        )}
+                      >
+                        {field.value instanceof Date ? (
+                          format(field.value, 'PPP')
+                        ) : (
+                          <span>Pick a date</span>
+                        )}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={field.value}
+                      onSelect={field.onChange}
+                      disabled={(date) =>
+                        date < new Date() || date < new Date('1900-01-01')
+                      }
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name="endDate"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>End Date</FormLabel>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <FormControl>
+                      <Button
+                        variant="outline"
+                        className={cn(
+                          'w-full pl-3 text-left font-normal',
+                          field.value === undefined && 'text-muted-foreground'
+                        )}
+                      >
+                        {field.value instanceof Date ? (
+                          format(field.value, 'PPP')
+                        ) : (
+                          <span>Pick a date</span>
+                        )}
+                        <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                      </Button>
+                    </FormControl>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <Calendar
+                      mode="single"
+                      selected={field.value}
+                      onSelect={field.onChange}
+                      disabled={(date) =>
+                        date < form.getValues('startDate') ||
+                        date < new Date('1900-01-01')
+                      }
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
+
+        <FormField
+          control={form.control}
+          name="reason"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Reason</FormLabel>
+              <FormControl>
+                <Textarea
+                  placeholder="Please provide a reason for your request..."
+                  className="min-h-[100px]"
+                  {...field}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="flex justify-end gap-4">
+          <Button type="submit">Submit Request</Button>
+        </div>
+      </form>
+    </Form>
   )
 } 

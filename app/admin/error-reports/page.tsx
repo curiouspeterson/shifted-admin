@@ -1,77 +1,49 @@
 /**
- * Error Reporting Dashboard
- * Last Updated: 2025-01-17
+ * Error Reports Page
+ * Last Updated: 2025-03-19
  * 
- * This page provides an interface for viewing and analyzing error reports.
- * It integrates with our error logging system and Sentry for comprehensive error tracking.
+ * Displays error reports and monitoring data.
  */
 
-import React from 'react';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui';
-import { ErrorChart } from './components/error-chart';
-import { ErrorFilters } from './components/error-filters';
-import { ErrorMetrics } from './components/error-metrics';
-import { ErrorList } from './components/error-list';
+'use client'
 
-export const metadata = {
-  title: 'Error Reports | Shifted Admin',
-  description: 'View and analyze error reports.',
-};
+import { useAppContext } from '@/app/lib/context/app-context'
+import { Alert, AlertDescription } from '@/app/components/ui/alert'
+import { Spinner } from '@/app/components/ui/spinner'
+import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
 
-export default function ErrorReportsPage(): React.ReactElement {
-  return (
-    <div className="container mx-auto py-10">
-      <div className="flex flex-col gap-8">
-        <div>
-          <h1 className="text-3xl font-bold">Error Reports</h1>
-          <p className="text-muted-foreground">
-            View and analyze application errors
-          </p>
-        </div>
+export default function ErrorReportsPage() {
+  const { isLoading, error } = useAppContext()
 
-        <ErrorMetrics />
-
-        <Tabs defaultValue="overview" className="space-y-4">
-          <TabsList>
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="details">Details</TabsTrigger>
-          </TabsList>
-          <TabsContent value="overview" className="space-y-4">
-            <ErrorFilters />
-            <Card>
-              <CardHeader>
-                <CardTitle>Error Trends</CardTitle>
-                <CardDescription>
-                  Error frequency over time by severity
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="h-[400px]">
-                <ErrorChart data={[]} />
-              </CardContent>
-            </Card>
-          </TabsContent>
-          <TabsContent value="details">
-            <Card>
-              <CardHeader>
-                <CardTitle>Error Details</CardTitle>
-                <CardDescription>
-                  Detailed list of all errors
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ErrorList />
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center">
+        <Spinner className="h-8 w-8" />
       </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>
+          Failed to load error reports: {error.message}
+        </AlertDescription>
+      </Alert>
+    )
+  }
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="mb-8 text-2xl font-bold">Error Reports</h1>
+      <Card>
+        <CardHeader>
+          <CardTitle>Error Monitoring</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-gray-600">Error monitoring features are under development.</p>
+        </CardContent>
+      </Card>
     </div>
-  );
+  )
 }

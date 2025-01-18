@@ -1,6 +1,6 @@
 /**
  * Staffing Requirements Page
- * Last Updated: 2024
+ * Last Updated: 2025-03-19
  * 
  * This page component provides an interface for managing staffing requirements
  * across different time blocks and days of the week. It allows supervisors to
@@ -23,8 +23,8 @@
 import { Suspense } from 'react';
 import { createServerComponentClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
-import { StaffingRequirementsEditor } from '@/components/staffing-requirements-editor';
-import { TimeBasedRequirement } from '@/lib/types/scheduling';
+import { StaffingRequirementsEditor } from '@/app/components/staffing-requirements-editor';
+import { TimeBasedRequirement } from '@/app/lib/types/scheduling';
 import { revalidatePath } from 'next/cache';
 
 /**

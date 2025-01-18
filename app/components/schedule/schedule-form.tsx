@@ -1,6 +1,6 @@
 /**
  * Schedule Form Component
- * Last Updated: 2024-01-16
+ * Last Updated: 2025-03-19
  * 
  * A form component for creating and editing schedules.
  */
@@ -9,13 +9,13 @@
 
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { scheduleFormSchema } from '@/lib/schemas/forms';
-import type { ScheduleFormData } from '@/lib/schemas/forms';
+import { scheduleFormSchema } from '@/app/lib/schemas/forms';
+import type { ScheduleFormData } from '@/app/lib/schemas/forms';
 import { FormField, FormLabel, FormMessage } from '../forms/base/form-field';
-import { Input } from '@/components/ui/input';
-import { Button } from '@/components/ui/button';
+import { Input } from '@/app/components/ui/input';
+import { Button } from '@/app/components/ui/button';
 import { DatePicker } from '../forms/base/date-picker';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/app/components/ui/select';
 
 interface ScheduleFormProps {
   initialData?: Partial<ScheduleFormData>;

@@ -1,93 +1,33 @@
 /**
- * API Documentation Route Handler
- * Last Updated: 2025-01-17
+ * Documentation API Route
+ * Last Updated: 2025-03-19
  * 
- * Serves API documentation with proper caching and rate limiting.
+ * Serves API documentation.
  */
 
-import { RateLimiter } from '@/lib/rate-limiting'
-import { createRouteHandler, type ApiResponse } from '@/lib/api'
-import { cacheConfigs } from '@/lib/cache'
 import { NextResponse } from 'next/server'
+import { createClient } from '@/app/lib/supabase/client-side'
+import type { Database } from '@/app/lib/supabase/database.types'
 
-// Rate limiter: 100 requests per minute
-const rateLimiter = new RateLimiter({
-  points: 100,
-  duration: 60, // 1 minute
-  blockDuration: 300, // 5 minutes
-  keyPrefix: 'docs'
-})
+export async function GET() {
+  try {
+    const supabase = createClient()
+    const { data, error } = await supabase
+      .from('docs')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100)
 
-// Cache configuration for docs
-const docsCacheConfig = {
-  ...cacheConfigs.static,
-  prefix: 'api:docs',
-}
-
-interface ApiDoc {
-  title: string
-  description: string
-  version: string
-  endpoints: Array<{
-    path: string
-    method: string
-    description: string
-    auth: boolean
-    rateLimit?: {
-      points: number
-      duration: number
-    }
-  }>
-}
-
-export const GET = createRouteHandler({
-  rateLimit: rateLimiter,
-  handler: async () => {
-    const docs: ApiDoc = {
-      title: 'Shifted Admin API',
-      description: 'API documentation for the Shifted Admin system',
-      version: '1.0.0',
-      endpoints: [
-        {
-          path: '/api/auth/sign-in',
-          method: 'POST',
-          description: 'Authenticate a user',
-          auth: false,
-          rateLimit: {
-            points: 5,
-            duration: 900 // 15 minutes
-          }
-        },
-        {
-          path: '/api/auth/sign-out',
-          method: 'POST',
-          description: 'Sign out a user',
-          auth: true,
-          rateLimit: {
-            points: 5,
-            duration: 900
-          }
-        },
-        {
-          path: '/api/availability',
-          method: 'GET',
-          description: 'Get employee availability',
-          auth: true,
-          rateLimit: {
-            points: 100,
-            duration: 60
-          }
-        }
-      ]
+    if (error) {
+      throw error
     }
 
-    return NextResponse.json<ApiResponse<ApiDoc>>(
-      { data: docs },
-      {
-        headers: {
-          'Cache-Control': docsCacheConfig.control
-        }
-      }
+    return NextResponse.json(data)
+  } catch (error) {
+    console.error('Documentation error:', error)
+    return NextResponse.json(
+      { error: 'Failed to fetch documentation' },
+      { status: 500 }
     )
   }
-}) 
+} 

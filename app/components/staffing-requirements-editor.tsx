@@ -1,6 +1,6 @@
 /**
  * Staffing Requirements Editor Component
- * Last Updated: 2024
+ * Last Updated: 2025-03-19
  * 
  * A complex form component for managing staffing requirements across different
  * time blocks and days of the week. Provides an intuitive interface for setting
@@ -19,11 +19,11 @@
 'use client';
 
 import React from 'react';
-import { Card, CardHeader, CardContent } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
+import { Card, CardHeader, CardContent } from '@/app/components/ui/card';
+import { Label } from '@/app/components/ui/label';
+import { Input } from '@/app/components/ui/input';
 import { TimeBasedRequirement } from '@/app/lib/types/scheduling';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/app/components/ui/tabs';
 
 /**
  * Component Props Interface

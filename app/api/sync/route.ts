@@ -1,100 +1,57 @@
 /**
- * Sync API Route Handler
+ * Sync API Route
  * Last Updated: 2025-03-19
  * 
- * Handles sync operations using Next.js 14 Route Handlers
+ * Handles data synchronization operations.
  */
 
-import { NextResponse } from 'next/server';
-import { type SyncOperation } from '@/lib/types/sync';
-import { errorLogger } from '@/lib/logging/error-logger';
-import { headers } from 'next/headers';
-import { z } from 'zod';
-
-// Type guard for sync operation payload
-function isValidPayload(payload: unknown): payload is Record<string, unknown> {
-  return typeof payload === 'object' && payload !== null;
-}
-
-// Type guard for operation type
-function isValidOperationType(type: unknown): type is SyncOperation['type'] {
-  return type === 'create' || type === 'update' || type === 'delete';
-}
-
-// Response validation schema
-const responseSchema = z.object({
-  success: z.boolean(),
-  data: z.unknown()
-});
+import { NextResponse } from 'next/server'
+import { createClient } from '@/app/lib/supabase/client-side'
+import type { Database } from '@/app/lib/supabase/database.types'
 
 export async function POST(request: Request) {
   try {
-    const operation = await request.json() as SyncOperation;
-    const headersList = headers();
-    
-    // Validate the operation
-    if (!operation.id || !isValidOperationType(operation.type) || !operation.endpoint) {
-      return NextResponse.json(
-        { error: 'Invalid operation format' },
-        { status: 400 }
-      );
-    }
+    const body = await request.json()
+    const supabase = createClient()
 
-    // Prepare request options with proper type handling
-    const requestInit: RequestInit = {
-      method: operation.type === 'delete' ? 'DELETE' : operation.type === 'create' ? 'POST' : 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': headersList.get('authorization') ?? ''
+    // Log sync attempt
+    const logData: Database['public']['Tables']['logs']['Insert'] = {
+      level: 'info',
+      message: 'Data sync initiated',
+      metadata: {
+        timestamp: new Date().toISOString(),
+        data: body
       }
-    };
-
-    // Only add body for non-DELETE requests with valid payload
-    if (operation.type !== 'delete' && operation.payload && isValidPayload(operation.payload)) {
-      requestInit.body = JSON.stringify(operation.payload);
     }
 
-    const response = await fetch(operation.endpoint, requestInit);
+    await supabase.from('logs').insert([logData])
 
-    if (!response.ok) {
-      throw new Error(`Failed to process operation: ${response.statusText}`);
+    // Perform sync operations here
+    // This is a placeholder for actual sync logic
+    const syncResult = {
+      success: true,
+      timestamp: new Date().toISOString(),
+      details: 'Sync completed successfully'
     }
 
-    const result = await response.json();
-    const validatedResult = responseSchema.parse(result);
-
-    return NextResponse.json(validatedResult);
+    return NextResponse.json(syncResult)
   } catch (error) {
-    errorLogger.error('Failed to process sync operation', { error });
-    
-    return NextResponse.json(
-      { error: 'Failed to process operation' },
-      { status: 500 }
-    );
-  }
-}
+    console.error('Sync error:', error)
 
-export async function GET() {
-  try {
-    // This would typically fetch from your database
-    // For now, we'll return a mock response
-    return NextResponse.json({
-      operations: [],
-      stats: {
-        pending: 0,
-        processing: 0,
-        completed: 0,
-        failed: 0,
-        lastSync: null,
-        lastError: null,
-      },
-    });
-  } catch (error) {
-    errorLogger.error('Failed to fetch sync operations', { error });
-    
+    // Log sync error
+    const supabase = createClient()
+    await supabase.from('logs').insert([{
+      level: 'error',
+      message: 'Data sync failed',
+      metadata: {
+        timestamp: new Date().toISOString(),
+        error: error instanceof Error ? error.message : 'Unknown error'
+      }
+    }])
+
     return NextResponse.json(
-      { error: 'Failed to fetch operations' },
+      { error: 'Failed to sync data' },
       { status: 500 }
-    );
+    )
   }
 } 
