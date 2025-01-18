@@ -7,45 +7,39 @@
 
 import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
-import { ErrorSeverity } from '@/app/lib/logging/error-logger';
+import { ErrorSeverity, type ErrorSeverityType } from '@/app/lib/logging/error-logger';
 
 interface ErrorMetric {
   title: string;
   value: number;
   change: number;
-  severity: ErrorSeverity;
+  severity: ErrorSeverityType;
 }
 
 const metrics: ErrorMetric[] = [
   {
-    title: 'Total Errors',
-    value: 156,
-    change: -12,
+    title: 'Errors',
+    value: 23,
+    change: 5,
     severity: ErrorSeverity.ERROR,
   },
   {
-    title: 'Critical Errors',
-    value: 23,
-    change: 5,
-    severity: ErrorSeverity.CRITICAL,
-  },
-  {
     title: 'Warnings',
-    value: 89,
-    change: -3,
+    value: 45,
+    change: -2,
     severity: ErrorSeverity.WARN,
   },
   {
-    title: 'Resolved',
-    value: 45,
-    change: 18,
+    title: 'Info',
+    value: 128,
+    change: 12,
     severity: ErrorSeverity.INFO,
   },
 ];
 
 export function ErrorMetrics() {
   return (
-    <>
+    <div className="grid gap-4 md:grid-cols-3">
       {metrics.map((metric) => (
         <Card key={metric.title}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -54,13 +48,11 @@ export function ErrorMetrics() {
             </CardTitle>
             <span
               className={`rounded-full px-2 py-1 text-xs ${
-                metric.severity === ErrorSeverity.CRITICAL
+                metric.severity === ErrorSeverity.ERROR
                   ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                  : metric.severity === ErrorSeverity.ERROR
-                  ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
                   : metric.severity === ErrorSeverity.WARN
-                  ? 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200'
-                  : 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200'
+                  ? 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200'
+                  : 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200'
               }`}
             >
               {metric.severity}
@@ -69,12 +61,11 @@ export function ErrorMetrics() {
           <CardContent>
             <div className="text-2xl font-bold">{metric.value}</div>
             <p className="text-xs text-muted-foreground">
-              {metric.change > 0 ? '+' : ''}
-              {metric.change}% from last week
+              {metric.change > 0 ? '+' : ''}{metric.change}% from last week
             </p>
           </CardContent>
         </Card>
       ))}
-    </>
+    </div>
   );
 } 

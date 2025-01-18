@@ -35,13 +35,22 @@ export async function POST(request: Request) {
     })
 
     if (error) {
+      errorLogger.error('Sign up error:', {
+        error: error.message,
+        name: error.name,
+        stack: error.stack
+      })
       throw error
     }
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Sign up error:', error)
-    errorLogger.log(error)
+    errorLogger.error('Sign up error:', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+      name: error instanceof Error ? error.name : 'UnknownError',
+      stack: error instanceof Error ? error.stack : undefined
+    })
     return NextResponse.json(
       { error: 'Failed to sign up' },
       { status: 500 }

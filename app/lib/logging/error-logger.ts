@@ -5,7 +5,14 @@
  * Centralized error logging utility with severity levels and context.
  */
 
-export type ErrorSeverity = 'error' | 'warning' | 'info'
+export const ErrorSeverity = {
+  DEBUG: 'debug',
+  INFO: 'info',
+  WARN: 'warning',
+  ERROR: 'error'
+} as const
+
+export type ErrorSeverityType = typeof ErrorSeverity[keyof typeof ErrorSeverity]
 
 interface ErrorContext {
   userId?: string
@@ -16,7 +23,7 @@ interface ErrorContext {
 
 interface LogEntry {
   message: string
-  severity: ErrorSeverity
+  severity: ErrorSeverityType
   timestamp: string
   context?: ErrorContext
   error?: Error
@@ -26,18 +33,22 @@ class ErrorLogger {
   private isDevelopment = process.env.NODE_ENV === 'development'
 
   error(message: string, context?: ErrorContext) {
-    this.log('error', message, context)
+    this.log(ErrorSeverity.ERROR, message, context)
   }
 
   warning(message: string, context?: ErrorContext) {
-    this.log('warning', message, context)
+    this.log(ErrorSeverity.WARN, message, context)
   }
 
   info(message: string, context?: ErrorContext) {
-    this.log('info', message, context)
+    this.log(ErrorSeverity.INFO, message, context)
   }
 
-  private log(severity: ErrorSeverity, message: string, context?: ErrorContext) {
+  debug(message: string, context?: ErrorContext) {
+    this.log(ErrorSeverity.DEBUG, message, context)
+  }
+
+  private log(severity: ErrorSeverityType, message: string, context?: ErrorContext) {
     const entry: LogEntry = {
       message,
       severity,

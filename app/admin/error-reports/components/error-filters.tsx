@@ -11,11 +11,11 @@ import * as React from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/components/ui/select'
 import { DateRangePicker } from '@/app/components/ui/date-range-picker'
-import { ErrorSeverity } from '@/app/lib/logging/error-logger'
+import { ErrorSeverity, type ErrorSeverityType } from '@/app/lib/logging/error-logger'
 import { DateRange } from 'react-day-picker'
 
 interface ErrorFiltersProps {
-  onSeverityChange: (severity: ErrorSeverity | null) => void
+  onSeverityChange: (severity: ErrorSeverityType | null) => void
   onDateRangeChange: (range: DateRange | undefined) => void
 }
 
@@ -30,7 +30,7 @@ export function ErrorFilters({
       </CardHeader>
       <CardContent className="space-y-4">
         <div>
-          <Select onValueChange={(value) => onSeverityChange(value as ErrorSeverity | null)}>
+          <Select onValueChange={(value) => onSeverityChange(value as ErrorSeverityType | null)}>
             <SelectTrigger>
               <SelectValue placeholder="Select severity" />
             </SelectTrigger>
@@ -39,7 +39,6 @@ export function ErrorFilters({
               <SelectItem value={ErrorSeverity.INFO}>Info</SelectItem>
               <SelectItem value={ErrorSeverity.WARN}>Warning</SelectItem>
               <SelectItem value={ErrorSeverity.ERROR}>Error</SelectItem>
-              <SelectItem value={ErrorSeverity.CRITICAL}>Critical</SelectItem>
             </SelectContent>
           </Select>
         </div>

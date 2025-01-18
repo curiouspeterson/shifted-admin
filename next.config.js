@@ -27,6 +27,26 @@ const nextConfig = {
   typescript: {
     // These will be checked by the build process
   },
+
+  // Enable source maps in development
+  productionBrowserSourceMaps: process.env.NODE_ENV === 'development',
+  
+  // Enable detailed logging in development
+  logging: {
+    level: process.env.NODE_ENV === 'development' ? 'debug' : 'info',
+    format: 'json'
+  },
+  
+  // Configure webpack for better debugging
+  webpack: (config, { dev, isServer }) => {
+    // Enable source maps in development
+    if (dev) {
+      config.devtool = 'eval-source-map'
+    }
+    
+    // Return modified config
+    return config
+  }
 }
 
 module.exports = nextConfig
