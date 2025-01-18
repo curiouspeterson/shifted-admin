@@ -2,102 +2,79 @@
  * Auth Provider Component
  * Last Updated: 2025-03-19
  * 
- * Manages authentication state and token handling for the application.
- * Uses modern React patterns and Next.js best practices.
+ * Manages authentication state and provides auth-related functions.
  */
 
 'use client'
 
 import * as React from 'react'
-import { createContext, useContext, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { ApiResponse } from '@/lib/api'
-import type { LoginResponse } from '@/lib/validations/auth'
-import { loginResponseSchema } from '@/lib/validations/auth'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import type { Database } from '@/types/supabase'
 
 interface AuthContextType {
   isAuthenticated: boolean
   isLoading: boolean
+  error: Error | null
   signIn: (email: string, password: string) => Promise<void>
   signOut: () => Promise<void>
-  error: Error | null
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined)
+const AuthContext = React.createContext<AuthContextType | null>(null)
 
-function getStoredToken(): string | null {
-  if (typeof window === 'undefined') return null
-  try {
-    return localStorage.getItem('auth_token')
-  } catch (err) {
-    console.error('Failed to access localStorage:', err)
-    return null
+export function useAuth() {
+  const context = React.useContext(AuthContext)
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider')
   }
-}
-
-function setStoredToken(token: string): void {
-  if (typeof window === 'undefined') return
-  try {
-    localStorage.setItem('auth_token', token)
-  } catch (err) {
-    console.error('Failed to store token:', err)
-  }
-}
-
-function removeStoredToken(): void {
-  if (typeof window === 'undefined') return
-  try {
-    localStorage.removeItem('auth_token')
-  } catch (err) {
-    console.error('Failed to remove token:', err)
-  }
+  return context
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
-  const [isLoading, setIsLoading] = useState(false) // Start with false to avoid flash
-  const [error, setError] = useState<Error | null>(null)
+  const [isAuthenticated, setIsAuthenticated] = React.useState(false)
+  const [isLoading, setIsLoading] = React.useState(false)
+  const [error, setError] = React.useState<Error | null>(null)
   const router = useRouter()
+  const supabase = createClientComponentClient<Database>()
 
   // Check auth status on mount
-  useEffect(() => {
-    const token = getStoredToken()
-    if (token !== null && token.length > 0) {
-      setIsAuthenticated(true)
+  React.useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        if (error) throw error
+        setIsAuthenticated(!!session)
+      } catch (err) {
+        console.error('Error checking auth status:', err)
+        setIsAuthenticated(false)
+      }
     }
-  }, [])
+    checkAuth()
+  }, [supabase.auth])
 
   const signIn = async (email: string, password: string) => {
     try {
       setIsLoading(true)
       setError(null)
 
-      const response = await fetch('/api/auth/sign-in', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       })
 
-      const data = await response.json() as ApiResponse<LoginResponse>
-
-      if (!response.ok) {
-        const errorMessage = data.error !== null && typeof data.error === 'string' && data.error.length > 0 
-          ? data.error 
-          : 'Authentication failed'
-        throw new Error(errorMessage)
+      if (error) {
+        throw error
       }
 
-      // Validate response data against schema
-      const validatedData = loginResponseSchema.parse(data.data)
-      const token = validatedData.token
+      if (data?.session === null || data?.session === undefined) {
+        throw new Error('No session returned')
+      }
 
-      // Store token and update state
-      setStoredToken(token)
       setIsAuthenticated(true)
       router.push('/dashboard')
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Sign in failed'))
-      throw err
+      setError(err instanceof Error ? err : new Error('Failed to sign in'))
+      throw err // Re-throw for form component to handle
     } finally {
       setIsLoading(false)
     }
@@ -106,35 +83,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       setIsLoading(true)
-      removeStoredToken()
+      setError(null)
+
+      const { error } = await supabase.auth.signOut()
+      if (error) throw error
+
       setIsAuthenticated(false)
       router.push('/sign-in')
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Sign out failed'))
+      setError(err instanceof Error ? err : new Error('Failed to sign out'))
+      throw err
     } finally {
       setIsLoading(false)
     }
   }
 
+  const value = React.useMemo(
+    () => ({
+      isAuthenticated,
+      isLoading,
+      error,
+      signIn,
+      signOut,
+    }),
+    [isAuthenticated, isLoading, error]
+  )
+
   return (
-    <AuthContext.Provider
-      value={{
-        isAuthenticated,
-        isLoading,
-        signIn,
-        signOut,
-        error,
-      }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   )
-}
-
-export function useAuth() {
-  const context = useContext(AuthContext)
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider')
-  }
-  return context
 } 

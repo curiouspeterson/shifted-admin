@@ -5,43 +5,27 @@
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Enable React strict mode for better development
+  // Optimization settings
+  swcMinify: true,
+  poweredByHeader: false,
   reactStrictMode: true,
   
-  // Enable modern optimizations
-  optimizeFonts: true,
-  optimizeImages: true,
-  
-  // TypeScript configuration
-  typescript: {
-    // Don't ignore build errors
-    ignoreBuildErrors: false,
-    
-    // Enable more strict checking
-    strict: true,
-    
-    // Enable incremental type checking for better performance
-    incremental: true,
+  // Image optimization
+  images: {
+    domains: [],
+    formats: ['image/avif', 'image/webp'],
   },
-  
-  // Modern features
+
+  // Experimental features
   experimental: {
-    // Enable modern React features
-    serverActions: true,
-    
-    // Enable modern CSS features
-    optimizeCss: true,
-    
-    // Enable modern bundling features
-    turbotrace: {
-      logLevel: 'error',
-    },
+    // Server actions are enabled by default in Next.js 14
+    typedRoutes: true,
+    serverComponentsExternalPackages: [],
   },
-  
-  // Supabase configuration
-  env: {
-    NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
-    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+
+  // TypeScript settings are now handled by tsconfig.json
+  typescript: {
+    // These will be checked by the build process
   },
 }
 

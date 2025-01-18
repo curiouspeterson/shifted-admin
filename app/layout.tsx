@@ -1,17 +1,16 @@
 /**
- * Root Layout
- * Last Updated: 2025-01-17
+ * Root Layout Component
+ * Last Updated: 2025-03-19
  * 
- * The root layout component that wraps all pages.
- * Includes global providers and styles.
+ * Provides the root layout structure and global providers.
  */
 
-import { AuthProvider } from '@/providers/auth-provider'
+import { AuthProvider } from '@/app/providers/auth-provider'
 import './globals.css'
 
 export const metadata = {
   title: 'Shifted Admin',
-  description: 'Modern admin dashboard built with Next.js',
+  description: 'Admin dashboard for managing employee schedules',
 }
 
 export default function RootLayout({

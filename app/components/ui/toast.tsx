@@ -1,19 +1,19 @@
 /**
  * Toast Component
- * Last Updated: 2025-01-17
+ * Last Updated: 2025-03-19
  * 
- * Modern toast notifications using sonner
+ * A toast notification component built on top of Sonner.
  */
 
-'use client';
+'use client'
 
-import { Toaster as Sonner } from 'sonner';
+import { toast as sonnerToast, Toaster as SonnerToaster } from 'sonner'
 
-type ToasterProps = React.ComponentProps<typeof Sonner>;
+export const toast = sonnerToast
 
-function Toaster({ ...props }: ToasterProps) {
+export function Toaster() {
   return (
-    <Sonner
+    <SonnerToaster
       className="toaster group"
       toastOptions={{
         classNames: {
@@ -26,12 +26,6 @@ function Toaster({ ...props }: ToasterProps) {
             'group-[.toast]:bg-muted group-[.toast]:text-muted-foreground',
         },
       }}
-      {...props}
     />
-  );
-}
-
-export { Toaster };
-
-// Re-export toast function from sonner for convenience
-export { toast } from 'sonner'; 
+  )
+} 

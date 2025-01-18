@@ -2,27 +2,30 @@
  * Sign In Route Handler
  * Last Updated: 2025-03-19
  * 
- * Handles user sign in with rate limiting and validation.
+ * Handles user authentication with rate limiting, validation, and proper error handling.
+ * Uses the latest @supabase/ssr package for better server-side auth handling.
  */
 
-import { RateLimiter } from '@/lib/rate-limiting'
+import { RateLimiter } from '@/app/lib/rate-limiting'
 import { 
   loginRequestSchema, 
   type LoginResponse,
   type LoginRequest
-} from '@/lib/validations/auth'
-import { createRouteHandler, type ApiResponse } from '@/lib/api'
-import { createClient } from '@/lib/supabase/server'
+} from '@/app/lib/validations/auth'
+import { createRouteHandler, type ApiResponse } from '@/app/lib/api'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { cookies } from 'next/headers'
 import { NextResponse } from 'next/server'
-import { AuthError } from '@/lib/errors'
+import { AuthError } from '@/app/lib/errors/auth'
+import { ValidationError } from '@/app/lib/errors/validation'
 import { type NextRequest } from 'next/server'
+import type { Database } from '@/types/supabase'
 
 // Rate limiter: 5 attempts per 15 minutes
 const rateLimiter = new RateLimiter({
   points: 5,
-  duration: 15 * 60, // 15 minutes
-  blockDuration: 30 * 60, // 30 minutes
+  duration: 15 * 60,
+  blockDuration: 30 * 60,
   keyPrefix: 'sign-in'
 })
 
@@ -32,28 +35,68 @@ export const POST = createRouteHandler<LoginResponse, LoginRequest>({
     body: loginRequestSchema
   },
   handler: async (req: NextRequest, { body }: { body: LoginRequest }) => {
+    const cookieStore = cookies()
+    const supabase = createServerClient<Database>(
+      process.env['NEXT_PUBLIC_SUPABASE_URL'] ?? '',
+      process.env['NEXT_PUBLIC_SUPABASE_ANON_KEY'] ?? '',
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+          set(name: string, value: string, options: CookieOptions) {
+            cookieStore.set({ name, value, ...options })
+          },
+          remove(name: string, options: CookieOptions) {
+            cookieStore.delete({ name, ...options })
+          },
+        },
+      }
+    )
+
     try {
       const { email, password } = body
 
-      const supabase = createClient(cookies())
-      const { data: { session, user }, error } = await supabase.auth.signInWithPassword({
+      // Attempt authentication
+      const authResponse = await supabase.auth.signInWithPassword({
         email,
         password
       })
 
-      if (error !== null || user === null) {
-        throw new AuthError(
-          error?.message ?? 'Authentication failed',
-          { cause: error }
-        )
+      // Check for authentication errors
+      if (authResponse.error) {
+        throw new AuthError('Authentication failed', {
+          cause: authResponse.error,
+          details: {
+            message: authResponse.error.message,
+            status: 401
+          }
+        })
       }
 
-      if (!session) {
-        throw new AuthError('No session created')
+      // Extract and validate auth data
+      const { data } = authResponse
+      if (data === null || data === undefined) {
+        throw new AuthError('No authentication data received', {
+          details: { status: 401 }
+        })
       }
 
-      // Create response data
-      const responseData = {
+      // Extract and validate user data
+      const { user, session } = data
+      if (user === null || user === undefined) {
+        throw new AuthError('No user data received', {
+          details: { status: 401 }
+        })
+      }
+      if (session === null || session === undefined) {
+        throw new AuthError('No session created', {
+          details: { status: 401 }
+        })
+      }
+
+      // Create response with user data
+      const responseData: ApiResponse<LoginResponse> = {
         data: {
           user: {
             id: user.id,
@@ -63,30 +106,44 @@ export const POST = createRouteHandler<LoginResponse, LoginRequest>({
           },
           token: session.access_token
         }
-      } satisfies ApiResponse<LoginResponse>
+      }
 
-      // Return a fresh response
-      return new NextResponse(JSON.stringify(responseData), {
+      // Log successful authentication
+      console.info(`User authenticated successfully: ${user.id}`)
+
+      // Return success response - client will handle redirect
+      return NextResponse.json(responseData, {
         status: 200,
         headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-store, no-cache, must-revalidate'
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache'
         }
       })
-    } catch (error) {
-      console.error('Sign in failed:', error)
+    } catch (error: unknown) {
+      // Enhanced error logging
+      console.error('Authentication error:', {
+        error: error instanceof Error ? error.message : 'Unknown error',
+        timestamp: new Date().toISOString(),
+        path: req.url,
+        details: error instanceof AuthError ? error.details : undefined
+      })
       
-      // Create error response
-      const errorData = {
-        error: error instanceof AuthError ? error.message : 'An unexpected error occurred'
-      } satisfies ApiResponse<LoginResponse>
+      // Determine status code from error
+      let status = 500
+      if (error instanceof AuthError && typeof error.details?.status === 'number') {
+        status = error.details.status
+      } else if (error instanceof ValidationError) {
+        status = 400
+      }
 
-      // Return a fresh error response
-      return new NextResponse(JSON.stringify(errorData), {
-        status: error instanceof AuthError ? 401 : 500,
+      // Return error response
+      return NextResponse.json({
+        error: error instanceof Error ? error.message : 'An unexpected error occurred during authentication'
+      }, {
+        status,
         headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-store, no-cache, must-revalidate'
+          'Cache-Control': 'no-store, no-cache, must-revalidate',
+          'Pragma': 'no-cache'
         }
       })
     }

@@ -6,11 +6,12 @@
  */
 
 import * as Sentry from '@sentry/nextjs';
-import { errorLogger } from '@/lib/logging/error-logger';
+import { init, captureException, captureMessage, setContext, setTag, setUser, type SeverityLevel } from '@sentry/nextjs';
+import { errorLogger, ErrorSeverity } from '@/app/lib/logging/error-logger';
 import { AppError } from '../errors/base';
 
 // Map our error severity levels to Sentry severity levels
-const severityMap: Record<ErrorSeverity, Sentry.SeverityLevel> = {
+const severityMap: Record<ErrorSeverity, SeverityLevel> = {
   [ErrorSeverity.DEBUG]: 'debug',
   [ErrorSeverity.INFO]: 'info',
   [ErrorSeverity.WARN]: 'warning',
@@ -24,7 +25,7 @@ const SENTRY_DSN = process.env.NEXT_PUBLIC_SENTRY_DSN;
  * Initialize Sentry with environment-specific configuration
  */
 export function initSentry(): void {
-  if (!SENTRY_DSN) {
+  if (typeof SENTRY_DSN !== 'string' || SENTRY_DSN.length === 0) {
     errorLogger.warn('Sentry DSN not found', {
       context: {
         message: 'Error monitoring will be disabled',
@@ -34,7 +35,7 @@ export function initSentry(): void {
     return;
   }
 
-  Sentry.init({
+  init({
     dsn: SENTRY_DSN,
     environment: process.env.NODE_ENV,
     tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
@@ -51,30 +52,32 @@ export function reportError(
   context: Record<string, unknown> = {}
 ): void {
   // Don't report errors in development unless explicitly enabled
-  if (process.env.NODE_ENV === 'development' && !process.env.ENABLE_ERROR_REPORTING) {
+  if (process.env.NODE_ENV === 'development' && process.env.ENABLE_ERROR_REPORTING !== 'true') {
     console.debug('Error reporting disabled in development:', error);
     return;
   }
 
   // Set error context and tags
-  Sentry.setContext('error', {
+  setContext('error', {
     ...context,
     timestamp: new Date().toISOString(),
   });
 
   // Add user context if available
-  if (context.userId) {
-    Sentry.setUser({ id: String(context.userId) });
+  const userId = context.userId;
+  if (typeof userId === 'string' && userId.length > 0) {
+    setUser({ id: userId });
   }
 
   // Add request context if available
-  if (context.requestId) {
-    Sentry.setTag('requestId', String(context.requestId));
+  const requestId = context.requestId;
+  if (typeof requestId === 'string' && requestId.length > 0) {
+    setTag('requestId', requestId);
   }
 
   // Handle AppError instances
   if (error instanceof AppError) {
-    Sentry.captureException(error, {
+    captureException(error, {
       level: severityMap[severity],
       tags: {
         errorCode: error.code,
@@ -92,7 +95,7 @@ export function reportError(
 
   // Handle standard Error instances
   if (error instanceof Error) {
-    Sentry.captureException(error, {
+    captureException(error, {
       level: severityMap[severity],
       tags: {
         errorType: error.constructor.name,
@@ -102,7 +105,7 @@ export function reportError(
   }
 
   // Handle unknown error types
-  Sentry.captureMessage(String(error), {
+  captureMessage(String(error), {
     level: severityMap[severity],
     tags: {
       errorType: 'UnknownError',
@@ -115,7 +118,7 @@ export function reportError(
  */
 export function setGlobalTags(tags: Record<string, string>): void {
   Object.entries(tags).forEach(([key, value]) => {
-    Sentry.setTag(key, value);
+    setTag(key, value);
   });
 }
 

@@ -6,8 +6,8 @@
  */
 
 import React from 'react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui';
-import { ErrorSeverity } from '@/lib/logging/error-logger';
+import { Card, CardContent, CardHeader, CardTitle } from '@/app/components/ui/card';
+import { ErrorSeverity } from '@/app/lib/logging/error-logger';
 
 interface ErrorMetric {
   title: string;

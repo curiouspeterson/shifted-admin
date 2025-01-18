@@ -1,15 +1,14 @@
 /**
- * Global Error Component
- * Last Updated: 2025-01-17
+ * Global Error Page Component
+ * Last Updated: 2025-03-19
  * 
- * Handles application-level errors that occur outside the main app tree.
- * This component is used as a last resort when the app fails to render.
+ * Displays a user-friendly error message with a retry button.
  */
 
 'use client'
 
 import * as React from 'react'
-import { ClientButton } from '@/components/ui'
+import { Button } from '@/app/components/ui/button/index'
 
 export default function GlobalError({
   error,
@@ -17,13 +16,24 @@ export default function GlobalError({
 }: {
   error: Error & { digest?: string }
   reset: () => void
-}): React.ReactElement {
+}) {
+  React.useEffect(() => {
+    console.error('Global Error:', error)
+  }, [error])
+
   return (
     <html>
       <body>
-        <div className="flex h-screen flex-col items-center justify-center gap-4">
-          <h2 className="text-2xl font-bold">Something went wrong!</h2>
-          <ClientButton onClick={() => reset()}>Try again</ClientButton>
+        <div className="flex min-h-screen flex-col items-center justify-center">
+          <div className="text-center">
+            <h2 className="mb-4 text-2xl font-bold">Something went wrong!</h2>
+            <Button
+              onClick={() => reset()}
+              className="mt-4"
+            >
+              Try again
+            </Button>
+          </div>
         </div>
       </body>
     </html>

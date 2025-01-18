@@ -1,61 +1,37 @@
-'use client'
-
 /**
  * Client Button Component
- * Last Updated: 2025-01-17
+ * Last Updated: 2025-03-19
  * 
- * Client-side wrapper for shadcn button that adds:
- * - Loading state handling
- * - onClick event handling
- * - Proper client/server boundary separation
+ * A client-side button component that supports loading and disabled states.
  */
 
-import * as React from 'react'
-import { Button, type ButtonProps } from './button'
+'use client'
 
-export interface ClientButtonProps extends Omit<ButtonProps, 'loading'> {
-  loading?: boolean
-  onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void | Promise<void>
+import * as React from 'react'
+import { Button as BaseButton, type ButtonProps } from './button'
+
+export interface ClientButtonProps extends Omit<ButtonProps, 'asChild'> {
+  isLoading?: boolean
 }
 
-export function ClientButton({
-  onClick,
-  loading = false,
-  disabled,
+export const Button = ({
   children,
+  disabled = false,
+  isLoading = false,
   ...props
-}: ClientButtonProps): React.ReactElement {
-  const [isLoading, setIsLoading] = React.useState<boolean>(loading)
-  const isMounted = React.useRef<boolean>(false)
-
-  React.useEffect(() => {
-    isMounted.current = true
-    return () => {
-      isMounted.current = false
-    }
-  }, [])
-
-  const handleClick = async (event: React.MouseEvent<HTMLButtonElement>) => {
-    if (typeof onClick !== 'function' || isLoading === true) return
-
-    try {
-      setIsLoading(true)
-      await onClick(event)
-    } finally {
-      if (isMounted.current === true) {
-        setIsLoading(false)
-      }
-    }
-  }
+}: ClientButtonProps) => {
+  const isDisabled = Boolean(disabled) || Boolean(isLoading)
 
   return (
-    <Button
-      onClick={handleClick}
-      disabled={disabled === true || isLoading === true}
-      loading={isLoading}
+    <BaseButton
       {...props}
+      disabled={isDisabled}
+      data-state={isLoading ? 'loading' : undefined}
     >
-      {children}
-    </Button>
+      {Boolean(isLoading) ? 'Loading...' : children}
+    </BaseButton>
   )
-} 
+}
+
+// Also export as ClientButton for backwards compatibility
+export const ClientButton = Button 

@@ -1,88 +1,71 @@
 /**
  * Date Range Picker Component
- * Last Updated: 2025-01-15
+ * Last Updated: 2025-03-19
  * 
- * This component provides a date range picker with a calendar popover.
+ * A date range picker component built on top of the Calendar component.
  */
 
-'use client';
+'use client'
 
-import * as React from 'react';
-import { CalendarIcon } from '@radix-ui/react-icons';
-import { addDays, format } from 'date-fns';
-import { DateRange } from 'react-day-picker';
-import { Button } from '@/components/ui/button';
-import { Calendar } from '@/components/ui/calendar';
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from '@/components/ui/popover';
-import { cn } from '@/lib/utils';
+import * as React from 'react'
+import { format } from 'date-fns'
+import { Calendar as CalendarIcon } from 'lucide-react'
+import { DateRange, SelectRangeEventHandler } from 'react-day-picker'
+import { cn } from '@/lib/utils'
+import { ClientButton } from '@/app/components/ui/button/button-client'
+import { Calendar } from '@/app/components/ui/calendar'
+import { Popover, PopoverContent, PopoverTrigger } from '@/app/components/ui/popover'
 
 export interface DateRangePickerProps {
-  className?: string;
-  from?: string;
-  to?: string;
-  onSelect: (range: { from?: Date; to?: Date }) => void;
+  value?: DateRange
+  onChange: SelectRangeEventHandler
+  placeholder?: string
+  className?: string
 }
 
 export function DateRangePicker({
+  value,
+  onChange,
+  placeholder = 'Pick a date range',
   className,
-  from,
-  to,
-  onSelect,
 }: DateRangePickerProps) {
-  const [date, setDate] = React.useState<DateRange | undefined>(
-    from && to
-      ? {
-          from: new Date(from),
-          to: new Date(to),
-        }
-      : undefined
-  );
-
   return (
     <div className={cn('grid gap-2', className)}>
       <Popover>
         <PopoverTrigger asChild>
-          <Button
-            id="date"
+          <ClientButton
             variant="outline"
             className={cn(
               'w-full justify-start text-left font-normal',
-              !date && 'text-muted-foreground'
+              !value && 'text-muted-foreground'
             )}
           >
             <CalendarIcon className="mr-2 h-4 w-4" />
-            {date?.from ? (
-              date.to ? (
+            {value?.from ? (
+              value.to ? (
                 <>
-                  {format(date.from, 'LLL dd, y')} -{' '}
-                  {format(date.to, 'LLL dd, y')}
+                  {format(value.from, 'LLL dd, y')} -{' '}
+                  {format(value.to, 'LLL dd, y')}
                 </>
               ) : (
-                format(date.from, 'LLL dd, y')
+                format(value.from, 'LLL dd, y')
               )
             ) : (
-              <span>Pick a date range</span>
+              placeholder
             )}
-          </Button>
+          </ClientButton>
         </PopoverTrigger>
         <PopoverContent className="w-auto p-0" align="start">
           <Calendar
             initialFocus
             mode="range"
-            defaultMonth={date?.from}
-            selected={date}
-            onSelect={(range) => {
-              setDate(range);
-              onSelect(range ?? {});
-            }}
+            defaultMonth={value?.from || new Date()}
+            selected={value}
+            onSelect={onChange}
             numberOfMonths={2}
           />
         </PopoverContent>
       </Popover>
     </div>
-  );
+  )
 } 

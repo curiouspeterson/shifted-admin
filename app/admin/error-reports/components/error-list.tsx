@@ -7,9 +7,9 @@
 
 import React from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Button } from '@/components/ui/button';
-import { ErrorSeverity } from '@/lib/logging/error-logger';
-import { formatDate } from '@/lib/utils';
+import { Button } from '@/app/components/ui/button/button';
+import { ErrorSeverity } from '@/app/lib/logging/error-logger';
+import { formatDate } from '@/app/lib/utils';
 
 interface ErrorEntry {
   id: string;

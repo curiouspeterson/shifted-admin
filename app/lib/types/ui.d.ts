@@ -16,17 +16,15 @@ import type { ControllerProps, FieldPath, FieldValues } from 'react-hook-form'
 
 // Button Component Types
 declare module '@/components/ui/button' {
-  interface ButtonProps extends Omit<
-    ComponentPropsWithoutRef<'button'>,
-    'onClick' | 'onMouseDown' | 'onMouseUp' | 'onMouseEnter' | 'onMouseLeave'
-  > {
+  interface ButtonProps extends ComponentPropsWithoutRef<'button'> {
     variant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link'
     size?: 'default' | 'sm' | 'lg' | 'icon'
+    asChild?: boolean
     isLoading?: boolean
   }
 
-  interface ClientButtonProps extends Omit<ButtonProps, 'onClick'> {
-    onClick?: () => void
+  interface ClientButtonProps extends Omit<ButtonProps, 'asChild'> {
+    onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void | Promise<void>
   }
 
   export function Button(props: ButtonProps): React.ReactElement

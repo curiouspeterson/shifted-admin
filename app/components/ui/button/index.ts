@@ -1,10 +1,9 @@
 /**
  * Button Component Exports
- * Last Updated: 2025-01-17
- * 
- * Centralizes button component exports to maintain clean import paths
- * and proper client/server component separation.
+ * Last Updated: 2025-03-19
  */
 
-export { Button, type ButtonProps } from '../button'
-export { ClientButton, type ClientButtonProps } from './button-client' 
+export { Button, ClientButton } from './button-client'
+export { Button as BaseButton, buttonVariants } from './button'
+export type { ButtonProps } from './button'
+export type { ClientButtonProps } from './button-client' 

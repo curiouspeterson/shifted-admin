@@ -1,7 +1,8 @@
 /**
  * TypeScript Configuration
- * Last updated: January 17, 2025
- */{
+ * Last updated: March 19, 2025
+ */
+{
   "compilerOptions": {
     "target": "esnext",
     "lib": [
@@ -18,59 +19,43 @@
     "strictPropertyInitialization": true,
     "noImplicitThis": true,
     "useUnknownInCatchVariables": true,
+    "alwaysStrict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
     "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "allowJs": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
+    "noEmit": true,
+    "incremental": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
     "jsx": "preserve",
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "./app/*"
-      ],
-      "@/components/*": [
-        "./app/components/*"
-      ],
-      "@/lib/*": [
-        "./app/lib/*"
-      ],
-      "@/hooks/*": [
-        "./app/hooks/*"
-      ],
-      "@/styles/*": [
-        "./app/styles/*"
-      ],
-      "@/types/*": [
-        "./app/types/*"
-      ]
+      "@/*": ["./*"]
     },
-    "noEmit": true,
-    "incremental": true,
-    "composite": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "exactOptionalPropertyTypes": true,
-    "noImplicitReturns": true,
-    "noFallthroughCasesInSwitch": true,
-    "noImplicitOverride": true,
-    "allowUnreachableCode": false,
-    "verbatimModuleSyntax": true,
-    "noPropertyAccessFromIndexSignature": true,
-    "allowJs": true,
     "plugins": [
       {
         "name": "next"
       }
+    ],
+    "typeRoots": [
+      "./node_modules/@types",
+      "./types"
     ]
   },
   "include": [
     "next-env.d.ts",
+    ".next/types/**/*.ts",
     "**/*.ts",
     "**/*.tsx",
-    ".next/types/**/*.ts"
+    "types/**/*.d.ts"
   ],
   "exclude": [
     "node_modules"

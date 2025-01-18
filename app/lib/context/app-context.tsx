@@ -1,71 +1,50 @@
 /**
- * App Context Provider
- * Last Updated: 2024-03-21
+ * App Context
+ * Last Updated: 2025-03-19
  * 
- * Global application context using modern React patterns.
- * Provides app-wide state management with TypeScript support.
+ * Provides global application state and functionality.
  */
 
-'use client';
+'use client'
 
-import { createContext, useContext, useReducer, type ReactNode } from 'react';
-
-interface AppState {
-  isOnline: boolean;
-  isSyncing: boolean;
-  lastSyncTime: string | null;
-}
-
-type AppAction = 
-  | { type: 'SET_ONLINE_STATUS'; payload: boolean }
-  | { type: 'SET_SYNC_STATUS'; payload: boolean }
-  | { type: 'SET_SYNC_TIME'; payload: string };
+import * as React from 'react'
 
 interface AppContextType {
-  state: AppState;
-  dispatch: React.Dispatch<AppAction>;
+  isLoading: boolean
+  setIsLoading: (loading: boolean) => void
+  error: Error | null
+  setError: (error: Error | null) => void
 }
 
-const initialState: AppState = {
-  isOnline: typeof navigator !== 'undefined' ? navigator.onLine : true,
-  isSyncing: false,
-  lastSyncTime: null,
-};
-
-const AppContext = createContext<AppContextType | null>(null);
-
-function appReducer(state: AppState, action: AppAction): AppState {
-  switch (action.type) {
-    case 'SET_ONLINE_STATUS':
-      return { ...state, isOnline: action.payload };
-    case 'SET_SYNC_STATUS':
-      return { ...state, isSyncing: action.payload };
-    case 'SET_SYNC_TIME':
-      return { ...state, lastSyncTime: action.payload };
-    default:
-      return state;
-  }
-}
-
-export function AppProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(appReducer, initialState);
-  
-  return (
-    <AppContext.Provider value={{ state, dispatch }}>
-      {children}
-    </AppContext.Provider>
-  );
-}
+const AppContext = React.createContext<AppContextType | null>(null)
 
 export function useAppContext() {
-  const context = useContext(AppContext);
-  
+  const context = React.useContext(AppContext)
   if (!context) {
-    throw new Error('useAppContext must be used within an AppProvider');
+    throw new Error('useAppContext must be used within an AppProvider')
   }
-  
-  return context;
+  return context
 }
 
-// Alias for backward compatibility
-export const useApp = useAppContext; 
+export function AppProvider({ children }: { children: React.ReactNode }) {
+  const [isLoading, setIsLoading] = React.useState(false)
+  const [error, setError] = React.useState<Error | null>(null)
+
+  const value = React.useMemo(
+    () => ({
+      isLoading,
+      setIsLoading,
+      error,
+      setError,
+    }),
+    [isLoading, error]
+  )
+
+  return (
+    <AppContext.Provider value={value}>
+      {children}
+    </AppContext.Provider>
+  )
+}
+
+export default AppContext 

@@ -1,30 +1,37 @@
-'use client'
-
 /**
  * Auth Error Fallback Component
- * Last Updated: 2025-01-17
+ * Last Updated: 2025-03-19
  * 
- * Client-side error boundary fallback for authentication errors.
+ * Displays a user-friendly error message with a retry button.
  */
 
-import { Button } from '@/components/client-wrappers/button-client'
+'use client'
 
-interface AuthErrorFallbackProps {
+import * as React from 'react'
+import { ClientButton } from '@/app/components/ui/button/button-client'
+
+interface ErrorFallbackProps {
   error: Error
   resetErrorBoundary: () => void
 }
 
-export function AuthErrorFallback({ error, resetErrorBoundary }: AuthErrorFallbackProps) {
+export function ErrorFallback({
+  error,
+  resetErrorBoundary,
+}: ErrorFallbackProps) {
   return (
-    <div className="p-4 border border-red-500 rounded-md">
-      <h2 className="text-lg font-semibold text-red-600">Authentication Error:</h2>
-      <pre className="mt-2 text-sm text-red-500">{error.message}</pre>
-      <Button
-        onClick={resetErrorBoundary}
-        className="mt-4 px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
-      >
-        Try again
-      </Button>
+    <div className="flex min-h-[400px] flex-col items-center justify-center space-y-4">
+      <div className="space-y-2 text-center">
+        <h2 className="text-2xl font-semibold tracking-tight">
+          Authentication Error
+        </h2>
+        <p className="text-muted-foreground">
+          {error.message || 'An error occurred during authentication'}
+        </p>
+      </div>
+      <ClientButton onClick={resetErrorBoundary}>
+        Try Again
+      </ClientButton>
     </div>
   )
 } 

@@ -1,12 +1,14 @@
-"use client"
+/**
+ * Add Employee Button Component
+ * Last Updated: 2025-03-19
+ * 
+ * A button that opens a dialog for adding a new employee.
+ */
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import { zodResolver } from "@hookform/resolvers/zod"
-import { useForm } from "react-hook-form"
-import * as z from "zod"
-import { toast } from "sonner"
-import { Button } from "@/components/ui/button"
+'use client'
+
+import * as React from 'react'
+import { Button } from '@/components/ui/button/button'
 import {
   Dialog,
   DialogContent,
@@ -14,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from "@/components/ui/dialog"
+} from '@/components/ui/dialog'
 import {
   Form,
   FormControl,
@@ -22,57 +24,75 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@/components/ui/form"
-import { Input } from "@/components/ui/input"
-import { createClientComponentClient } from '@/lib/supabase/client-side'
+} from '@/components/ui/form'
+import { Input } from '@/components/ui/input'
+import { useForm } from 'react-hook-form'
+import { toast } from 'sonner'
+import { useRouter } from 'next/navigation'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { zodResolver } from "@hookform/resolvers/zod"
+import * as z from "zod"
+
+// Define Database types
+type Database = {
+  public: {
+    Tables: {
+      employees: {
+        Row: {
+          id: string
+          first_name: string
+          last_name: string
+          email: string
+          phone: string | null
+          position: string
+          department: string
+          is_active: boolean
+          created_at: string
+          updated_at: string
+          created_by: string
+          updated_by: string
+        }
+        Insert: Omit<Database['public']['Tables']['employees']['Row'], 'id' | 'created_at' | 'updated_at'>
+        Update: Partial<Database['public']['Tables']['employees']['Insert']>
+      }
+    }
+  }
+}
 
 const employeeFormSchema = z.object({
-  first_name: z.string().min(2, {
-    message: "First name must be at least 2 characters.",
-  }),
-  last_name: z.string().min(2, {
-    message: "Last name must be at least 2 characters.",
-  }),
-  email: z.string().email({
-    message: "Please enter a valid email address.",
-  }),
-  phone: z.string().min(10, {
-    message: "Phone number must be at least 10 characters.",
-  }).optional(),
-  position: z.string().min(2, {
-    message: "Position must be at least 2 characters.",
-  }),
-  department: z.string().min(2, {
-    message: "Department must be at least 2 characters.",
-  }),
+  first_name: z.string().min(2, 'First name must be at least 2 characters'),
+  last_name: z.string().min(2, 'Last name must be at least 2 characters'),
+  email: z.string().email('Invalid email format'),
+  phone: z.string().optional(),
+  position: z.string().min(2, 'Position must be at least 2 characters'),
+  department: z.string().min(2, 'Department must be at least 2 characters'),
   is_active: z.boolean().default(true),
 })
 
 type EmployeeFormValues = z.infer<typeof employeeFormSchema>
 
 export function AddEmployeeButton() {
-  const [open, setOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
+  const [open, setOpen] = React.useState(false)
+  const [isLoading, setIsLoading] = React.useState(false)
   const router = useRouter()
+  const supabase = createClientComponentClient<Database>()
+  
   const form = useForm<EmployeeFormValues>({
     resolver: zodResolver(employeeFormSchema),
     defaultValues: {
-      first_name: "",
-      last_name: "",
-      email: "",
-      phone: "",
-      position: "",
-      department: "",
+      first_name: '',
+      last_name: '',
+      email: '',
+      phone: '',
+      position: '',
+      department: '',
       is_active: true,
     },
   })
 
-  const supabase = createClientComponentClient()
-
   async function onSubmit(values: EmployeeFormValues) {
     try {
       setIsLoading(true)
-      const supabase = createClientComponentClient()
       
       // Get authenticated user
       const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -85,26 +105,24 @@ export function AddEmployeeButton() {
         throw new Error("No authenticated user. Please log in again.")
       }
 
-      // Prepare employee data
+      // Prepare employee data with explicit null handling for phone
       const employeeData = {
         first_name: values.first_name.trim(),
         last_name: values.last_name.trim(),
         email: values.email.trim(),
-        phone: values.phone?.trim() || null,
+        phone: typeof values.phone === 'string' && values.phone.trim() !== '' ? values.phone.trim() : null,
         position: values.position.trim(),
         department: values.department.trim(),
         is_active: values.is_active,
         created_by: user.id,
         updated_by: user.id
-      }
+      } satisfies Database['public']['Tables']['employees']['Insert']
 
-      const { data, error: insertError } = await supabase
+      const { error: insertError } = await supabase
         .from('employees')
         .insert(employeeData)
-        .select()
       
       if (insertError) {
-        console.error("Insert error:", insertError)
         if (insertError.code === "42501") {
           throw new Error("Permission denied. Please check your access rights.")
         }
@@ -114,8 +132,6 @@ export function AddEmployeeButton() {
         throw new Error(insertError.message)
       }
 
-      console.log('Insert response:', data)
-      
       toast.success("Employee added successfully")
       setOpen(false)
       form.reset()
@@ -184,6 +200,7 @@ export function AddEmployeeButton() {
                   <FormLabel className="text-black font-medium">Email</FormLabel>
                   <FormControl>
                     <Input 
+                      type="email"
                       placeholder="john.doe@example.com" 
                       className="bg-white text-black border-gray-300 focus:border-gray-400" 
                       {...field} 
@@ -201,10 +218,11 @@ export function AddEmployeeButton() {
                   <FormLabel className="text-black font-medium">Phone</FormLabel>
                   <FormControl>
                     <Input 
+                      type="tel"
                       placeholder="+1234567890" 
                       className="bg-white text-black border-gray-300 focus:border-gray-400" 
                       {...field}
-                      value={field.value || ''} 
+                      value={field.value ?? ''} 
                     />
                   </FormControl>
                   <FormMessage className="text-red-500" />
@@ -248,6 +266,7 @@ export function AddEmployeeButton() {
             <Button 
               type="submit" 
               disabled={isLoading}
+              isLoading={isLoading}
               className="w-full bg-gray-900 text-white hover:bg-gray-800"
             >
               {isLoading ? "Adding..." : "Submit"}

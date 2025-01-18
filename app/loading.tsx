@@ -1,17 +1,16 @@
 /**
- * Root Loading Page
- * Last Updated: 2024-03-21
+ * Loading Component
+ * Last Updated: 2025-03-19
  * 
- * Global loading page for the application.
- * Uses the Spinner component for loading indication.
+ * Displays a loading spinner during page transitions.
  */
 
-import { Spinner } from '@/components/ui/spinner';
+import { Spinner } from '@/app/components/ui/spinner'
 
 export default function Loading() {
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <Spinner size="lg" />
+    <div className="flex min-h-screen items-center justify-center">
+      <Spinner className="h-8 w-8" />
     </div>
-  );
+  )
 } 
