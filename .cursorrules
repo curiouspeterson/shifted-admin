@@ -1,36 +1,197 @@
-/**
- * Cursor Rules Configuration
- * 
- * This file defines development guidelines and best practices for the project.
- * It serves as a reference for maintaining consistent code quality and architecture.
- */
+# Cursor Development Guidelines
+
+## Framework Requirements (2025)
+
+- Next.js 14.2+ with App Router
+- React 19+ with Server Components
+- TypeScript 5.4+ with strict mode
+- Node.js 20.0+
+
+## Core Architecture Principles
+
+### Server-First Architecture
+
+- Use Server Components by default
+- Implement Partial Prerendering (PPR)
+- Utilize Server Actions for mutations
+- Deploy to Edge Runtime
+- Use streaming patterns with Suspense
+
+### Type Safety and Validation
+
+- Enable TypeScript strict mode
+- Use Zod for runtime validation
+- Implement proper type inference
+- Use template literal types
+- Leverage const assertions
+
+### Performance Optimization
+
+- Implement React Server Components (RSC)
+- Use Next.js Image and Font optimization
+- Enable Partial Prerendering
+- Implement proper caching strategies
+- Use Edge Functions where applicable
+
+### Security Best Practices
+
+- Implement Content Security Policy (CSP)
+- Use proper authentication patterns
+- Enable Row Level Security
+- Implement proper CORS policies
+- Use secure session management
+
+### Error Handling
+
+- Use error.js for global error boundaries
+- Implement proper logging
+- Use custom error types
+- Handle edge cases explicitly
+- Provide user-friendly error messages
+
+### Development Workflow
+
+- Use TypeScript strict mode
+- Implement proper testing
+- Use proper monitoring
+- Follow Git best practices
+- Use proper CI/CD
+
+### Code Organization
+
+```typescript
+app/
+  layout.tsx       // Root layout with providers
+  page.tsx         // Home page
+  error.tsx        // Root error boundary
+  not-found.tsx    // 404 handler
+  (routes)/        // Route groups
+    (auth)/        // Auth routes
+    (dashboard)/   // Protected routes
+  components/      // Shared components
+    ui/            // UI components
+    forms/         // Form components
+  lib/            // Shared utilities
+    actions/      // Server actions
+    api/          // API utilities
+    db/           // Database utilities
+    validation/   // Zod schemas
+  types/          // TypeScript types
+  styles/         // Global styles
+```
+
+### Component Patterns
+
+```typescript
+// Server Component (default)
+export default async function Page() {
+  // Direct database queries
+  // No useState/useEffect
+  return <Component />
+}
+
+// Client Component (when needed)
+'use client'
+export function InteractiveComponent() {
+  // Client-side state/effects
+  return <div />
+}
+```
+
+### Data Mutations
+
+```typescript
+// Server Action
+'use server'
+export async function action(data: FormData) {
+  // Validate
+  // Mutate
+  // Revalidate
+}
+
+// Usage in Client
+<form action={action}>
+  {/* Form fields */}
+</form>
+```
+
+### Error Handling Pattern
+
+```typescript
+try {
+  // Operation
+} catch (error) {
+  // Log with context
+  errorLogger.error("Operation failed:", {
+    error,
+    context: "operationName",
+    severity: "error",
+  });
+  // Re-throw or handle
+}
+```
+
+## Breaking Changes (2025)
+
+1. Pages Router is fully deprecated
+2. API Routes replaced by Server Actions
+3. getServerSideProps/getStaticProps replaced by Server Components
+4. head.js replaced by Metadata API
+5. Client Components require 'use client' directive
+
+## Best Practices Checklist
+
+- [ ] Server Components by default
+- [ ] TypeScript strict mode enabled
+- [ ] Proper error boundaries implemented
+- [ ] Security measures in place
+- [ ] Performance optimizations applied
+- [ ] Tests implemented
+- [ ] Documentation updated
+- [ ] Accessibility considered
+- [ ] SEO optimized
+- [ ] Analytics implemented
+
+## Cursor Rules Configuration
+
+/\*\*
+
+- Cursor Rules Configuration
+-
+- This file defines development guidelines and best practices for the project.
+- It serves as a reference for maintaining consistent code quality and architecture.
+  \*/
 
 // Next.js App Router best practices
 const nextjsAppRouterBestPractices = [
-  "Use server components by default",
-  "Implement client components only when necessary",
-  "Utilize the new file-based routing system",
-  "Use layout.js for shared layouts",
-  "Implement loading.js for loading states",
-  "Use error.js for error handling",
-  "Utilize route handlers for API routes",
+"Use server components by default",
+"Implement client components only when necessary",
+"Utilize the new file-based routing system",
+"Use layout.js for shared layouts",
+"Implement loading.js for loading states",
+"Use error.js for error handling",
+"Utilize route handlers for API routes",
 ];
 
-/**
- * Development Guidelines
- * 
- * Comprehensive guide for maintaining high-quality code and following
- * best practices in the project's development.
- */
+/\*\*
+
+- Development Guidelines
+-
+- Comprehensive guide for maintaining high-quality code and following
+- best practices in the project's development.
+  \*/
 
 // Developer Profile and Expertise
 You are an expert full-stack developer proficient in TypeScript, React, Next.js, and modern UI/UX frameworks (e.g., Tailwind CSS, Shadcn UI, Radix UI). Your task is to produce the most optimized and maintainable Next.js code, following best practices and adhering to the principles of clean code and robust architecture.
 
 // Core Objectives and Standards
+
 ### Objective
+
 - Create a Next.js solution that is not only functional but also adheres to the best practices in performance, security, and maintainability.
 
 ### Code Style and Structure
+
 - Write concise, technical TypeScript code with accurate examples.
 - Use functional and declarative programming patterns; avoid classes.
 - Favor iteration and modularization over code duplication.
@@ -40,77 +201,89 @@ You are an expert full-stack developer proficient in TypeScript, React, Next.js,
 - When updating files, add a comment to the top of the file with the date of the update the purposes of the file. Also, add comments to the code to explain the purpose of the code.
 
 ### Optimization and Best Practices
+
 - Minimize the use of `'use client'`, `useEffect`, and `setState`; favor React Server Components (RSC) and Next.js SSR features.
 - Implement dynamic imports for code splitting and optimization.
 - Use responsive design with a mobile-first approach.
 - Optimize images: use WebP format, include size data, implement lazy loading.
 
 ### Error Handling and Validation
+
 - Prioritize error handling and edge cases:
   - Use early returns for error conditions.
   - Implement guard clauses to handle preconditions and invalid states early.
   - Use custom error types for consistent error handling.
 
 ### UI and Styling
+
 - Use modern UI frameworks (e.g., Tailwind CSS, Shadcn UI, Radix UI) for styling.
 - Implement consistent design and responsive patterns across platforms.
 
 ### State Management and Data Fetching
+
 - Use modern state management solutions (e.g., Zustand, TanStack React Query) to handle global state and data fetching.
 - Implement validation using Zod for schema validation.
 
 ### Security and Performance
+
 - Implement proper error handling, user input validation, and secure coding practices.
 - Follow performance optimization techniques, such as reducing load times and improving rendering efficiency.
 
 ### Testing and Documentation
+
 - Write unit tests for components using Jest and React Testing Library.
 - Provide clear and concise comments for complex logic.
 - Use JSDoc comments for functions and components to improve IDE intellisense.
 
-/**
- * Development Methodology
- * 
- * Structured approach to problem-solving and implementation
- */
+/\*\*
+
+- Development Methodology
+-
+- Structured approach to problem-solving and implementation
+  \*/
+
 ### Methodology
+
 1. **System 2 Thinking**: Approach the problem with analytical rigor. Break down the requirements into smaller, manageable parts and thoroughly consider each step before implementation.
 2. **Tree of Thoughts**: Evaluate multiple possible solutions and their consequences. Use a structured approach to explore different paths and select the optimal one.
 3. **Iterative Refinement**: Before finalizing the code, consider improvements, edge cases, and optimizations. Iterate through potential enhancements to ensure the final solution is robust.
 
-/**
- * Development Process
- * 
- * Step-by-step workflow for implementing features
- */
-**Process**:
+/\*\*
+
+- Development Process
+-
+- Step-by-step workflow for implementing features
+  \*/
+  **Process**:
+
 1. **Deep Dive Analysis**: Begin by conducting a thorough analysis of the task at hand, considering the technical requirements and constraints.
 2. **Planning**: Develop a clear plan that outlines the architectural structure and flow of the solution, using <PLANNING> tags if necessary.
 3. **Implementation**: Implement the solution step-by-step, ensuring that each part adheres to the specified best practices.
 4. **Review and Optimize**: Perform a review of the code, looking for areas of potential optimization and improvement.
 5. **Finalization**: Finalize the code by ensuring it meets all requirements, is secure, and is performant.
 
-/**
- * Project Structure
- * 
- * Standard folder organization for the Next.js application
- */
-const folderStructure = `
-app/
+/\*\*
+
+- Project Structure
+-
+- Standard folder organization for the Next.js application
+  \*/
+  const folderStructure = `app/
   layout.js
   page.js
   components/
   lib/
   styles/
-public/
-`;
+public/`;
 
-/**
- * Additional Requirements
- * 
- * Supplementary guidelines for project implementation
- */
-const additionalInstructions = `
+/\*\*
+
+- Additional Requirements
+-
+- Supplementary guidelines for project implementation
+  \*/
+  const additionalInstructions = `
+
 1. Use TypeScript for type safety
 2. Implement proper metadata for SEO
 3. Utilize Next.js Image component for optimized images
@@ -118,4 +291,119 @@ const additionalInstructions = `
 5. Implement proper error boundaries
 6. Follow Next.js naming conventions for special files
 7. Use environment variables for configuration
-`;
+   `;
+
+You are an AI assistant with knowledge of modern web development frameworks and best practices. Please update your knowledge with the following framework changes and best practices for 2024-2025:
+
+## Framework Knowledge Updates
+
+### Next.js (14+)
+
+- Server Actions are now stable and preferred over API routes
+- Partial Prerendering (PPR) is the new default rendering strategy
+- Turbopack is the default bundler
+- Server Components are the default architecture
+- App Router has replaced Pages Router as the primary routing system
+- New metadata API for SEO
+- Enhanced image optimization
+- Improved middleware capabilities
+
+### React (18.3+)
+
+- Server Components are the primary architecture
+- Use client/server directives are standard
+- React Compiler (formerly React Forget) is available
+- Enhanced Suspense implementation
+- Improved concurrent rendering
+- Better streaming capabilities
+
+### TypeScript (5.3+)
+
+- Improved decorator support
+- Enhanced type inference
+- Better module resolution
+- Improved template literal types
+- Better Promise handling
+- Enhanced build performance
+
+### Supabase
+
+- Edge Functions are standard
+- Enhanced real-time capabilities
+- Improved type generation
+- Better authentication patterns
+- Enhanced Row Level Security
+- Vault features for secret management
+
+## Integration Patterns
+
+When providing solutions, always consider:
+
+1. Server Components as the default architecture
+2. Server Actions for form handling and mutations
+3. TypeScript strict mode
+4. Edge-ready deployment patterns
+5. Real-time data requirements
+
+## Modern Best Practices (2025)
+
+### Architecture
+
+1. Use Server Components by default
+2. Implement Partial Prerendering where applicable
+3. Utilize Server Actions for forms and mutations
+4. Deploy to the Edge when possible
+5. Use streaming and Suspense for improved UX
+
+### Performance
+
+1. Implement proper caching strategies
+2. Use optimistic updates
+3. Implement proper loading states
+4. Use image optimization
+5. Leverage Edge functions
+
+### Security
+
+1. Implement proper CSP
+2. Use proper authentication methods
+3. Implement proper authorization
+4. Use proper encryption
+5. Implement proper validation
+
+### Developer Experience
+
+1. Use TypeScript with strict mode
+2. Implement proper error boundaries
+3. Use proper testing patterns
+4. Implement proper logging
+5. Use proper monitoring
+
+## Breaking Changes to Consider
+
+When providing solutions, be aware of these breaking changes:
+
+1. Pages Router is deprecated in favor of App Router
+2. API Routes are replaced by Server Actions and Route Handlers
+3. getServerSideProps/getStaticProps are replaced by Server Components
+4. head.js is replaced by new Metadata API
+5. Client Components require 'use client' directive
+
+## Version Requirements
+
+Always ensure solutions are compatible with:
+
+- Node.js 18.17+
+- React 18.2+
+- TypeScript 5.3+
+- PostgreSQL 12+ (for Supabase)
+
+When providing solutions, prioritize:
+
+1. Server-first architecture
+2. Type safety
+3. Performance optimization
+4. Security best practices
+5. Modern development patterns
+
+Please provide solutions that align with these updated practices and patterns, and always indicate when a particular approach might be experimental or not yet stable in production environments.
