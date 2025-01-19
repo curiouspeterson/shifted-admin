@@ -2,125 +2,157 @@
  * Authentication Actions
  * Last Updated: 2025-03-19
  * 
- * Server actions for handling authentication.
+ * Server actions for handling authentication operations.
  */
 
 'use server'
 
-import { cookies } from 'next/headers'
+import { createClient } from '@/app/lib/supabase/server'
+import { errorLogger } from '@/app/lib/logging/error-logger'
 import { redirect } from 'next/navigation'
-import { createServerClient } from '@supabase/ssr'
-import type { Database } from '@/app/lib/types/supabase'
+import { z } from 'zod'
 
-export async function signIn(formData: FormData): Promise<void> {
-  const cookieStore = cookies()
-  const supabase = createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          cookieStore.set({ name, value, ...options })
-        },
-        remove(name: string) {
-          cookieStore.delete(name)
-        },
-      },
-    }
-  )
+// Validation schema for sign in data
+const signInSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  password: z.string().min(6, 'Password must be at least 6 characters')
+})
 
+export async function signIn(formData: FormData) {
   try {
-    const email = formData.get('email')?.toString()
-    const password = formData.get('password')?.toString()
+    const emailValue = formData.get('email')
+    const passwordValue = formData.get('password')
 
-    if (!email || !password) {
+    if (emailValue === null || passwordValue === null) {
       throw new Error('Email and password are required')
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const validationResult = signInSchema.safeParse({
+      email: String(emailValue),
+      password: String(passwordValue)
+    })
+
+    if (!validationResult.success) {
+      const [firstError] = validationResult.error.errors
+      throw new Error(firstError?.message ?? 'Invalid input')
+    }
+
+    const { email, password } = validationResult.data
+    const supabase = createClient()
+    const result = await supabase.auth.signInWithPassword({
       email,
       password
     })
 
-    if (error) throw error
+    if (result.error) {
+      errorLogger.error('Sign in error:', {
+        error: result.error.message,
+        code: result.error.status,
+        context: 'signIn'
+      })
+      throw result.error
+    }
+
+    const { data } = result
+    const user = data?.user
+    const session = data?.session
+
+    if (!user?.id || !user?.email || !session?.access_token) {
+      throw new Error('Authentication failed: Missing user or session data')
+    }
+
+    // Log successful sign in
+    errorLogger.error('Sign in successful:', {
+      userId: user.id,
+      email: user.email,
+      severity: 'info',
+      context: 'signIn'
+    })
 
     redirect('/dashboard')
   } catch (error) {
-    if (error instanceof Error) {
-      throw error
-    }
-    throw new Error('An unexpected error occurred')
+    errorLogger.error('Sign in error:', {
+      error,
+      context: 'signIn',
+      stack: error instanceof Error ? error.stack : undefined
+    })
+    throw error
   }
 }
 
-export async function signInWithGoogle(): Promise<void> {
-  const cookieStore = cookies()
-  const supabase = createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          cookieStore.set({ name, value, ...options })
-        },
-        remove(name: string) {
-          cookieStore.delete(name)
-        },
-      },
-    }
-  )
-
+export async function signInWithGoogle() {
   try {
-    const { error } = await supabase.auth.signInWithOAuth({
+    const supabase = createClient()
+    const result = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`
+        redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/callback`,
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent'
+        }
       }
     })
 
-    if (error) throw error
-  } catch (error) {
-    if (error instanceof Error) {
-      throw error
+    if (result.error) {
+      errorLogger.error('Google sign in error:', {
+        error: result.error.message,
+        code: result.error.status,
+        context: 'signInWithGoogle'
+      })
+      throw result.error
     }
-    throw new Error('An unexpected error occurred')
+
+    const { data } = result
+    const rawUrl = data?.url
+    
+    if (typeof rawUrl !== 'string') {
+      throw new Error('Failed to get OAuth URL: Invalid URL type')
+    }
+
+    const url = rawUrl.trim()
+    if (url === '') {
+      throw new Error('Failed to get OAuth URL: Empty URL')
+    }
+
+    return redirect(url)
+  } catch (error) {
+    errorLogger.error('Google sign in error:', {
+      error,
+      context: 'signInWithGoogle',
+      stack: error instanceof Error ? error.stack : undefined
+    })
+    throw error
   }
 }
 
-export async function signOut(): Promise<void> {
-  const cookieStore = cookies()
-  const supabase = createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          cookieStore.set({ name, value, ...options })
-        },
-        remove(name: string) {
-          cookieStore.delete(name)
-        },
-      },
-    }
-  )
-
+export async function signOut() {
   try {
-    const { error } = await supabase.auth.signOut()
-    if (error) throw error
-    redirect('/sign-in')
-  } catch (error) {
-    if (error instanceof Error) {
-      throw error
+    const supabase = createClient()
+    const result = await supabase.auth.signOut()
+
+    if (result.error) {
+      errorLogger.error('Sign out error:', {
+        error: result.error.message,
+        code: result.error.status,
+        context: 'signOut'
+      })
+      throw result.error
     }
-    throw new Error('An unexpected error occurred')
+
+    // Log successful sign out
+    errorLogger.error('Sign out successful:', {
+      severity: 'info',
+      context: 'signOut'
+    })
+
+    return redirect('/')
+  } catch (error) {
+    errorLogger.error('Sign out error:', {
+      error,
+      context: 'signOut',
+      stack: error instanceof Error ? error.stack : undefined
+    })
+    throw error
   }
 } 
